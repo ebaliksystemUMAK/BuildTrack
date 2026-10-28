@@ -4,8 +4,17 @@ One document per SQL file in `supabase/`. Same sections every time so changes ar
 
 | Doc | SQL file | Status |
 |---|---|---|
+| [20261028150000_project_checklists](20261028150000_project_checklists.md) | `supabase/migrations/20261028150000_project_checklists.sql` | Applied and tracked 2026-10-28; 515 SQL cases, 5 function bodies and live rollback smoke verified; owner-approved cleanup backed up in audit_log 520 |
+| [20261028130000_blueprint_type_access](20261028130000_blueprint_type_access.md) | `supabase/migrations/20261028130000_blueprint_type_access.sql` | Already applied by owner; 29 functions verified and missing history reconciled 2026-10-28 without rerunning DDL or backfill |
+| [20261028092154_resume_cancelled_inspections](20261028092154_resume_cancelled_inspections.md) | `supabase/migrations/20261028092154_resume_cancelled_inspections.sql` | Applied and verified; confirmed Engineer continuation, snapshot/newer-work guards, exact NCR restoration; 493 SQL cases |
+| [20261028084938_return_cancelled_reinspection_ncrs](20261028084938_return_cancelled_reinspection_ncrs.md) | `supabase/migrations/20261028084938_return_cancelled_reinspection_ncrs.sql` | Applied and verified; cancelled package NCRs return for correction; existing guards/history retained; 486 SQL cases pass |
+| [20261028081533_close_existing_passed_reinspection_ncrs](20261028081533_close_existing_passed_reinspection_ncrs.md) | `supabase/migrations/20261028081533_close_existing_passed_reinspection_ncrs.sql` | Applied with explicit owner approval; one existing finding-specific passed NCR closed; history and manual checklist completion retained |
+| [20261028081041_auto_close_reinspection_ncrs](20261028081041_auto_close_reinspection_ncrs.md) | `supabase/migrations/20261028081041_auto_close_reinspection_ncrs.sql` | Applied and verified; sign-off atomically closes its own passed NCRs; remarks-only reinspection UI; 484 SQL cases pass |
+| [20261028064248_daily_report_camera_biometrics](20261028064248_daily_report_camera_biometrics.md) | `supabase/migrations/20261028064248_daily_report_camera_biometrics.sql` | Applied and verified; biometric Time IN headcount and camera-photo annotations; 479 SQL cases and full check/build pass |
+| [20261028061346_client_site_visits](20261028061346_client_site_visits.md) | `supabase/migrations/20261028061346_client_site_visits.sql` | Applied and verified 2026-10-28; Client requests, Engineer responses, cancellation, private access, notifications; 473 SQL cases and full check/build pass |
 | [20261025141322_full_checklist_reinspection](20261025141322_full_checklist_reinspection.md) | `supabase/migrations/20261025141322_full_checklist_reinspection.sql` | Applied and verified; all same-checklist criteria need fresh results, retained history, NCR guards; 447 SQL cases and full check/build pass |
 | [20261025090858_site_issue_pending_review](20261025090858_site_issue_pending_review.md) | `supabase/migrations/20261025090858_site_issue_pending_review.sql` | Applied; issue logging retains pending QA status and evidence locks |
+| [20261028010000_attendance_daily_status](20261028010000_attendance_daily_status.md) | `supabase/migrations/20261028010000_attendance_daily_status.sql` | Applied 2026-10-28 (SQL Editor, verified); one Time IN/OUT per day, working days, On time / Late / Absent status |
 | [20261027152428_attendance_scan_notices](20261027152428_attendance_scan_notices.md) | `supabase/migrations/20261027152428_attendance_scan_notices.sql` | Applied and verified; receiver v3 ACTIVE; unregistered / unlinked / inactive scans answered and logged, live pop-ups |
 | [20261027130000_attendance_schedule_scans](20261027130000_attendance_schedule_scans.md) | `supabase/migrations/20261027130000_attendance_schedule_scans.sql` | Applied 2026-10-27 (SQL Editor, verified); Admin attendance schedule, server-decided IN/OUT, repeat-scan protection, late / early flags |
 | [20261027110000_enrollment_progress](20261027110000_enrollment_progress.md) | `supabase/migrations/20261027110000_enrollment_progress.sql` | Applied 2026-10-27 (SQL Editor, verified); live fingerprint registration steps reported by the ESP32 |
@@ -56,8 +65,8 @@ One document per SQL file in `supabase/`. Same sections every time so changes ar
 | [0038_escalation_alerts](0038_escalation_alerts.md) | `supabase/migrations/0038_escalation_alerts.sql` | Applied (connector) |
 | [0039_photo_stamp](0039_photo_stamp.md) | `supabase/migrations/0039_photo_stamp.sql` | Applied (connector) |
 | [0040_pin_assignment_roles](0040_pin_assignment_roles.md) | `supabase/migrations/0040_pin_assignment_roles.sql` | Applied (SQL Editor, by the owner) |
-| [0041_daily_report_photos](0041_daily_report_photos.md) | `supabase/migrations/0041_daily_report_photos.sql` | NOT APPLIED — owner SQL handover prepared; local tests passed |
-| [0042_checklist_qa_submission](0042_checklist_qa_submission.md) | `supabase/migrations/0042_checklist_qa_submission.sql` | NOT APPLIED — owner SQL handover prepared; local checks passed |
+| [0041_daily_report_photos](0041_daily_report_photos.md) | `supabase/migrations/0041_daily_report_photos.sql` | Already present live (verified 2026-10-18 and 2026-10-28); later migrations extend it; do not rerun the historical handover |
+| [0042_checklist_qa_submission](0042_checklist_qa_submission.md) | `supabase/migrations/0042_checklist_qa_submission.sql` | Already present live (verified 2026-10-18 and 2026-10-28); later QA migrations supersede its functions; do not rerun the historical handover |
 | [seed_super_admin](seed_super_admin.md) | `supabase/seeds/seed_super_admin.sql` | Done (1 Super Admin exists) |
 
 ## Latest workflow migrations

@@ -245,7 +245,7 @@ const panel = () => find((node) => node.type === "aside")
 
 assert.match(text(panel()), /Second Worker/)
 
-assert.match(text(panel()), /Clock-out recorded/)
+assert.match(text(panel()), /Time out recorded/)
 
 find(
   (node) => node.type === "button" && text(node).startsWith("First Worker"),
@@ -380,7 +380,7 @@ globalThis.__attendanceData.events = [
 
 render()
 assert.match(text(panel()), /Newest Worker/)
-assert.match(text(panel()), /Clock-out recorded/)
+assert.match(text(panel()), /Time out recorded/)
 
 globalThis.__attendanceData.error = "Connection lost"
 

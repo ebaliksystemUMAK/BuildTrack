@@ -17,12 +17,13 @@ import { linkedWorkLabel } from "../../lib/reportFormat"
 import { useProjectWorkItems } from "../../lib/dailyPhotos"
 import { supabase } from "../../lib/supabase"
 import { useToast } from "../../lib/toast"
+import { useReportAttendance } from "../../lib/reportAttendance"
 import type { ForemanPageProps } from "./types"
 
 // Issues, delays and safety are no longer asked for: an existing report keeps whatever it already has (those columns are never written here).
-type Form = { weather: Weather; workers_count: string; work_done: string; linked_work: ReportWork[] }
-const emptyForm: Form = { weather: "sunny", workers_count: "", work_done: "", linked_work: [] }
-const fromReport = (report: DailyReport): Form => ({ weather: report.weather, workers_count: String(report.workers_count), work_done: report.work_done, linked_work: report.linked_work ?? [] })
+type Form = { weather: Weather; work_done: string; linked_work: ReportWork[] }
+const emptyForm: Form = { weather: "sunny", work_done: "", linked_work: [] }
+const fromReport = (report: DailyReport): Form => ({ weather: report.weather, work_done: report.work_done, linked_work: report.linked_work ?? [] })
 
 // The foreman's daily site report: write it (autosave is a button press, not a surprise), submit it, and it becomes the site log.
 export default function ForemanDailyProgressReport(_: ForemanPageProps) {
@@ -50,6 +51,7 @@ export default function ForemanDailyProgressReport(_: ForemanPageProps) {
   const existing = mine.find((report) => report.report_date === date) ?? null
   const historical = !dates.includes(date)
   const readOnly = existing?.status === "submitted" || historical
+  const attendance = useReportAttendance(projectId, date, !readOnly)
   const openedLink = useRef("")
   const openLinkedReport = useCallback(() => {
     const id = new URLSearchParams(window.location.search).get("report")
@@ -93,8 +95,6 @@ export default function ForemanDailyProgressReport(_: ForemanPageProps) {
 
   const validate = (submitting: boolean) => {
     const found: typeof errors = {}
-    const workers = Number(form.workers_count || 0)
-    if (!Number.isInteger(workers) || workers < 0 || workers > 5000) found.workers_count = "Enter a whole number from 0 to 5000."
     if (submitting && form.work_done.trim().length < 5) found.work_done = "Describe the work done today (at least 5 characters)."
     if (form.work_done.length > 4000) found.work_done = "Keep it under 4000 characters."
     if (form.linked_work.some(row => !row.pin_id || (!row.item_id && workItems.some(item => item.pin_id === row.pin_id)))) found.linked_work = "Choose a work pin and the checklist item worked on for each linked row."
@@ -104,10 +104,11 @@ export default function ForemanDailyProgressReport(_: ForemanPageProps) {
 
   const save = async (status: "draft" | "submitted", event?: FormEvent) => {
     event?.preventDefault()
-    if (photoBusy || busy || !projectId || !validate(status === "submitted")) return
+    if (readOnly || photoBusy || busy || !projectId || !validate(status === "submitted")) return
+    if (status === "submitted" && (attendance.loading || attendance.error || attendance.count === null)) return toast.error("Biometric headcount unavailable", "Refresh attendance before submitting this report.")
     if (status === "submitted" && !(await confirm({ title: "Submit this report?", message: "After you submit, the report cannot be edited. The engineers are notified and the client can read it in the site logs.", confirmLabel: "Submit report" }))) return
     setBusy(true)
-    const values = { weather: form.weather, workers_count: Number(form.workers_count || 0), work_done: form.work_done.trim(), linked_work: form.linked_work, status }
+    const values = { weather: form.weather, work_done: form.work_done.trim(), linked_work: form.linked_work, status }
     // No signal: keep the report on this device and send it when the connection is back.
     const saveOffline = async () => {
       if (!profile) return
@@ -131,7 +132,7 @@ export default function ForemanDailyProgressReport(_: ForemanPageProps) {
     if (existing) return existing.id
     if (!projectId || !validate(false)) return null
     const { data, error } = await supabase.from("daily_reports").insert({ project_id: projectId, report_date: date,
-      weather: form.weather, workers_count: Number(form.workers_count || 0), work_done: form.work_done.trim(),
+      weather: form.weather, work_done: form.work_done.trim(),
       status: "draft",
       linked_work: form.linked_work,
     }).select("id").single()
@@ -169,7 +170,7 @@ export default function ForemanDailyProgressReport(_: ForemanPageProps) {
   return (
     <div className="foreman-page">
       <ProjectContextBar listPath="/foreman/projects" listLabel="My projects" />
-      <PageHead eyebrow="Daily site report" title="Daily progress report" description="Write what happened on site today. Submitted reports become the project's site log, which engineers and the client can read." />
+      <PageHead eyebrow="Foreman · Daily site record" title="Daily progress report" description="Record the work completed for the selected date, link the work items, and take camera photos with optional annotations. Worker headcount comes from this project’s biometric Time in records." />
 
       {!projectId ? null : (
         <div className="grid gap-5 lg:grid-cols-[17rem_1fr]">
@@ -217,13 +218,14 @@ export default function ForemanDailyProgressReport(_: ForemanPageProps) {
                     {(Object.keys(weatherLabels) as Weather[]).map((key) => <option key={key} value={key}>{weatherLabels[key]}</option>)}
                   </select>
                 </label>
-                <label className="block text-sm font-semibold">Workers on site (head count)
-                  <input className={`${inputClass} mt-1`} inputMode="numeric" value={form.workers_count} onChange={set("workers_count")} disabled={readOnly} placeholder="0" />
-                  {note("workers_count")}
+                <label className="block text-sm font-semibold">Workers present · biometrics
+                  <input aria-label="Biometric worker headcount" className={`${inputClass} mt-1 bg-surface-muted`} readOnly value={readOnly ? existing?.workers_count ?? "" : attendance.loading ? "Loading attendance..." : attendance.count ?? "Unavailable"} />
+                  <span className="mt-1 block text-xs font-normal text-fg-muted">{readOnly ? existing?.workers_source === "biometrics" ? "Saved biometric headcount for this report. Later scans do not rewrite submitted reports." : "Historical headcount saved with this report; it has not been replaced with current attendance." : "Unique workers with a biometric Time in on this project and report date (Manila). Workers who already timed out still count once. Refreshed automatically and checked again when saved."}</span>
                 </label>
               </div>
-              <label className="block text-sm font-semibold">Work done today *
-                <textarea className={`${inputClass} mt-1`} rows={5} value={form.work_done} onChange={set("work_done")} disabled={readOnly} placeholder="e.g. Poured slab B (north), 12 workers. Formwork for column C4 completed." />
+              {!readOnly && attendance.error ? <p role="alert" className="text-sm text-danger-fg">{attendance.error} <button type="button" className="font-bold underline" onClick={() => void attendance.reload()}>Retry attendance</button></p> : null}
+              <label className="block text-sm font-semibold">Work completed on this report date *
+                <textarea className={`${inputClass} mt-1`} rows={5} value={form.work_done} onChange={set("work_done")} disabled={readOnly} placeholder="e.g. Poured slab B (north) and completed the formwork for column C4. Link the related checklist items below." />
                 {note("work_done")}
               </label>
               </fieldset>
@@ -236,7 +238,7 @@ export default function ForemanDailyProgressReport(_: ForemanPageProps) {
                   <div>{existing && !existing.revision ? <button type="button" className={buttonDanger + " !bg-transparent !text-danger-fg hover:!bg-danger-soft"} onClick={() => void remove()} disabled={busy || photoBusy || loading}>Delete draft</button> : null}</div>
                   <div className="flex gap-2">
                     <button type="submit" className={buttonSecondary} disabled={busy || photoBusy || loading}>{busy ? "Saving..." : "Save draft"}</button>
-                    <button type="button" className={buttonPrimary} disabled={busy || photoBusy || loading} onClick={() => void save("submitted")}>Submit report</button>
+                    <button type="button" className={buttonPrimary} disabled={busy || photoBusy || loading || attendance.loading || Boolean(attendance.error) || attendance.count === null} onClick={() => void save("submitted")}>Submit daily progress report</button>
                   </div>
                 </div>
               ) : null}

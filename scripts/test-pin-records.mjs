@@ -373,6 +373,7 @@ const openReport = search => { window.location.search = search; window.location.
 Object.assign(deps, {
   useAuth: () => ({ profile: { id: "fore", role: "foreman" } }), getSelectedProjectId: () => "A", reportableDates: today => [today],
   useDailyReports: () => ({ reports: reportState.reports, loading: false, error: "", reload: async () => {} }), useProjectWorkItems: () => reportState.items,
+  useReportAttendance: () => ({ count: 4, loading: false, error: "", reload: async () => {} }),
   useToast: () => ({ success: (...args) => successes.push(args), error() {}, info: (...args) => infos.push(args) }), useConfirm: () => async () => true,
 })
 const ForemanReport = (await compile("../src/pages/Foreman/ForemanDailyProgressReport.tsx")).default

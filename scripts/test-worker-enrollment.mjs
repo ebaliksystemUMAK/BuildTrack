@@ -482,14 +482,21 @@ input("Time in").props.onChange({ target: { value: "06:30" } })
 input("Grace period").props.onChange({ target: { value: "10" } })
 await renderSchedule()
 await find((node) => node.type === "form").props.onSubmit({ preventDefault() {} })
-assert.deepEqual(rpcCalls.at(-1), { name: "set_attendance_schedule", args: { p_project: "project", p_time_in: "06:30", p_time_out: "07:00", p_grace: 10, p_repeat: 15 } })
+assert.deepEqual(rpcCalls.at(-1), { name: "set_attendance_schedule", args: { p_project: "project", p_time_in: "06:30", p_time_out: "07:00", p_grace: 10, p_repeat: 15, p_work_days: [1, 2, 3, 4, 5, 6] } })
 assert.equal(toasts.at(-1)[0], "success")
 scheduleRow = { project_id: "project", time_in: "06:30:00", time_out: "15:30:00", grace_minutes: 10, repeat_guard_minutes: 15, updated_at: "2026-10-27T01:00:00Z" }
 state = []
 effects = []
 queued = []
 await renderSchedule()
-assert.match(text(tree), /Current: Time in 06:30 \(late after 06:40\) · Time out 15:30/)
+assert.match(text(tree), /Current: Mon–Sat · Time in 06:30 \(late after 06:40\) · Time out 15:30/)
+// Working days: unticking every day blocks saving; the chosen days are sent.
+const dayBox = (name) => find((node) => node.type === "label" && text(node) === name).props.children.find((child) => child?.type === "input")
+for (const name of ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]) { dayBox(name).props.onChange(); await renderSchedule() }
+assert.match(text(tree), /Choose at least one working day/)
+dayBox("Sun").props.onChange(); await renderSchedule()
+assert.equal(find((node) => node.type === "button" && node.props.type === "submit").props.disabled, false)
+dayBox("Sun").props.onChange(); for (const name of ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]) { dayBox(name).props.onChange(); await renderSchedule() }
 assert.equal(find((node) => node.type === "button" && node.props.type === "submit").props.disabled, true, "Nothing to save until something changes")
 rpcError = { message: "Admin biometric permission and MFA required" }
 input("Ignore repeat scans").props.onChange({ target: { value: "5" } })

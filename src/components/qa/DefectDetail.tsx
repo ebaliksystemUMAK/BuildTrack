@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Modal from "../Modal"
 import BeforeAfter from "../BeforeAfter"
 import { buttonPrimary, buttonSecondary, inputClass } from "../ui/PageParts"
@@ -38,6 +38,8 @@ export default function DefectDetail({
   today,
   canWork,
   canVerify,
+  viewOnly = false,
+  viewOnlyType = null,
   nameOf,
   onClose,
   onChanged,
@@ -50,6 +52,9 @@ export default function DefectDetail({
   today: string
   canWork: boolean
   canVerify: boolean
+  // View only access to this NCR's blueprint type (20261028130000): readable, no action buttons.
+  viewOnly?: boolean
+  viewOnlyType?: string | null
   nameOf: (id: string | null) => string
   onClose: () => void
   onChanged: () => void | Promise<void>
@@ -102,6 +107,9 @@ export default function DefectDetail({
   const [preventive, setPreventive] = useState(defect.preventive_action ?? "")
   const [note, setNote] = useState("")
   const [busy, setBusy] = useState(false)
+  const inspectionPending = useRef(false)
+  const inspectionRun = useRef(0)
+  useEffect(() => { inspectionPending.current = false; return () => { inspectionRun.current++ } }, [defect.id, defect.correction_attempt_id])
   const [editing, setEditing] = useState(false)
   const [edit, setEdit] = useState({ title: defect.title, description: defect.description ?? "", category: defect.category as DefectCategory, severity: defect.severity as QaSeverity, reference: defect.reference ?? "", assignedTo: defect.assigned_to ?? "", due: defect.due_date?.slice(0, 10) ?? "" })
 
@@ -116,7 +124,38 @@ export default function DefectDetail({
   const closed = defect.status === "closed"
   const assigned = profile?.role === "foreman" && profile.id === defect.assigned_to
   const working = canWork && assigned && (defect.status === "open" || defect.status === "in_progress") && !viaPackage
-  const openItem = (id: string) => followLink(workItemPath(canVerify ? "engineer" : "foreman", defect.project_id, id, canVerify ? undefined : "issues"), defect.project_id)
+  const packageVerification = canVerify && defect.status === "for_verification" && Boolean(defect.correction_attempt_id)
+  const canOpenCorrection = packageVerification && profile?.role === "engineer" && profile.status === "active"
+    && !correctionInspection.loading && !correctionInspection.error && Boolean(correctionInspection.id && correctionInspection.status)
+  const inspectionAction = correctionInspection.status === "in_progress" ? "Continue inspection"
+    : correctionInspection.status === "requested" || !correctionInspection.status ? "Start inspection" : "View inspection results"
+  const closeWindow = () => { inspectionRun.current++; onClose() }
+  const openCorrectionInspection = async () => {
+    if (!canOpenCorrection || busy || editing || inspectionPending.current || !correctionInspection.id) return
+    const id = correctionInspection.id
+    const run = ++inspectionRun.current
+    inspectionPending.current = true
+    setBusy(true)
+    try {
+      if (correctionInspection.status === "requested") {
+        const outcome = await qaActions.start(id)
+        if (!outcome.ok) throw new Error(outcome.message)
+        if (run !== inspectionRun.current) return
+        await Promise.all([onChanged(), correctionInspection.reload()])
+      }
+      if (run !== inspectionRun.current) return
+      if (onOpenInspection) onOpenInspection(id)
+      else followLink(`/engineer/qa?project=${encodeURIComponent(defect.project_id)}&tab=inspections&inspection=${encodeURIComponent(id)}`, defect.project_id)
+    } catch (error) {
+      if (run === inspectionRun.current) {
+        toast.error("Could not open inspection", (error as Error).message)
+        void correctionInspection.reload()
+      }
+    } finally {
+      if (run === inspectionRun.current) { inspectionPending.current = false; setBusy(false) }
+    }
+  }
+  const openItem = (id: string) => followLink(workItemPath(canVerify || profile?.role === "engineer" ? "engineer" : "foreman", defect.project_id, id, canVerify || profile?.role === "engineer" ? undefined : "issues"), defect.project_id)
   const refresh = async () => {
     await Promise.all([onChanged(), reloadEvents()])
   }
@@ -151,7 +190,7 @@ export default function DefectDetail({
   const footer = (
     <>
       <button type="button" className={buttonSecondary} onClick={print}>Print / PDF</button>
-      {canVerify && !closed && !editing ? <button type="button" className={buttonSecondary} onClick={() => setEditing(true)}>Edit</button> : null}
+      {canVerify && !closed && !editing ? <button type="button" className={buttonSecondary} disabled={busy} onClick={() => setEditing(true)}>Edit</button> : null}
       {working && defect.status === "open" ? <button type="button" className={buttonPrimary} disabled={busy} onClick={() => void startWork()}>Start work</button> : null}
       {working && defect.status === "in_progress" ? (
         <>
@@ -159,13 +198,15 @@ export default function DefectDetail({
           <button type="button" className={buttonPrimary} disabled={busy} onClick={() => void send()}>Send for verification</button>
         </>
       ) : null}
-      <button type="button" className={buttonSecondary} onClick={onClose}>Close window</button>
+      {packageVerification ? <button type="button" className={buttonPrimary} disabled={busy || editing || !canOpenCorrection} onClick={() => void openCorrectionInspection()}>{busy ? "Opening inspection..." : inspectionAction}</button>
+        : <button type="button" className={buttonSecondary} onClick={closeWindow}>Close window</button>}
     </>
   )
 
   return (
-    <Modal title={`${ref}  ${defect.title}`} description={`${tradeLabels[defect.trade]} • ${categoryLabels[defect.category]}`} size="xl" onClose={onClose} footer={footer}>
+    <Modal title={`${ref}  ${defect.title}`} description={`${tradeLabels[defect.trade]} • ${categoryLabels[defect.category]}`} size="xl" onClose={closeWindow} footer={footer}>
       <div className="space-y-4">
+        {viewOnly ? <p role="status" className="rounded-lg border border-line bg-surface-muted px-3 py-2 text-sm text-fg"><strong>View only.</strong> You can read this NCR; people with Assigned work access to {viewOnlyType ? `${viewOnlyType} plans` : "a blueprint type of this project"} correct and verify it.</p> : null}
         <div className="flex flex-wrap items-center gap-2">
           <Chip tone={defectTone[defect.status]}>{defectStatusLabels[defect.status]}</Chip>
           <SeverityChip severity={defect.severity} />
@@ -239,17 +280,13 @@ export default function DefectDetail({
           </div>
         </section>
 
-        {canVerify && defect.status === "for_verification" && defect.correction_attempt_id ? (
+        {packageVerification ? correctionInspection.loading || correctionInspection.error || !correctionInspection.id ? (
           <section aria-label="Verification" className="rounded-xl border border-brand p-3">
-            <button type="button" className={buttonPrimary} disabled={correctionInspection.loading || Boolean(correctionInspection.error) || !correctionInspection.id}
-              onClick={() => { if (correctionInspection.id) { if (onOpenInspection) onOpenInspection(correctionInspection.id); else followLink(`/engineer/qa?project=${encodeURIComponent(defect.project_id)}&tab=inspections&inspection=${encodeURIComponent(correctionInspection.id)}`, defect.project_id) } }}>
-              Open inspection{correctionInspection.number ? ` ${refNumber("ir", correctionInspection.number)}` : ""}
-            </button>
             {correctionInspection.loading ? <p role="status" className="mt-2 text-xs text-fg-muted">Loading the linked inspection…</p> : null}
             {correctionInspection.error ? <p role="alert" className="mt-2 text-xs text-danger-fg">{correctionInspection.error} <button type="button" className="font-bold underline" onClick={() => void correctionInspection.reload()}>Retry</button></p> : null}
             {!correctionInspection.loading && !correctionInspection.error && !correctionInspection.id ? <p role="status" className="mt-2 text-xs text-fg-muted">No linked correction inspection is available.</p> : null}
           </section>
-        ) : canVerify && defect.status === "for_verification" ? (
+        ) : null : canVerify && defect.status === "for_verification" ? (
           <section aria-label="Verification" className="rounded-xl border border-brand p-3">
             <h3 className="text-sm font-extrabold">Verify the corrected work</h3>
             <p className="mt-1 text-xs text-fg-muted">Inspect the work and the photos. Close the NCR if it now meets the requirement, or send it back with what is still wrong.</p>

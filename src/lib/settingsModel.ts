@@ -1,6 +1,7 @@
 export type Weights = { critical: number; major: number; minor: number }
 export type WorkHours = { start: string; end: string; days: number[] }
-export type Standard = { code: string; title: string }
+// source = official source link (documentation of the cited standard), optional (20261028150000).
+export type Standard = { code: string; title: string; source?: string }
 export type SystemSettings = { threshold: number; weights: Weights; hours: WorkHours; standards: Standard[]; inactiveDays: number }
 export type SettingRow = { key: string; value: unknown; updated_at: string; updated_by: string | null }
 
@@ -29,7 +30,10 @@ export function parseSettings(rows: Array<Pick<SettingRow, "key" | "value">>): S
     result.hours = { start: hours.start, end: hours.end, days: [...hours.days].sort((a, b) => a - b) }
   }
   const standards = get("standards")
-  if (Array.isArray(standards)) result.standards = standards.filter((item): item is Standard => Boolean(item) && typeof item.code === "string" && typeof item.title === "string")
+  if (Array.isArray(standards))
+    result.standards = standards
+      .filter((item): item is Standard => Boolean(item) && typeof item.code === "string" && typeof item.title === "string")
+      .map((item) => (typeof item.source === "string" && /^https:\/\//.test(item.source) ? { code: item.code, title: item.title, source: item.source } : { code: item.code, title: item.title }))
   const inactive = get("access.inactive_days")
   if (isInt(inactive, 14, 365)) result.inactiveDays = inactive
   return result

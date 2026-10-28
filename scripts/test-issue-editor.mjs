@@ -360,8 +360,9 @@ keyboard({key:"Escape",stopPropagation(){},preventDefault(){}});assert.equal(mod
 for(const value of values)value?.cleanup?.();values=[];queued=[]
 assert.equal(document.body.style.overflow,"auto");assert.equal(restored,1)
 let focusOptions,focused=""
-const firstLink={focus(){focused="first"}},lastLink={focus(){focused="last"}}
-fakePanel.querySelectorAll=()=>[firstLink,lastLink]
+const firstLink={closest(){return null},focus(){focused="first"}},lastLink={closest(){return null},focus(){focused="last"}}
+const hiddenControl={closest(){return {}},focus(){assert.fail("Hidden inspection panels must never receive focus")}}
+fakePanel.querySelectorAll=()=>[hiddenControl,firstLink,lastLink,hiddenControl]
 document.activeElement={focus(options){restored++;focusOptions=options}}
 renderModal({title:"Valencia navigation",children:"Links",placement:"right",onClose:()=>modalClosed++})
 assert.equal(get(node=>node.props?.role === "dialog").props["aria-modal"],"true")
@@ -370,7 +371,7 @@ assert.match(get(node=>node.props?.role === "dialog").props.className,/h-\[100dv
 assert.equal(document.body.style.overflow,"hidden")
 assert.equal(focused,"first","Opening focuses the first drawer control")
 document.activeElement=lastLink
-keyboard({key:"Tab",preventDefault(){}});assert.equal(focused,"first","Tab wraps within the drawer")
+keyboard({key:"Tab",preventDefault(){}});assert.equal(focused,"first","Tab wraps within visible controls, skipping hidden inspection panels")
 document.activeElement=firstLink
 keyboard({key:"Tab",shiftKey:true,preventDefault(){}});assert.equal(focused,"last","Shift+Tab wraps within the drawer")
 keyboard({key:"Escape",stopPropagation(){},preventDefault(){}});assert.equal(modalClosed,2)

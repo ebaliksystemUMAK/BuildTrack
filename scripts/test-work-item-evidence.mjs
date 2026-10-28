@@ -125,9 +125,12 @@ render(Workspace, { itemId: "floor", onClose() {} })
 const opened = find(node => node.props?.defect?.id === finding.id && node.props.canVerify === true)
 assert.equal(opened.props.defect, finding, "Opens the exact selected NCR with Engineer verification rights")
 
-// Package NCR details are navigation-only; guarded decisions now live inside the exact linked inspection.
+// Package NCRs start the exact linked reinspection from the footer; sign-off closes passing findings.
 let readiness = { id: "ir-2", number: 2, status: "passed", ready: true, loading: false, error: "", reload: async () => {} }
 let inspectionOpened = "", verificationCalls = [], verifiedRefreshes = 0, confirmDecision = true, verificationError = ""
+let startCalls = [], startError = "", startWait = null, ncrRefreshes = 0
+const settleAction = () => new Promise(resolve => setImmediate(resolve))
+const footerAction = label => { const node = all(tree.props.footer).find(node => node.type === "button" && text(node) === label); assert.ok(node, `Expected footer action: ${label}`); return node }
 Object.assign(globalThis.__evidenceDeps, {
   correctionCloseProblem, useCorrectionInspection: () => readiness,
   useDefectEvents: () => ({ events: [], reload: async () => {} }),
@@ -136,79 +139,231 @@ Object.assign(globalThis.__evidenceDeps, {
   refNumber: (kind, number) => kind === "ncr" ? ncrRef(number) : irRef(number),
   tradeLabels: { general: "General" }, categoryLabels: { workmanship: "Workmanship" },
   useConfirm: () => async () => confirmDecision, useToast: () => ({ success() {}, error() {} }),
-  qaActions: { verifyDefect: async (...args) => { verificationCalls.push(args); return verificationError ? { ok: false, message: verificationError } : { ok: true } } },
+  qaActions: {
+    verifyDefect: async (...args) => { verificationCalls.push(args); return verificationError ? { ok: false, message: verificationError } : { ok: true } },
+    start: async id => { startCalls.push(id); if (startWait) await startWait; return startError ? { ok: false, message: startError } : { ok: true } },
+  },
   followLink: path => { inspectionOpened = path },
 })
 const Detail = await compile("../src/components/qa/DefectDetail.tsx")
-const detailProps = { ...opened.props, onOpenInspection: id => { inspectionOpened = id } }
+const detailProps = { ...opened.props, onChanged: async () => { ncrRefreshes++ }, onOpenInspection: id => { inspectionOpened = id } }
 reset(); render(Detail, detailProps)
 assert.ok(!all(tree).some(node => node.type === "textarea" && node.props.id === "d-note"))
 assert.doesNotMatch(text(tree), /Verify the corrected work|Verification note|Send back|Close NCR/)
-find(node => node.type === "button" && text(node) === "Open inspection IR-0002").props.onClick()
+assert.doesNotMatch(text(tree), /Open inspection/)
+assert.ok(!all(tree.props.footer).some(node => text(node) === "Close window"))
+footerAction("View inspection results").props.onClick(); await settleAction()
 assert.equal(inspectionOpened, "ir-2", "Open inspection uses the correction reinspection, not the original failed request")
 assert.equal(verificationCalls.length, 0, "Opening is read-only")
 render(Detail, { ...detailProps, onOpenInspection: undefined })
-find(node => node.type === "button" && text(node) === "Open inspection IR-0002").props.onClick()
+footerAction("View inspection results").props.onClick(); await settleAction()
 assert.match(inspectionOpened, /\/engineer\/qa\?project=project&tab=inspections&inspection=ir-2/)
 readiness = { ...readiness, id: null, loading: true }; render(Detail, detailProps)
-assert.ok(find(node => node.type === "button" && text(node).startsWith("Open inspection")).props.disabled, "Never navigate to stale inspection data while loading")
-readiness = { ...readiness, id: "ir-2", loading: false, ready: false }
+assert.ok(footerAction("View inspection results").props.disabled, "Never navigate to stale inspection data while loading")
+readiness = { ...readiness, id: "ir-2", status: "requested", loading: false, ready: false }
+reset(); render(Detail, detailProps)
+assert.equal(footerAction("Start inspection").props.disabled,false)
+const startButton=footerAction("Start inspection")
+startButton.props.onClick(); startButton.props.onClick(); await settleAction()
+assert.deepEqual(startCalls,["ir-2"],"Rapid clicks start only the exact correction inspection once")
+assert.equal(inspectionOpened,"ir-2"); assert.equal(ncrRefreshes,1)
+readiness = { ...readiness, status: "in_progress" }; reset(); render(Detail, detailProps)
+footerAction("Continue inspection").props.onClick(); await settleAction()
+assert.deepEqual(startCalls,["ir-2"],"Already started inspections are not started again")
+readiness = { ...readiness, status: "requested" }; startError="Another Engineer already started this inspection"
+inspectionOpened=""; reset(); render(Detail, detailProps)
+footerAction("Start inspection").props.onClick(); await settleAction()
+assert.equal(inspectionOpened,"","Server rejection never opens a falsely started inspection")
+assert.equal(ncrRefreshes,1)
+startError=""
+for(const state of [{loading:true},{error:"Link unavailable"},{id:null}]) {
+  const saved=readiness; readiness={...readiness,...state}; reset(); render(Detail,detailProps)
+  assert.ok(footerAction("Start inspection").props.disabled)
+  const count=startCalls.length; footerAction("Start inspection").props.onClick(); await settleAction(); assert.equal(startCalls.length,count)
+  readiness=saved
+}
+for(const role of ["foreman","client","admin"]) {
+  testRole=role; reset(); render(Detail,detailProps)
+  assert.ok(footerAction("Start inspection").props.disabled,"Only an active Engineer starts corrections")
+}
+testRole="engineer"
+let releaseStart
+startWait=new Promise(resolve=>{releaseStart=resolve})
+inspectionOpened=""; reset(); render(Detail,detailProps)
+footerAction("Start inspection").props.onClick(); tree.props.onClose(); releaseStart(); await settleAction()
+assert.equal(inspectionOpened,"","Closing with the header X prevents delayed navigation")
+startWait=null
 
-const VerifyInInspection = await compile("../src/components/qa/NcrInspectionVerification.tsx")
-const verificationProps = { defect: finding, inspection: { id: "ir-2", project_id: finding.project_id, pin_id: finding.pin_id, status: "passed" }, canVerify: true, onChanged: async () => { verifiedRefreshes++ } }
 const actionButton = label => find(node => node.type === "button" && text(node) === label)
-const clickDecision = async label => { actionButton(label).props.onClick(); await new Promise(resolve => setImmediate(resolve)) }
-reset(); render(VerifyInInspection, verificationProps)
-assert.ok(actionButton("Close NCR").props.disabled, "The inspection still requires a verification note")
-find(node => node.type === "textarea").props.onChange({ target: { value: "Verified the corrected work" } }); render(VerifyInInspection, verificationProps)
-assert.ok(actionButton("Close NCR").props.disabled, "Finding-specific Pass is required even when the overall inspection passed")
-assert.equal(actionButton("Send back").props.disabled, false)
-await clickDecision("Close NCR"); assert.equal(verificationCalls.length, 0, "Handler also guards a missing finding Pass")
-readiness = { ...readiness, ready: true }; render(VerifyInInspection, { ...verificationProps, inspection: { ...verificationProps.inspection, status: "requested" } })
-assert.ok(actionButton("Close NCR").props.disabled, "An unfinished inspection cannot use a stale ready state")
-render(VerifyInInspection, verificationProps); assert.equal(actionButton("Close NCR").props.disabled, false)
-confirmDecision = false; await clickDecision("Close NCR"); assert.equal(verificationCalls.length, 0)
-confirmDecision = true; await clickDecision("Close NCR")
-assert.deepEqual(verificationCalls, [[finding.id, true, "Verified the corrected work"]]); assert.equal(verifiedRefreshes, 1)
-readiness = { ...readiness, id: "another-inspection" }; reset(); assert.equal(render(VerifyInInspection, verificationProps), null, "Never show another inspection's NCR decision")
-readiness = { ...readiness, id: "ir-2", ready: false }; reset(); render(VerifyInInspection, verificationProps)
-find(node => node.type === "textarea").props.onChange({ target: { value: "Still needs a proper repair" } }); render(VerifyInInspection, verificationProps)
-await clickDecision("Send back"); assert.deepEqual(verificationCalls.at(-1), [finding.id, false, "Still needs a proper repair"])
-let readinessRetries = 0
-readiness = { ...readiness, error: "Readiness unavailable", reload: async () => { readinessRetries++ } }; reset(); render(VerifyInInspection, verificationProps)
-assert.ok(!all(tree).some(node => node.type === "textarea"))
-await actionButton("Retry").props.onClick(); assert.equal(readinessRetries, 1)
-readiness = { ...readiness, error: "", loading: true }; reset(); render(VerifyInInspection, verificationProps)
-assert.ok(!all(tree).some(node => node.type === "textarea"))
-readiness = { ...readiness, loading: false, ready: true }; reset(); render(VerifyInInspection, verificationProps)
-find(node => node.type === "textarea").props.onChange({ target: { value: "Verification checked once more" } }); render(VerifyInInspection, verificationProps)
-const refreshBeforeDenied = verifiedRefreshes; verificationError = "A newer check has failed"; await clickDecision("Close NCR")
-assert.equal(verifiedRefreshes, refreshBeforeDenied, "Server rejection is not treated as successful closure")
-verificationError = ""
-for (const role of ["foreman", "admin", "client"]) { testRole = role; reset(); assert.equal(render(VerifyInInspection, verificationProps), null, "Only Engineers can decide corrections") }
-testRole = "engineer"; reset(); assert.equal(render(VerifyInInspection, { ...verificationProps, canVerify: false }), null)
-reset(); assert.equal(render(VerifyInInspection, { ...verificationProps, inspection: { ...verificationProps.inspection, project_id: "foreign" } }), null)
 // Standalone NCRs have no linked correction inspection; their existing explicit closure path remains.
 reset(); render(Detail, { ...detailProps, defect: { ...finding, correction_attempt_id: null } })
 assert.ok(find(node => node.type === "textarea" && node.props.id === "d-note"))
 assert.ok(actionButton("Close NCR").props.disabled)
 
-// The real inspection screen mounts the decision component for this project's pin only, and never for other roles.
+// The real inspection screen has no pre-start NCR form; one remarks box accompanies sign-off.
+let completionCalls = [], signoffConfirmation
+let cancellationCalls = [], cancellationError = "", cancellationWait = null
+let resumeCalls = [], resumeError = "", resumeWait = null
+let historyRequests = []
+let inspectionPreview = { result: "passed", score: 100, passed: 1, failed: 0, na: 0, pending: 0 }
 Object.assign(globalThis.__evidenceDeps, {
   useInspectionItems: () => ({ items: [], loading: false, error: "", setItems() {}, reload: async () => {} }),
-  useReinspectionContext: () => ({ rows: [], loading: false, error: "", reload: async () => {} }),
+  useReinspectionContext: id => { historyRequests.push(id); return { rows: [], loading: false, error: "", reload: async () => {} } },
   useWorkSubmission: () => ({ submission: null, loading: false, error: "" }),
   usePinQa: () => ({ state: null, error: "" }), useInspectionTimeline: () => ({ events: [], error: "" }),
-  previewScore: () => ({ score: 0, passed: 0, failed: 0, na: 0, pending: 0 }),
+  previewScore: () => inspectionPreview,
+  useConfirm: () => async options => { signoffConfirmation = options; return confirmDecision },
+  qaActions: {
+    start: async id => { resumeCalls.push(id); if(resumeWait) await resumeWait; return resumeError ? {ok:false,message:resumeError} : {ok:true} },
+    complete: async (...args) => { completionCalls.push(args); return verificationError ? { ok: false, message: verificationError } : { ok: true, data: { result: "passed", score: 100, defects: 0 } } },
+    cancel: async (...args) => { cancellationCalls.push(args); if(cancellationWait) await cancellationWait; return cancellationError ? {ok:false,message:cancellationError} : {ok:true} },
+  },
 })
 const InspectionDetail = await compile("../src/components/qa/InspectionDetail.tsx")
-const inspectionProps = { inspection: { ...verificationProps.inspection, title: "Reinspection", number: 2, trade: "general", standards: [] }, project: testProject, weights: {}, threshold: 75,
+const inspectionProps = { inspection: { id: "ir-2", project_id: "project", pin_id: "pin", status: "requested", reinspection_of: "ir-1", title: "Reinspection", number: 2, trade: "general", standards: [] }, project: testProject, weights: {}, threshold: 75,
   defects: [finding, { ...finding, id: "wrong-project", project_id: "foreign" }, { ...finding, id: "wrong-pin", pin_id: "another-pin" }, { ...finding, id: "closed", status: "closed" }],
-  canInspect: true, canRequest: true, nameOf: () => "Engineer", onClose() {}, onChanged: async () => {} }
+  canInspect: true, canRequest: true, nameOf: () => "Engineer", onClose() {}, onChanged: async () => { verifiedRefreshes++ } }
+const inspectionTabs=()=>all(tree).filter(node=>node.props?.role==="tab")
+const tabPanel=key=>find(node=>node.props?.role==="tabpanel"&&node.props.id.endsWith(`-panel-${key}`))
+const chooseTab=(label,props)=>{find(node=>node.props?.role==="tab"&&text(node)===label).props.onClick();render(InspectionDetail,props)}
 reset(); render(InspectionDetail, inspectionProps)
-assert.deepEqual(all(tree).filter(node => node.props?.defect && node.props?.inspection).map(node => node.props.defect.id), [finding.id])
-for (const role of ["foreman", "admin", "client"]) { testRole = role; reset(); render(InspectionDetail, inspectionProps); assert.ok(!all(tree).some(node => node.props?.defect && node.props?.inspection)) }
+assert.deepEqual(inspectionTabs().map(text),["Checklist","Submitted evidence","Previous results","Details & schedule","NCRs","History"])
+assert.equal(historyRequests.at(-1),"ir-2","Even older/stage reinspections read their exact prior checks")
+assert.equal(tabPanel("checklist").props.hidden,false)
+assert.ok(all(tree).filter(node=>node.props?.role==="tabpanel"&&node.props.id!==tabPanel("checklist").props.id).every(node=>node.props.hidden))
+for(const button of inspectionTabs()) {
+  const panel=find(node=>node.props?.id===button.props["aria-controls"])
+  assert.equal(panel.props["aria-labelledby"],button.props.id)
+}
+chooseTab("Previous results",inspectionProps)
+assert.equal(tabPanel("previous").props.hidden,false);assert.equal(tabPanel("checklist").props.hidden,true)
+assert.equal(find(node=>node.props?.fullChecklist!==undefined).props.fullChecklist,false,"Stage history is not described as full-checklist resubmission")
+assert.ok(all(tree.props.footer).some(node=>text(node)==="Start inspection"),"Start stays accessible from Previous results")
+let focused="",prevented=false
+const keyboardTab=inspectionTabs()[2]
+keyboardTab.props.onKeyDown({key:"End",preventDefault(){prevented=true},currentTarget:{parentElement:{querySelector(selector){focused=selector;return{focus(){}}}}}})
+render(InspectionDetail,inspectionProps)
+assert.ok(prevented);assert.match(focused,/-tab-history/);assert.equal(tabPanel("history").props.hidden,false)
+assert.equal(inspectionTabs().filter(node=>node.props.tabIndex===0).length,1)
+render(InspectionDetail,{...inspectionProps,inspection:{...inspectionProps.inspection,id:"other-request",reinspection_of:null}})
+assert.ok(!inspectionTabs().some(node=>text(node)==="Previous results"))
+assert.equal(tabPanel("checklist").props.hidden,false,"Another request always starts on Checklist")
+assert.equal(historyRequests.at(-1),null,"Initial inspections do not request prior results")
+reset();render(InspectionDetail,inspectionProps)
+assert.ok(!all(tree).some(node => node.props?.defect && node.props?.inspection))
+assert.ok(!all(tree).some(node => node.type === "textarea"), "No NCR textbox before inspection starts")
+assert.doesNotMatch(text(tree), /Verification note|Send back|Close NCR/)
+const activeProps = { ...inspectionProps, inspection: { ...inspectionProps.inspection, status: "in_progress", inspector_id: "engineer" } }
+reset(); render(InspectionDetail, activeProps)
+chooseTab("Previous results",activeProps)
+assert.equal(tabPanel("previous").props.hidden,false,"Previous results remain available after Start")
+assert.ok(all(tree.props.footer).some(node=>text(node)==="Complete inspection"))
+inspectionPreview={...inspectionPreview,pending:1}
+render(InspectionDetail,activeProps)
+footerAction("Complete inspection").props.onClick();await settleAction();render(InspectionDetail,activeProps)
+assert.equal(tabPanel("checklist").props.hidden,false,"Missing current results return the inspector to Checklist")
+assert.equal(completionCalls.length,0)
+inspectionPreview={...inspectionPreview,pending:0}
+render(InspectionDetail,activeProps)
+assert.equal(all(tree).filter(node => node.type === "textarea").length, 1)
+assert.match(text(tree), /Remarks \(optional\).*close automatically/s)
+find(node => node.type === "textarea").props.onChange({ target: { value: "Repaired wall checked on site" } }); render(InspectionDetail, activeProps)
+chooseTab("Submitted evidence",activeProps)
+assert.equal(tabPanel("checklist").props.hidden,true)
+assert.equal(find(node=>node.props?.id==="qa-summary").props.value,"Repaired wall checked on site","Hidden checklist remains mounted with draft remarks")
+assert.equal(all(tabPanel("evidence")).filter(node=>node.props?.record).length,1,"Submission gallery is isolated to its own panel")
+chooseTab("Details & schedule",activeProps)
+assert.equal(tabPanel("details").props.hidden,false)
+assert.equal(all(tabPanel("details")).filter(node=>node.props?.inspection&&node.props.canEdit!==undefined).length,1)
+chooseTab("Checklist",activeProps)
+assert.equal(find(node=>node.props?.id==="qa-summary").props.value,"Repaired wall checked on site")
+const signoff = async () => { all(tree.props.footer).find(node => text(node) === "Complete inspection").props.onClick(); await new Promise(resolve => setImmediate(resolve)) }
+confirmDecision = false; await signoff(); assert.equal(completionCalls.length, 0)
+assert.match(signoffConfirmation.message, /close automatically.*Failed or N\/A.*Checklist completion remains separate/s)
+confirmDecision = true; await signoff()
+assert.deepEqual(completionCalls, [["ir-2", "Repaired wall checked on site"]]); assert.equal(verifiedRefreshes, 1)
+assert.equal(verificationCalls.length, 0, "No separate browser-side NCR mutation")
+verificationError = "A required photo is missing"; await signoff(); assert.equal(verifiedRefreshes, 1, "A rejected atomic sign-off is not treated as successful")
+verificationError = ""
+for (const role of ["foreman", "admin", "client"]) { testRole = role; reset(); render(InspectionDetail, { ...activeProps, canInspect: false }); assert.ok(!all(tree).some(node => node.type === "textarea")) }
+testRole = "engineer"; reset(); render(InspectionDetail, { ...activeProps, inspection: { ...activeProps.inspection, inspector_id: "another-engineer" } })
+assert.ok(!all(tree).some(node => node.type === "textarea"), "Only the current inspector writes remarks")
+reset(); render(InspectionDetail, { ...inspectionProps, inspection: { ...inspectionProps.inspection, status: "passed", summary: "Historical saved remarks" } })
+assert.match(text(tree), /RemarksHistorical saved remarks/)
+
+// Cancellation opens a focused confirmation instead of an off-screen inline form.
+let cancelRefreshes=0
+const cancelProps={...activeProps,onChanged:async()=>{cancelRefreshes++}}
+const cancellationDialog=()=>find(node=>node.props?.title==="Cancel IR-0002?")
+const dialogAction=label=>{const node=all(cancellationDialog().props.footer).find(node=>node.type==="button"&&text(node)===label);assert.ok(node);return node}
+reset(); render(InspectionDetail,cancelProps)
+footerAction("Cancel inspection").props.onClick(); render(InspectionDetail,cancelProps)
+assert.equal(cancellationDialog().props.size,"md")
+assert.ok(dialogAction("Cancel the inspection").props.disabled)
+dialogAction("Cancel the inspection").props.onClick(); await settleAction(); assert.equal(cancellationCalls.length,0,"Handler rejects an empty reason")
+find(node=>node.props?.id==="qa-cancel-reason").props.onChange({target:{value:"Keep this inspection"}}); render(InspectionDetail,cancelProps)
+dialogAction("Keep inspection").props.onClick(); render(InspectionDetail,cancelProps)
+assert.ok(!all(tree).some(node=>node.props?.title==="Cancel IR-0002?"));assert.equal(cancellationCalls.length,0)
+footerAction("Cancel inspection").props.onClick(); render(InspectionDetail,cancelProps)
+find(node=>node.props?.id==="qa-cancel-reason").props.onChange({target:{value:"  Fresh evidence must be provided  "}}); render(InspectionDetail,cancelProps)
+const cancelButton=dialogAction("Cancel the inspection")
+cancelButton.props.onClick();cancelButton.props.onClick();await settleAction()
+assert.deepEqual(cancellationCalls,[["ir-2","Fresh evidence must be provided"]])
+assert.equal(cancelRefreshes,1)
+render(InspectionDetail,cancelProps);assert.ok(!all(tree).some(node=>node.props?.title==="Cancel IR-0002?"))
+footerAction("Cancel inspection").props.onClick(); render(InspectionDetail,cancelProps)
+find(node=>node.props?.id==="qa-cancel-reason").props.onChange({target:{value:"Retry this cancellation"}}); render(InspectionDetail,cancelProps)
+cancellationError="Already signed off by another session"
+dialogAction("Cancel the inspection").props.onClick();await settleAction();render(InspectionDetail,cancelProps)
+assert.ok(cancellationDialog());assert.equal(cancelRefreshes,1,"Server failure keeps the form and does not report success")
+assert.equal(find(node=>node.props?.id==="qa-cancel-reason").props.value,"Retry this cancellation")
+assert.match(text(cancellationDialog()),/Already signed off by another session/)
+cancellationError=""
+render(InspectionDetail,{...cancelProps,inspection:{...cancelProps.inspection,status:"passed"}})
+assert.ok(!all(tree).some(node=>node.props?.title==="Cancel IR-0002?"),"A completed inspection hides a stale cancel dialog")
+assert.ok(!all(tree.props.footer).some(node=>text(node)==="Cancel inspection"))
+reset();render(InspectionDetail,cancelProps)
+footerAction("Cancel inspection").props.onClick();render(InspectionDetail,cancelProps)
+find(node=>node.props?.id==="qa-cancel-reason").props.onChange({target:{value:"Cancel after fresh evidence review"}});render(InspectionDetail,cancelProps)
+let releaseCancellation
+cancellationWait=new Promise(resolve=>{releaseCancellation=resolve})
+const pendingDialog=cancellationDialog(),keepWhilePending=dialogAction("Keep inspection")
+dialogAction("Cancel the inspection").props.onClick()
+keepWhilePending.props.onClick();pendingDialog.props.onClose();render(InspectionDetail,cancelProps)
+assert.ok(cancellationDialog(),"Keep/header close cannot interrupt an already submitted cancellation")
+assert.ok(find(node=>node.props?.id==="qa-cancel-reason").props.disabled)
+releaseCancellation();await settleAction();cancellationWait=null
+render(InspectionDetail,cancelProps)
+assert.ok(!all(tree).some(node=>node.props?.title==="Cancel IR-0002?"))
 testRole = "engineer"
+
+// Cancelled initial requests and reinspections use the same confirmed, guarded continuation.
+let resumeRefreshes=0
+const resumeProps={...inspectionProps,inspection:{...inspectionProps.inspection,status:"cancelled"},onChanged:async()=>{resumeRefreshes++}}
+reset();render(InspectionDetail,resumeProps)
+assert.ok(footerAction("Continue inspection"));assert.ok(!all(tree.props.footer).some(node=>text(node)==="Complete inspection"))
+confirmDecision=false
+footerAction("Continue inspection").props.onClick();await settleAction()
+assert.equal(resumeCalls.length,0)
+assert.match(signoffConfirmation.message,/recorded checklist results.*original evidence.*newer submission/s)
+confirmDecision=true
+let releaseResume
+resumeWait=new Promise(resolve=>{releaseResume=resolve})
+const resumeButton=footerAction("Continue inspection")
+resumeButton.props.onClick();resumeButton.props.onClick();await settleAction()
+assert.deepEqual(resumeCalls,["ir-2"],"Double clicks cannot resume twice")
+releaseResume();await settleAction();resumeWait=null
+assert.equal(resumeRefreshes,1)
+resumeError="A newer correction draft exists"
+render(InspectionDetail,resumeProps);footerAction("Continue inspection").props.onClick();await settleAction()
+assert.equal(resumeRefreshes,1,"Rejected continuation never reports a refresh/success")
+resumeError=""
+for(const role of ["foreman","client","admin"]) {
+  testRole=role;reset();render(InspectionDetail,{...resumeProps,canInspect:false})
+  assert.ok(!all(tree.props.footer).some(node=>text(node)==="Continue inspection"))
+}
+testRole="engineer";reset();render(InspectionDetail,{...resumeProps,inspection:{...resumeProps.inspection,reinspection_of:null}})
+assert.ok(footerAction("Continue inspection"),"Initial inspections also continue")
 
 // Hide Return after Pass, including a dialog opened before status changes; retain explicit Reopen for completed work.
 data.stage.current = { ...inspections[1], status: "conditional" }
@@ -231,4 +386,6 @@ for (const role of ["foreman", "admin", "client"]) {
 
 delete globalThis.__evidenceHooks; delete globalThis.__evidenceDeps; delete globalThis.__submittedEvidenceUI
 console.log("Saved single-photo evidence/remarks, request selection, item/pin isolation, snapshots, empty/error states, NCR closure visibility and retained comparison/access guards passed")
-console.log("Correction NCRs open the exact inspection without inline decisions; inspection-only note/close/send-back controls retain finding Pass, sign-off, confirmation, role/project and manual-completion guards; standalone NCR flow retained")
+console.log("Correction NCRs open the exact inspection; no pre-start NCR form; one reinspection remarks box saves on confirmed sign-off with server-error/role guards, no separate closure writes; standalone NCR/manual checklist flow retained")
+console.log("NCR footer starts the exact correction once, resumes/reviews existing inspections and guards stale/denied/closed navigation; focused cancellation requires a reason, Keep is safe, failures retain input, duplicate cancellation is blocked")
+console.log("Inspection section tabs: Checklist default, distinct mounted panels, preserved remarks, previous-results visibility before/during inspection, original/stage query scope, keyboard/ARIA links and request reset passed")

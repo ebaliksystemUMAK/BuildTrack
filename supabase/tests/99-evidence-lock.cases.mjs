@@ -123,7 +123,7 @@ export default async function ({ db, ids, as, asOwner, test, expectFail, count }
     await asOwner()
     const rows = (await db.query("select tablename from pg_publication_tables where pubname = 'supabase_realtime' order by tablename")).rows.map((row) => row.tablename)
     // attendance_ignored_scans / attendance_unregistered_scans: live scan pop-ups on the attendance screen (20261027150000).
-    const expected = ["attendance_ignored_scans", "attendance_unregistered_scans", "attendance_workers", "biometric_attendance_events", "biometric_daily_totals", "blueprint_revisions", "blueprints", "client_snags", "daily_report_photos", "daily_report_revisions", "daily_reports", "notifications", "pin_checklist_items", "pin_events", "pin_photos", "pins", "project_questions", "qa_defect_events", "qa_defects", "qa_inspection_events", "qa_inspection_items", "qa_inspections", "qa_photos", "qa_work_attempts", "site_issue_photo_revisions", "site_issue_photos", "site_issue_reports"]
+    const expected = ["attendance_ignored_scans", "attendance_unregistered_scans", "attendance_workers", "biometric_attendance_events", "biometric_daily_totals", "blueprint_revisions", "blueprints", "client_snags", "daily_report_photos", "daily_report_revisions", "daily_reports", "notifications", "pin_checklist_items", "pin_events", "pin_photos", "pins", "project_questions", "qa_defect_events", "qa_defects", "qa_inspection_events", "qa_inspection_items", "qa_inspections", "qa_photos", "qa_work_attempts", "site_issue_photo_revisions", "site_issue_photos", "site_issue_reports", "site_visit_requests"]
     if (JSON.stringify(rows) !== JSON.stringify(expected)) throw new Error("published: " + rows.join(", "))
   })
 }

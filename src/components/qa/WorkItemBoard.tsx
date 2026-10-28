@@ -28,9 +28,9 @@ const heading = "border-l-4 border-accent pl-3 text-base font-extrabold text-bra
 
 // Work items as a detailed, filterable list: who acts next, what blocks them, and the next action. Names only help to find an
 // item; opening a row shows the work item record (by its permanent id).
-export default function WorkItemBoard({ groups, extras = [], loading, error, nameOf, sheetOf, onOpen, emptyTitle, emptyText }: {
+export default function WorkItemBoard({ groups, extras = [], showGroupFilters = true, loading, error, nameOf, sheetOf, onOpen, emptyTitle, emptyText }: {
   groups: BoardGroup[]; extras?: BoardExtra[]; loading: boolean; error: string; nameOf: (id: string | null) => string; sheetOf: (id: string) => string
-  onOpen: (itemId: string) => void; emptyTitle: string; emptyText: string
+  onOpen: (itemId: string) => void; emptyTitle: string; emptyText: string; showGroupFilters?: boolean
 }) {
   const [filter, setFilter] = useState<string | null>(null)
   const [scope, setScope] = useState<PhotoScope>(emptyPhotoScope)
@@ -49,8 +49,8 @@ export default function WorkItemBoard({ groups, extras = [], loading, error, nam
   const filtered = groups.map((group) => ({ ...group, rows: group.rows.filter(matches) }))
   const present = filtered.filter(group => group.always || groups.find(source => source.key === group.key)?.rows.length)
   const lists = extras.filter(extra => extra.count > 0 || extra.always).map(extra => ({ ...extra, ...(extra.filter?.({ scope, query }) ?? { hasMatches: extra.count > 0 || Boolean(extra.always) }) }))
-  // Start on the first relevant list, not All. When a list empties, select the next available list.
-  const active = filter === "all" || present.some(group => group.key === filter) || lists.some(extra => extra.key === filter)
+  // Start on the first relevant list. Pages without group filters show every list together.
+  const active = !showGroupFilters ? "all" : filter === "all" || present.some(group => group.key === filter) || lists.some(extra => extra.key === filter)
     ? filter : present.find(group => groups.find(source => source.key === group.key)?.rows.length)?.key ?? lists.find(extra => extra.count > 0)?.key ?? present[0]?.key ?? lists[0]?.key ?? "all"
   const activeExtra = lists.find((extra) => extra.key === active)
   const shown = activeExtra ? [] : active === "all" ? present.filter((group) => group.rows.length) : present.filter((group) => group.key === active)
@@ -96,22 +96,22 @@ export default function WorkItemBoard({ groups, extras = [], loading, error, nam
   return (
     <div className="space-y-4">
       {error ? <p role="alert" className="rounded-lg bg-danger-soft px-4 py-2 text-sm text-danger-fg">{error}</p> : null}
-      <div className="space-y-3 rounded-2xl border border-line bg-surface p-3 shadow-sm">
+      {showGroupFilters || (canFilter && hasFilters) ? <div className="space-y-3 rounded-2xl border border-line bg-surface p-3 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Show work items">
+          {showGroupFilters ? <div className="flex flex-wrap gap-1.5" role="group" aria-label="Show work items">
             {present.map((group) => <button key={group.key} type="button" aria-pressed={active === group.key} title={group.title} onClick={() => setFilter(group.key)} className={chip(active === group.key)}>{group.short} <span className={active === group.key ? "text-white/85" : "text-fg-muted"}>{group.rows.length}</span></button>)}
             {lists.map((extra) => <button key={extra.key} type="button" aria-pressed={active === extra.key} title={extra.title} onClick={() => setFilter(extra.key)} className={chip(active === extra.key)}>{extra.short} <span className={active === extra.key ? "text-white/85" : "text-fg-muted"}>{extra.count}</span></button>)}
             <button type="button" aria-pressed={active === "all"} onClick={() => setFilter("all")} className={chip(active === "all")}>All <span className={active === "all" ? "text-white/85" : "text-fg-muted"}>{allCount}</span></button>
-          </div>
+          </div> : null}
           {canFilter && hasFilters ? <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={extras.some(extra => extra.filter) ? "Search corrections, NCRs or issues" : "Search work items"} aria-label="Search work items" className={`${inputClass} !w-full !py-1.5 sm:!w-60`} /> : null}
         </div>
         {canFilter && hasFilters ? <div className="border-t border-line pt-3">
           <WorkFilters label="Filter work items" sheets={sheets} pins={pins} items={items} scope={scope}
             onChange={(key, value) => setScope((current) => changePhotoScope(current, key, value, (id) => sheetOfPin.get(id)))} canClear={narrowed} onClear={() => { setScope(emptyPhotoScope); setQuery("") }} />
         </div> : null}
-      </div>
+      </div> : null}
       {activeExtra ? null : rows.length ? <p className="text-xs text-fg-muted">Showing {shownCount} of {rows.length} work item{rows.length === 1 ? "" : "s"}. Open one to see its inspection, NCRs, photos and history.{narrowed && active === "all" && lists.some(extra => !extra.filter) ? " The other lists come back when the search and filters are cleared." : ""}</p> : null}
-      {!rows.length && active === "all" && !narrowed ? <EmptyState title={emptyTitle}>{emptyText}</EmptyState>
+      {!rows.length && !shownExtras.length && active === "all" && !narrowed ? <EmptyState title={emptyTitle}>{emptyText}</EmptyState>
         : !activeExtra && !shownCount && !shownExtras.length ? <EmptyState title={narrowed ? "Nothing matches" : "No records in this list"} action={narrowed ? <button type="button" className={buttonSecondary} onClick={() => { setScope(emptyPhotoScope); setQuery("") }}>Clear filters</button> : undefined}>{narrowed ? "No record matches these filters." : "Items will appear here when they reach this stage."}</EmptyState>
         : shown.map((group) => (
           <section key={group.key} aria-label={group.title} className="space-y-2">

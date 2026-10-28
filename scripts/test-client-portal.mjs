@@ -162,6 +162,12 @@ assert.match(text(tree), /My private question/); assert.doesNotMatch(text(tree),
 find(node => node.type === "textarea").props.onChange({ target: { value: "When will the floor be finished?" } })
 render(Communication); await find(node => node.type === "form").props.onSubmit({ preventDefault() {} })
 assert.equal(inserted.pin_id, "pin"); assert.equal(inserted.project_id, "A")
+find(node => node.props?.role === "tab" && text(node) === "Site visits").props.onClick()
+render(Communication)
+const visitPanel = find(node => node.type?.name === "SiteVisitsPanel")
+assert.equal(visitPanel.props.projectId, "A"); assert.equal(visitPanel.props.mode, "client")
+assert.ok(!all(tree).some(node => node.type === "form"), "Questions and visit requests occupy separate Communication tabs")
+assert.match(lastPath, /tab=visits/)
 
 reset(); let submissions = 0, attempts = [], failPhoto = true
 Object.assign(deps, {

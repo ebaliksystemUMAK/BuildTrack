@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import ts from "typescript"
 import { correctionCloseProblem } from "../src/lib/qaReinspectionModel.ts"
+import { toleranceText } from "../src/lib/qaModel.ts"
 import { inspectionReportHtml } from "../src/lib/qaPrint.ts"
 import { linkedDefects, irRef, ncrRef } from "../src/lib/workItemModel.ts"
 import { photoEligible } from "../src/lib/photoStamp.ts"
@@ -16,7 +17,7 @@ globalThis.__reinspectHooks={
   useCallback(fn,deps){const n=cursor++,old=slots[n];if(old&&deps.every((d,i)=>d===old.deps[i]))return old.fn;slots[n]={fn,deps};return fn},
   useEffect(fn,deps){const n=cursor++,old=effects[n];if(!old||deps.some((d,i)=>d!==old.deps?.[i]))queued.push(()=>{old?.cleanup?.();effects[n]={deps,cleanup:fn()}})},
 }
-globalThis.__reinspectDeps={buttonSecondary:"button",inputClass:"input",refNumber:(_,n)=>`IR-${String(n).padStart(4,"0")}`,useToast:()=>({success:(...v)=>toasts.push(v),error:(...v)=>toasts.push(v)}),byColumn:()=>[],useLiveReload:()=>{}}
+globalThis.__reinspectDeps={toleranceText,buttonSecondary:"button",inputClass:"input",refNumber:(_,n)=>`IR-${String(n).padStart(4,"0")}`,useToast:()=>({success:(...v)=>toasts.push(v),error:(...v)=>toasts.push(v)}),byColumn:()=>[],useLiveReload:()=>{}}
 async function compile(file){
   const source=readFileSync(new URL(file,import.meta.url),"utf8"),ast=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX)
   let output=ts.transpileModule(source,{compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText
@@ -49,10 +50,20 @@ assert.match(text(tree),/does not resubmit unrelated checklists or the whole pro
 assert.match(text(tree),/Previous Pass.*Must be checked again/s)
 assert.match(text(tree),/Earlier results and evidence remain unchanged/)
 assert.ok(!all(tree).some(n=>n.type==="select"||n.type==="textarea"),"No selective-scope editor")
+assert.ok(!all(tree).some(n=>n.type==="details"),"Previous results are immediately visible in their own tab")
+assert.match(text(tree),/close automatically.*fresh signed-off Pass/)
 button("View original result and evidence").props.onClick();assert.deepEqual(calls.at(-1),["open","original"])
+reset();render(Scope,{...props,nameOf:()=>"Earlier Engineer",rows:[{...props.rows[1],kind:"measure",measured_value:0,unit:"mm",min_value:0,max_value:5,remarks:"Opening was below the approved size",checked_by:"engineer",checked_at:"2026-10-27T01:00:00Z"}]})
+assert.match(text(tree),/Previous Fail/);assert.match(text(tree),/Recorded measurement: 0 mm/)
+assert.match(text(tree),/Previous remarks: Opening was below the approved size/)
+assert.match(text(tree),/Earlier Engineer/)
+assert.ok(!all(tree).some(n=>n.type==="input"||n.type==="textarea"||n.type==="select"),"Earlier results and measurements are read-only")
+reset();render(Scope,{...props,fullChecklist:false})
+assert.match(text(tree),/current Checklist tab defines what must be reinspected/)
+assert.doesNotMatch(text(tree),/Every check.*fresh result|Must be checked again/)
 for(const extra of [{loading:true},{error:"offline"}]){
   reset();render(Scope,{...props,...extra})
-  assert.ok(!all(tree).some(n=>n.type==="details"),"Old history hidden while loading or unavailable")
+  assert.ok(!all(tree).some(n=>n.type==="li"),"Old history hidden while loading or unavailable")
 }
 await button("Retry").props.onClick();assert.equal(changed,1)
 assert.equal(correctionCloseProblem(null,"requested"),"")

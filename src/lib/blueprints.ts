@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { asPoints, type Pt } from "./geometry"
 import { sanitizeFormat, type TextFormat } from "./textFormat"
 import type { Discipline } from "./projects"
+import type { BlueprintType, ClassifiedType } from "./blueprintTypes"
 import { supabase } from "./supabase"
 import type { StampFlag } from "./photoStamp"
 import type { IssueMarkup } from "./issueMarkup"
@@ -35,7 +36,8 @@ export type Blueprint = {
   project_id: string
   title: string
   level: string | null
-  discipline: Discipline | null
+  discipline: Discipline | null // legacy (0009); the type below decides access since 20261028130000
+  blueprint_type: BlueprintType
   scale_width_m: number | null
   base_locked: boolean
   created_at: string
@@ -629,7 +631,7 @@ export type UploadInput = {
   blueprintId?: string
   title: string
   level: string
-  discipline: Discipline | ""
+  blueprintType: ClassifiedType // new plans only; a revision keeps its plan's type
   file: File
   page: number
   notes: string
@@ -650,10 +652,10 @@ export async function uploadBlueprintRevision(input: UploadInput, onStep: (messa
     onStep("Creating the blueprint...")
     const { data, error } = await supabase
       .from("blueprints")
-      .insert({ project_id: input.projectId, title: input.title.trim(), level: input.level.trim() || null, discipline: input.discipline || null })
+      .insert({ project_id: input.projectId, title: input.title.trim(), level: input.level.trim() || null, blueprint_type: input.blueprintType })
       .select("id")
       .single()
-    if (error || !data) throw new Error(error?.code === "42501" ? "You are not allowed to add blueprints to this project." : (error?.message ?? "Could not create the blueprint."))
+    if (error || !data) throw new Error(error?.code === "42501" ? (error.message.includes("Assigned work") ? error.message : "You are not allowed to add blueprints to this project.") : (error?.message ?? "Could not create the blueprint."))
     blueprintId = data.id as string
   }
 

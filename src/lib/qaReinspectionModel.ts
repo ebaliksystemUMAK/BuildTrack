@@ -1,4 +1,4 @@
-// A correction submission is a request to verify work, never an automatic NCR closure.
+// Submission never closes an NCR. Its own signed-off reinspection Pass enables automatic closure.
 export function correctionCloseProblem(attemptId: string | null | undefined, status?: string | null, error = "", loading = false, findingPassed = false): string {
   if (!attemptId) return "" // Standalone findings retain their existing explicit Engineer verification workflow.
   if (error) return "Reinspection information is unavailable. Retry before closing the NCR."

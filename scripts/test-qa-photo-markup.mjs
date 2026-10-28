@@ -300,4 +300,52 @@ assert.deepEqual(queueInserts[0].row.annotations, markup); assert.equal(queueIns
 await Queue.sendQueuedItem({ kind: "pin_photo", payload: { projectId: "P", pinId: "W", itemId: "I", attemptId: null, path: "P/W/old.jpg", blob: new Blob(["x"]), stamp } })
 assert.ok(!("annotations" in queueInserts[1].row) && !("caption" in queueInserts[1].row), "photos queued before markup existed send as before")
 
-console.log("QA photo markup: work item / correction photos marked up before upload (dialog prepare/add/retry/cancel, caption + markup + attempt link, offline queue keeps markup), upload keeps the shrunk original with validated markup, strip dialog add/retry/cancel, cropped thumbnail overlay, picker prepare mode, viewer overlay toggle")
+// Daily progress evidence: captured original + overlay, camera-only picker, retry uses the same record/path.
+let dailyLookups = [{ data: null, error: null }], dailyRows = [], dailyUploads = [], dailyFailure = null
+deps.supabase.from = () => {
+  const chain = { select: () => chain, eq: () => chain, maybeSingle: async () => dailyLookups.shift() ?? { data: null, error: null },
+    insert: async row => { dailyRows.push(row); return { error: dailyFailure } } }
+  return chain
+}
+deps.supabase.storage = { from: bucket => ({ upload: async (path, file) => { dailyUploads.push({ bucket, path, file }); return { error: null } }, remove: async () => ({ error: null }) }) }
+const { saveDailyReportCapture } = await compile("../src/lib/dailyReportCapture.ts", { "./issueMarkup": new URL("../src/lib/issueMarkup.ts", import.meta.url).href })
+const dailyCapture = { id: "capture-1", file: photoFile("camera.jpg"), url: "blob:camera", caption: "  Slab progress  ", annotations: markup, stamp }
+await saveDailyReportCapture("P", "R", dailyCapture)
+assert.equal(dailyUploads[0].file, dailyCapture.file, "Store the camera original without baking markup into its pixels")
+assert.equal(dailyRows[0].capture_source, "camera"); assert.equal(dailyRows[0].taken_at, stamp.taken_at)
+assert.deepEqual(dailyRows[0].annotations, markup); assert.equal(dailyRows[0].caption, "Slab progress")
+dailyLookups = [{ data: { id: "saved" }, error: null }]
+await saveDailyReportCapture("P", "R", dailyCapture)
+assert.equal(dailyUploads.length, 1, "Retry recognizes an already committed capture")
+dailyFailure = { message: "Connection lost after commit" }
+dailyLookups = [{ data: null, error: null }, { data: { id: "saved" }, error: null }]
+await saveDailyReportCapture("P", "R", dailyCapture)
+assert.equal(dailyUploads.at(-1).path, dailyUploads[0].path)
+
+let savedCaptures = [], parentBusy = [], photoReloads = 0
+globalThis.navigator.onLine = true
+Object.assign(deps, {
+  useEvidencePhotos: () => ({ photos: [], loading: false, error: "", reload: async () => { photoReloads++ } }),
+  saveDailyReportCapture: async (...args) => { savedCaptures.push(args) },
+})
+const DailyPhotos = (await compile("../src/components/DailyReportPhotos.tsx")).default
+const dailyProps = { projectId: "P", reportId: null, editable: true, ensureDraft: async () => "R", onBusy: value => parentBusy.push(value) }
+reset(); render(DailyPhotos, dailyProps)
+assert.ok(!all(tree).some(node => node.type === "input" && node.props.type === "file"))
+assert.doesNotMatch(text(tree), /Choose photos|Add photos/)
+button("Take photo").props.onClick(); render(DailyPhotos, dailyProps)
+find(node => node.type?.name === "DailyReportCamera").props.onCapture(dailyCapture.file, stamp); render(DailyPhotos, dailyProps)
+let reportEditor = find(node => node.type?.name === "IssuePhotoEditor")
+assert.equal(reportEditor.props.title, "Annotate daily progress photo")
+const capturedId = reportEditor.props.photos[0].id
+reportEditor.props.onSave([{ id: capturedId, caption: "Slab progress", annotations: markup }]); reportEditor.props.onClose(); render(DailyPhotos, dailyProps)
+assert.ok(parentBusy.at(-1), "Unsaved capture prevents report submission/date switching")
+button("Save photo to report").props.onClick(); button("Save photo to report").props.onClick(); await settle(); render(DailyPhotos, dailyProps)
+assert.equal(savedCaptures.length, 1); assert.equal(savedCaptures[0][0], "P"); assert.equal(savedCaptures[0][1], "R")
+assert.deepEqual(savedCaptures[0][2].annotations, markup); assert.equal(savedCaptures[0][2].file, dailyCapture.file)
+assert.equal(savedCaptures[0][2].stamp.taken_at, stamp.taken_at, "Annotation time never replaces the shutter timestamp")
+assert.equal(parentBusy.at(-1), false); assert.equal(photoReloads, 1)
+reset(); render(DailyPhotos, { ...dailyProps, editable: false })
+assert.ok(!all(tree).some(node => node.type === "button" && text(node) === "Take photo"), "Submitted/history viewers have no capture controls")
+
+console.log("QA and daily report photo markup: camera-only report capture, annotation/caption before save, original bytes and shutter timestamp preserved, duplicate-safe save/retry, report-submit lock; existing QA/correction markup, picker/editor, viewer and offline queue passed")

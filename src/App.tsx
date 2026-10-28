@@ -34,7 +34,7 @@ const EngineerDashboard = lazy(() => import("./pages/Engineer/EngineerDashboard"
 const EngineerProjects = lazy(() => import("./pages/Engineer/EngineerProjects"))
 const EngineerProjectBlueprint = lazy(() => import("./pages/Engineer/EngineerProjectBlueprint"))
 const EngineerBlueprintAnnotation = lazy(() => import("./pages/Engineer/EngineerBlueprintAnnotation"))
-const EngineerProgressVerification = lazy(() => import("./pages/Engineer/EngineerProgressVerification"))
+const EngineerQa = lazy(() => import("./pages/Engineer/EngineerQa"))
 const EngineerReportIssue = lazy(() => import("./pages/Engineer/EngineerReportIssue"))
 const EngineerProgress = lazy(() => import("./pages/Engineer/EngineerProgress"))
 const EngineerAssignments = lazy(() => import("./pages/Engineer/EngineerAssignments"))
@@ -318,12 +318,12 @@ export default class App extends Component<Record<string, never>, AppState> {
         projects: <EngineerProjects {...pageProps} />,
         "project-blueprint": <EngineerProjectBlueprint {...pageProps} />,
         annotation: <EngineerBlueprintAnnotation {...pageProps} />,
-        verification: <EngineerProgressVerification {...pageProps} />,
+        verification: <EngineerQa {...pageProps} />,
         "report-issue": <EngineerReportIssue {...pageProps} />,
         progress: <EngineerProgress {...pageProps} />,
         assignments: <EngineerAssignments {...pageProps} />,
         reports: <EngineerReports {...pageProps} />,
-        qa: <EngineerProgressVerification {...pageProps} />,
+        qa: <EngineerQa {...pageProps} />,
         checklists: <EngineerChecklists {...pageProps} />,
         calendar: <ProjectCalendarPage role="engineer" />,
       }[activePage]

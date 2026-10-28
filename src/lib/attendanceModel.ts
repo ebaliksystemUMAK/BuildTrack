@@ -34,6 +34,12 @@ export type AttendanceSummary = {
   workers: number
   clocked_in: number
   clocked_out: number
+  // Since 20261028010000 (daily status of the day): workers on time, late, absent and not in yet; ignored repeat scans.
+  on_time?: number
+  late?: number
+  absent?: number
+  not_in_yet?: number
+  ignored?: number
 }
 export const emptyAttendanceSummary: AttendanceSummary = {
   scans: 0,

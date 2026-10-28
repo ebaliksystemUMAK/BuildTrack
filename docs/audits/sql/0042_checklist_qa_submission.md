@@ -1,8 +1,8 @@
 # 0042 — checklist QA submissions
 
-Status: **NOT APPLIED to live Supabase**. Prepared 2026-10-16.
+Status: **Already present in live Supabase**, verified 2026-10-18 and 2026-10-28. Prepared 2026-10-16; subsequent QA migrations supersede these original functions. Do not rerun this migration or its historical handover script.
 
-## Owner action
+## Historical owner action — do not rerun
 
 Verify migrations 0001–0041 are present, then paste the entire [SQL Editor script](0042_checklist_qa_submission.apply.sql) once. It wraps the migration and tracking insert in BEGIN/COMMIT and ends with `NOTIFY pgrst, 'reload schema';`. Do not run both the migration and the handover script, and do not rerun if 0042 is already tracked.
 

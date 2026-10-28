@@ -20,11 +20,6 @@ export default async function ({ db, ids, as, asOwner, addUser, test, expectFail
     await db.query("select public.save_inspection_item($1,$2,null,$3)",[qi,result,result==='fail'?'Test observation needs correction':null])
     await db.query("select public.complete_inspection($1,'Synthetic inspection findings')",[ir])
   }
-  const closeNcr=async(ir)=>{
-    const ncr=(await db.query("select id from public.qa_defects where inspection_id=$1",[ir])).rows[0].id
-    await as("attemptEng")
-    await db.query("select public.verify_defect($1,true,'Synthetic correction independently checked')",[ncr])
-  }
   let first,second,third,original,draft,originalPhoto,correctionPhoto
   await test("QA attempts: original request captures its own photos and remarks; failure records an immutable timeline",async()=>{
     await as("attemptFore")
@@ -96,8 +91,7 @@ export default async function ({ db, ids, as, asOwner, addUser, test, expectFail
     assert.deepEqual(fresh.photos_snapshot.map(p=>p.id),[ph.id])
     assert.equal(await count("select count(*) n from public.qa_work_attempts where pin_id=$1",[pin]),2)
     await finish(third,'pass')
-    await expectFail("select public.review_checklist_item($1,true)",[item],/open NCRs/)
-    await closeNcr(first)
+    assert.equal((await db.query("select status from public.qa_defects where id=$1",[finding])).rows[0].status,'closed')
     assert.equal(await count("select count(*) n from public.qa_defects where inspection_id=$1",[second]),0,"A repeated failed finding reuses its original NCR")
     await db.query("select public.review_checklist_item($1,true)",[item])
     assert.equal((await db.query("select status from public.pins where id=$1",[pin])).rows[0].status,'verified')

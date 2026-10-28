@@ -53,6 +53,8 @@ import { dockedPanelMaximum, panelWidth } from "../../lib/panelSize"
 import { renderSheet, loadSheetImage } from "../../lib/exportSheet"
 import type { LayerAction } from "../../lib/layers"
 import { useProject, useProjectTeam } from "../../lib/projects"
+import { useBlueprintAccess } from "../../lib/blueprintAccess"
+import { canEditType, canWorkType, typeScopedRole, uploadTypes, type BlueprintType } from "../../lib/blueprintTypes"
 import { supabase } from "../../lib/supabase"
 import type { SymbolKey } from "../../lib/symbols"
 import { useToast } from "../../lib/toast"
@@ -83,13 +85,18 @@ function useMediaQuery(query: string) {
 // toolbar on top. Every panel can be hidden, floated or docked; Focus mode hides everything; Presentation mode is a clean
 // read-only show. `canEdit` is what the role may do; the database enforces it as well.
 // `canUpload` (sheets and revisions) defaults to `canEdit`; Admins get uploads without editing (0040).
-export default function BlueprintEditor({ projectId, role, canEdit, canUpload = canEdit, onExit }: { projectId: string; role: EditorRole; canEdit: boolean; canUpload?: boolean; onExit: () => void }) {
+// `blueprintType` shows only that type's plans (Project > Blueprints > type); Engineers / Foremen additionally need the
+// type's Assigned work access for any change (20261028130000), View only types open read-only.
+export default function BlueprintEditor({ projectId, role, canEdit, canUpload = canEdit, blueprintType = null, onExit }: { projectId: string; role: EditorRole; canEdit: boolean; canUpload?: boolean; blueprintType?: BlueprintType | null; onExit: () => void }) {
   const { profile, can } = useAuth()
   const toast = useToast()
   const confirm = useConfirm()
   const { project, loading: projectLoading, notFound } = useProject(projectId)
-  const { blueprints, loading, error, reload: reloadBlueprints } = useBlueprints(projectId)
-  const { team } = useProjectTeam(projectId)
+  const { blueprints: allBlueprints, loading, error, reload: reloadBlueprints } = useBlueprints(projectId)
+  const [typeFilter, setTypeFilter] = useState<BlueprintType | null>(blueprintType)
+  const blueprints = useMemo(() => (typeFilter ? allBlueprints.filter((bp) => bp.blueprint_type === typeFilter) : allBlueprints), [allBlueprints, typeFilter])
+  const access = useBlueprintAccess(typeScopedRole(role) ? projectId : null)
+  const { team: projectTeam } = useProjectTeam(projectId)
   const { pins, setPins, loading: pinsLoading, reload: reloadPins } = useProjectPins(projectId)
   const undoStack = useUndoStack()
   const { prefs, update: setPrefs, reset: resetPrefs } = useEditorPrefs()
@@ -164,10 +171,19 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
   const { annotations, setAnnotations, reload: reloadAnnotations } = useAnnotations(blueprint?.id ?? null)
   const { url } = useSignedUrl("blueprints", revision?.preview_path ?? null)
 
-  const editable = canEdit && isLatest && !present
-  // Admins read and upload sheets only; field reporting is for the project's Engineers and Foremen (0040).
-  const canReport = role === "engineer" || role === "foreman"
-  const canStamp = (editable || (role === "foreman" && !present)) && !present
+  // Per-type access: Admins and Clients keep their role rules; Engineers / Foremen need Assigned work on this sheet's type.
+  const levelForType = (type: BlueprintType) => (typeScopedRole(role) ? access.levelFor(profile?.id, type) : "view")
+  const sheetLevel = blueprint ? levelForType(blueprint.blueprint_type) : "none"
+  const sheetCanEdit = canEdit && (!typeScopedRole(role) || canEditType(role, sheetLevel))
+  const newSheetTypes = uploadTypes(role, levelForType, role === "admin" && canUpload).filter((type) => !typeFilter || type === typeFilter)
+  const canAddSheet = canUpload && newSheetTypes.length > 0
+  const canReviseSheet = canUpload && Boolean(blueprint) && (role === "admin" || canEditType(role, sheetLevel))
+  const editable = sheetCanEdit && isLatest && !present
+  // Admins read and upload sheets only; field reporting is for the project's Engineers and Foremen (0040) holding the type.
+  const canReport = canWorkType(role, sheetLevel)
+  const canStamp = (editable || (role === "foreman" && canReport && !present)) && !present
+  // Foreman pickers only offer Foremen who may take work of this sheet's type (the database refuses the others).
+  const team = useMemo(() => projectTeam.map((member) => (member.role === "foreman" && blueprint && access.grants.length ? { ...member, can_take_work: access.levelFor(member.user_id, blueprint.blueprint_type) === "assigned" } : member)), [projectTeam, blueprint, access.grants, access.levelFor])
   const canSeeHistory = role !== "client"
   const stampStatuses: PinStatus[] = editable ? allStatuses : ["in_progress"]
   const baseLocked = Boolean(blueprint?.base_locked)
@@ -259,8 +275,12 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
     const target = pins.find((item) => item.id === id)
     if (!target) {
       pendingPin.current = null
+      toast.info("That work item is not available", "It may be on a blueprint type you do not have access to.")
       return
     }
+    // A link to a pin on another type's plan switches the type shown (only types you may see are loaded at all).
+    const targetSheet = allBlueprints.find((bp) => bp.id === target.blueprint_id)
+    if (typeFilter && targetSheet && targetSheet.blueprint_type !== typeFilter) return setTypeFilter(targetSheet.blueprint_type)
     if (blueprintId !== target.blueprint_id) return setBlueprintId(target.blueprint_id)
     pendingPin.current = null
     setPinLink({ pinId: id, search: pendingSearch.current })
@@ -268,7 +288,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
     const url = new URL(window.location.href)
     for (const key of ["pin", "pintab", "worktab"]) url.searchParams.delete(key)
     window.history.replaceState({}, "", url)
-  }, [pins, blueprintId, loading, pinsLoading, select, pinLinkVersion])
+  }, [pins, allBlueprints, typeFilter, blueprintId, loading, pinsLoading, select, pinLinkVersion, toast])
 
   const pick = useCallback((target: Pick, additive: boolean) => {
     if (!target) {
@@ -848,7 +868,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
             ]
           : []),
         { separator: true },
-        ...(canEdit && blueprint ? [{ label: baseLocked ? "Unlock the base layer" : "Lock the base layer", icon: <Icon name={baseLocked ? "unlock" : "lock"} size={14} />, onClick: () => void toggleBaseLock() } as MenuItem] : []),
+        ...(sheetCanEdit && blueprint ? [{ label: baseLocked ? "Unlock the base layer" : "Lock the base layer", icon: <Icon name={baseLocked ? "unlock" : "lock"} size={14} />, onClick: () => void toggleBaseLock() } as MenuItem] : []),
         { label: showBase ? "Hide the blueprint" : "Show the blueprint", icon: <Icon name="sheets" size={14} />, onClick: () => setShowBase((value) => !value) },
         { separator: true },
         {
@@ -1028,7 +1048,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
         onLayer: (key, value) => setLayers((current) => ({ ...current, [key]: value })),
         scaleWidthM,
         baseLocked,
-        canLockBase: canEdit,
+        canLockBase: sheetCanEdit,
         onToggleBaseLock: () => void toggleBaseLock(),
         onMoveLayer: (id, action) => void ops.layer([id], action),
         onToggleLocked: (item) => {
@@ -1117,16 +1137,16 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
     { id: "dist-v", label: "Spread items down", group: "Arrange", keywords: "distribute", disabled: !editable || ids.length < 3, run: () => void ops.distribute(ids, "vertical") },
     { id: "lock", label: "Lock selection", group: "Arrange", hint: "Ctrl L", disabled: !editable || !ids.length, run: () => lockSelection(true) },
     { id: "unlock", label: "Unlock selection", group: "Arrange", disabled: !editable || !ids.length, run: () => lockSelection(false) },
-    { id: "lock-all", label: "Lock every item on this sheet", group: "Arrange", disabled: !canEdit, run: () => void lockAll(true) },
-    { id: "unlock-all", label: "Unlock every item on this sheet", group: "Arrange", disabled: !canEdit, run: () => void lockAll(false) },
-    { id: "base-lock", label: baseLocked ? "Unlock the base layer" : "Lock the base layer", group: "Sheet", disabled: !canEdit || !blueprint, run: () => void toggleBaseLock() },
+    { id: "lock-all", label: "Lock every item on this sheet", group: "Arrange", disabled: !sheetCanEdit, run: () => void lockAll(true) },
+    { id: "unlock-all", label: "Unlock every item on this sheet", group: "Arrange", disabled: !sheetCanEdit, run: () => void lockAll(false) },
+    { id: "base-lock", label: baseLocked ? "Unlock the base layer" : "Lock the base layer", group: "Sheet", disabled: !sheetCanEdit || !blueprint, run: () => void toggleBaseLock() },
     { id: "export", label: "Export sheet as PNG or PDF", group: "Sheet", keywords: "download print", disabled: !blueprint, run: () => setExporting(true) },
     { id: "compare", label: "Compare revisions", group: "Sheet", disabled: revisions.length < 2, run: () => setComparing(true) },
     { id: "add-image", label: "Add an image to the sheet", group: "Sheet", keywords: "picture photo logo spec upload", disabled: !editable, run: () => fileInput.current?.click() },
     { id: "show-base", label: showBase ? "Hide the blueprint (backdrop)" : "Show the blueprint (backdrop)", group: "View", run: () => setShowBase((value) => !value) },
     { id: "delete-sheet", label: "Delete this sheet", group: "Sheet", disabled: !canDeleteSheet || !blueprint, run: () => void deleteSheet() },
-    { id: "upload", label: "Upload a new sheet", group: "Sheet", disabled: !canUpload, run: () => setUpload("new") },
-    { id: "revision", label: "Upload a new revision", group: "Sheet", disabled: !canUpload || !blueprint || baseLocked, run: () => setUpload("revision") },
+    { id: "upload", label: "Upload a new sheet", group: "Sheet", disabled: !canAddSheet, run: () => setUpload("new") },
+    { id: "revision", label: "Upload a new revision", group: "Sheet", disabled: !canReviseSheet || baseLocked, run: () => setUpload("revision") },
     { id: "history", label: "Show the edit history", group: "View", disabled: !canSeeHistory, run: () => { setSelection(NO_SELECTION); setSheetTab("history"); setRightOpen(true); if (prefs.inspector === "hidden") setPrefs({ inspector: "docked" }) } },
     { id: "layers", label: "Show the layers panel", group: "View", run: () => { setSelection(NO_SELECTION); setSheetTab("layers"); setRightOpen(true); if (prefs.inspector === "hidden") setPrefs({ inspector: "docked" }) } },
     { id: "focus", label: "Focus mode", group: "View", hint: "F", keywords: "hide panels distraction", run: toggleFocus },
@@ -1164,7 +1184,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
             revisions={revisions}
             onRevision={setRevisionId}
             canEdit={editable}
-            canUpload={canUpload && !present}
+            canUpload={(canAddSheet || canReviseSheet) && !present}
             zoomPercent={zoomPercent}
             onZoomIn={() => zoom.current?.zoomIn()}
             onZoomOut={() => zoom.current?.zoomOut()}
@@ -1178,7 +1198,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
             canSeeHistory={canSeeHistory}
             onHistory={() => { setSelection(NO_SELECTION); setSheetTab("history"); setRightOpen(true); setLeftOpen(false); if (prefs.inspector === "hidden") setPrefs({ inspector: "docked" }) }}
             baseLocked={baseLocked}
-            canLockBase={canEdit}
+            canLockBase={sheetCanEdit}
             onToggleBaseLock={() => void toggleBaseLock()}
             onUpload={() => setUpload("new")}
             onNewRevision={() => setUpload("revision")}
@@ -1232,7 +1252,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
               showBase,
               onShowBase: setShowBase,
               baseLocked,
-              canLockBase: canEdit,
+              canLockBase: sheetCanEdit,
               onToggleBaseLock: () => void toggleBaseLock(),
               pinCount: sheetPins.length,
               anyUnlocked: annotations.some((a) => !a.locked) || sheetPins.some((p) => !p.locked),
@@ -1245,7 +1265,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
       <div className="relative flex min-h-0 flex-1">
         {showSheets ? (
           <div className={`flex-none ${desktop ? "static w-52 xl:w-60" : "absolute inset-y-0 left-0 z-30 w-60 shadow-2xl"}`}>
-            <SheetSorter blueprints={blueprints} selectedId={blueprintId} counts={counts} loading={loading} canEdit={canUpload} onSelect={(id) => { setBlueprintId(id); setLeftOpen(false) }} onAdd={() => setUpload("new")} />
+            <SheetSorter blueprints={blueprints} selectedId={blueprintId} counts={counts} loading={loading} canEdit={canAddSheet} onSelect={(id) => { setBlueprintId(id); setLeftOpen(false) }} onAdd={() => setUpload("new")} />
           </div>
         ) : null}
 
@@ -1267,8 +1287,8 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
             </div>
           ) : !blueprint || !revision ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-              <p className="max-w-sm text-fg-muted">{blueprint ? "This sheet has no file yet." : canUpload ? "No sheet has been uploaded for this project yet. Upload the first plan to start placing pins." : "No sheet has been uploaded for this project yet."}</p>
-              {canUpload ? <button type="button" className={primary} onClick={() => setUpload(blueprint ? "revision" : "new")}>{blueprint ? "Upload a file" : "Upload a sheet"}</button> : null}
+              <p className="max-w-sm text-fg-muted">{blueprint ? "This sheet has no file yet." : canAddSheet ? "No sheet has been uploaded for this project yet. Upload the first plan to start placing pins." : "No sheet has been uploaded for this project yet."}</p>
+              {(blueprint ? canReviseSheet : canAddSheet) ? <button type="button" className={primary} onClick={() => setUpload(blueprint ? "revision" : "new")}>{blueprint ? "Upload a file" : "Upload a sheet"}</button> : null}
             </div>
           ) : (
             <StageCanvas
@@ -1359,7 +1379,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
             />
           ) : null}
         </main>
-        {showFilmstrip ? <SheetFilmstrip blueprints={blueprints} selectedId={blueprintId} counts={counts} loading={loading} canEdit={canUpload} onSelect={setBlueprintId} onAdd={() => setUpload("new")} onHide={() => setPrefs({ filmstrip: false })} /> : null}
+        {showFilmstrip ? <SheetFilmstrip blueprints={blueprints} selectedId={blueprintId} counts={counts} loading={loading} canEdit={canAddSheet} onSelect={setBlueprintId} onAdd={() => setUpload("new")} onHide={() => setPrefs({ filmstrip: false })} /> : null}
         </div>
 
         {showDocked ? (
@@ -1448,6 +1468,8 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
         <BlueprintUploadDialog
           projectId={projectId}
           existing={upload === "revision" ? blueprint : null}
+          blueprintType={typeFilter}
+          uploadTypes={newSheetTypes}
           onClose={() => setUpload(null)}
           onDone={(id) => {
             setUpload(null)

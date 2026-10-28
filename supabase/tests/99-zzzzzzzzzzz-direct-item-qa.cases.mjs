@@ -101,7 +101,8 @@ export default async function ({ db, ids, as, asOwner, addUser, test, expectFail
     newPhoto = await photo(wall, "wall-correction", correction)
     await as("directEng")
     const wallTemplate = (await db.query("select qa_template_id from public.pin_checklist_items where id=$1", [wall])).rows[0].qa_template_id
-    await db.query("select public.save_qa_template($1,$2,'Changed future library','general',null,'{}',$3::jsonb)", [wallTemplate, project, JSON.stringify(criteria("Later library check must not replace the failed request"))])
+    // Since 20261028150000 a work item's criteria copy cannot be edited as a checklist at all (stronger than "edits are ignored").
+    await expectFail("select public.save_qa_template($1,$2,'Changed future library','general',null,'{}',$3::jsonb)", [wallTemplate, project, JSON.stringify(criteria("Later library check must not replace the failed request"))], /belong to a work item/)
     await as("directFore")
     const finding = (await db.query("select id from public.qa_defects where inspection_id=$1", [wallIr])).rows[0].id
     const next = (await db.query("select public.submit_correction_package($1::uuid[],$2::uuid[]) id", [[wall],[finding]])).rows[0].id

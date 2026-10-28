@@ -3,9 +3,30 @@ import Modal from "../Modal"
 import WorkerPortrait from "./WorkerPortrait"
 import AttendanceReportButton from "./AttendanceReportButton"
 import { attendanceDate, attendanceDay, attendancePath, attendanceTime, workerInitials, type AttendanceEvent, type AttendanceWorker } from "../../lib/attendanceModel"
-import { useAttendanceWorkers, useDailyAttendance, useWorkerAttendance } from "../../lib/foremanAttendance"
+import { useAttendanceWorkers, useDailyAttendance, useDailyStatus, useWorkerAttendance } from "../../lib/foremanAttendance"
 import { RECORD_PAGE_SIZE, WORKER_PAGE_SIZE, attendancePageLabel, validAttendanceDay } from "../../lib/foremanAttendanceModel"
 import { scheduleFlagLabel, scheduleFlagTone } from "../../lib/attendanceScheduleModel"
+import { dailyStatusCounts, dailyStatusLabel, dailyStatusTone, directionLabel, undertimeLabel, type DailyStatusRow } from "../../lib/attendanceStatusModel"
+
+const statusChip = { ok: "bg-ok-soft text-ok-fg", warn: "bg-[light-dark(#fff1d6,#3a2a10)] text-[light-dark(#8a4b00,#f6c27a)]", bad: "bg-danger-soft text-danger-fg", muted: "bg-surface-muted text-fg-muted" }
+
+// One row per worker for the day: Time in, Time out and the status the database computed from the schedule.
+export function DailyAttendanceTable({ rows, onWorker }: { rows: DailyStatusRow[]; onWorker?: (row: DailyStatusRow) => void }) {
+  return <div className="overflow-x-auto rounded-xl border border-border">
+    <table className="w-full min-w-[640px] text-left text-sm" aria-label="Daily attendance">
+      <thead className="bg-surface-muted text-xs text-fg-muted"><tr>
+        {["Worker", "Time in", "Time out", "Status", "Undertime"].map(label => <th key={label} scope="col" className="px-4 py-3">{label}</th>)}
+      </tr></thead>
+      <tbody>{rows.map(row => <tr key={`${row.day}:${row.worker_id}`} className="border-t border-border">
+        <td className="px-4 py-3">{onWorker ? <button type="button" className="text-left font-bold text-brand hover:underline" onClick={() => onWorker(row)}>{row.full_name}<span className="block text-xs font-normal text-fg-muted">{row.worker_code}</span></button> : <span className="font-bold">{row.full_name}</span>}</td>
+        <td className="whitespace-nowrap px-4 py-3 font-mono text-xs">{row.time_in ? attendanceTime(row.time_in) : "—"}</td>
+        <td className="whitespace-nowrap px-4 py-3 font-mono text-xs">{row.time_out ? attendanceTime(row.time_out) : "—"}</td>
+        <td className="px-4 py-3"><span className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold ${statusChip[dailyStatusTone(row.status)]}`}>{dailyStatusLabel(row)}</span></td>
+        <td className="whitespace-nowrap px-4 py-3 text-xs">{undertimeLabel(row) || <span className="text-fg-muted">—</span>}</td>
+      </tr>)}</tbody>
+    </table>
+  </div>
+}
 
 const fieldClass = "min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-fg"
 const secondary = "min-h-10 rounded-xl border border-border px-4 text-sm font-semibold disabled:opacity-40"
@@ -53,7 +74,7 @@ export function AttendanceRecordsTable({ events, onWorker }: { events: Attendanc
       </tr></thead>
       <tbody>{events.map(event => <tr key={event.id} className="border-t border-border">
         {onWorker && <td className="px-4 py-3">{event.worker ? <button type="button" className="text-left font-bold text-brand hover:underline" onClick={() => onWorker(event.worker!)}>{event.worker.full_name}<span className="block text-xs font-normal text-fg-muted">{event.worker.worker_code}</span></button> : "Worker unavailable"}</td>}
-        <td className="px-4 py-3"><span className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold ${event.direction === "in" ? "bg-emerald-100 text-emerald-900" : "bg-sky-100 text-sky-900"}`}>{event.direction === "in" ? "Clock in" : "Clock out"}</span></td>
+        <td className="px-4 py-3"><span className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold ${event.direction === "in" ? "bg-emerald-100 text-emerald-900" : "bg-sky-100 text-sky-900"}`}>{directionLabel(event.direction)}</span></td>
         <td className="whitespace-nowrap px-4 py-3 font-mono text-xs">{attendanceTime(event.occurred_at)}</td>
         <td className="whitespace-nowrap px-4 py-3 text-xs">{scheduleFlagLabel(event.schedule_flag, event.minutes_off) ? <span className={`rounded-full px-2.5 py-1 font-bold ${scheduleFlagTone(event.schedule_flag) === "warn" ? "bg-danger-soft text-danger-fg" : "bg-ok-soft text-ok-fg"}`}>{scheduleFlagLabel(event.schedule_flag, event.minutes_off)}</span> : <span className="text-fg-muted">—</span>}</td>
         <td className="whitespace-nowrap px-4 py-3 text-xs text-fg-muted">{attendanceDate(event.received_at)}<span className="block">{attendanceTime(event.received_at)}</span></td>
@@ -96,11 +117,25 @@ export function WorkerDirectory({ projectId, search, page, onSearch, onPage, onW
 
 export function ProjectAttendanceRecords({ projectId, day, today, page, onDay, onPage, onWorker }: { projectId: string; day: string; today: string; page: number; onDay: (day: string) => void; onPage: (page: number) => void; onWorker: (worker: AttendanceWorker) => void }) {
   const result = useDailyAttendance(projectId, day, page)
+  const status = useDailyStatus(projectId, day)
+  const counts = dailyStatusCounts(status.data ?? [])
+  const openRow = (row: DailyStatusRow) => onWorker({ id: row.worker_id, project_id: projectId, full_name: row.full_name, worker_code: row.worker_code, trade: row.trade, biometric_uid: null, photo_path: null, active: true })
   return <section className="space-y-5 rounded-2xl border border-border bg-surface p-5 sm:p-6" aria-label="Project attendance records">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div><h2 className="text-xl font-bold">Attendance records</h2><p className="mt-1 text-sm text-fg-muted">{day === today ? "Today" : day} · Recorded biometric scans for this project.</p></div>
       <div className="flex flex-wrap items-end gap-3"><AttendanceCalendar day={day} today={today} onChange={onDay} /><AttendanceReportButton projectId={projectId} anchorDay={day} /></div>
     </div>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-lg font-bold">Daily attendance</h3>
+        {status.data && <p className="text-sm text-fg-muted">On time {counts.on_time} · Late {counts.late} · Absent {counts.absent}{day === today ? ` · Not in yet ${counts.not_in_yet}` : ""}</p>}
+      </div>
+      {status.error ? <p role="alert" className="text-sm text-red-600">{status.error}</p> : status.loading ? <p role="status" className="py-6 text-center text-fg-muted">Loading daily attendance…</p> : status.data && (status.data.length
+        ? <DailyAttendanceTable rows={status.data} onWorker={openRow} />
+        : <p className="py-6 text-center text-sm text-fg-muted">No active workers with a fingerprint in this project for this date.</p>)}
+      <p className="text-xs text-fg-muted">One time in and one time out per worker per day. Late = time in after the schedule's grace period; Absent = no time in on a working day after time out. The Admin sets the schedule.</p>
+    </div>
+    <h3 className="text-lg font-bold">Scan records</h3>
     {result.error ? <p role="alert" className="text-sm text-red-600">{result.error}</p> : result.loading ? <p role="status" className="py-10 text-center text-fg-muted">Loading attendance records…</p> : result.data && <>
       {!result.data.events.length ? <p className="py-12 text-center text-sm text-fg-muted">{result.data.total ? "No records on this page. Go to the previous page." : "No attendance recorded on this date."}</p> : <AttendanceRecordsTable events={result.data.events} onWorker={onWorker} />}
       <AttendancePager page={page} size={RECORD_PAGE_SIZE} total={result.data.total} onChange={onPage} />
@@ -114,6 +149,8 @@ export function WorkerAttendanceDetails({ worker, projectId, initialDay, onClose
   const day = chosenDay || today
   const [page, setPage] = useState(0)
   const result = useWorkerAttendance(projectId, worker.id, day, page)
+  const status = useDailyStatus(projectId, day)
+  const dayStatus = status.data?.find(row => row.worker_id === worker.id) ?? null
   const data = result.data
   return <Modal title={worker.full_name} description="Worker details and attendance" size="xl" onClose={onClose}>
     {result.error ? <p role="alert" className="text-sm text-red-600">{result.error}</p> : result.loading ? <p role="status">Loading worker details and attendance…</p> : data && <div className="space-y-6">
@@ -126,7 +163,7 @@ export function WorkerAttendanceDetails({ worker, projectId, initialDay, onClose
       {onEdit && <button type="button" className={secondary} onClick={() => onEdit(data.worker)}>Edit profile</button>}
       <div className="flex flex-wrap items-center justify-between gap-4"><div><h3 className="text-lg font-bold">Attendance summary</h3><p className="mt-1 text-xs text-fg-muted">{day === today ? "Today" : day} · Entire selected day, not just this record page.</p></div><div className="flex flex-wrap items-end gap-3"><AttendanceCalendar day={day} today={today} onChange={value => { setChosenDay(value === today ? "" : value); setPage(0) }} /><AttendanceReportButton projectId={projectId} workerId={data.worker.id} workerName={data.worker.full_name} anchorDay={day} /></div></div>
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[["Clock-ins", data.summary.clockIns], ["Clock-outs", data.summary.clockOuts], ["First clock-in", data.summary.firstIn ? attendanceTime(data.summary.firstIn) : "—"], ["Last clock-out", data.summary.lastOut ? attendanceTime(data.summary.lastOut) : "—"]].map(([label, value]) => <div key={label} className="rounded-xl border border-border p-4"><dt className="text-xs text-fg-muted">{label}</dt><dd className="ml-0 mt-2 text-lg font-bold tabular-nums">{value}</dd></div>)}
+        {[["Time in", data.summary.firstIn ? attendanceTime(data.summary.firstIn) : "—"], ["Time out", data.summary.lastOut ? attendanceTime(data.summary.lastOut) : "—"], ["Status", dayStatus ? dailyStatusLabel(dayStatus) : status.error ? "Unavailable" : "—"], ["Undertime", dayStatus && undertimeLabel(dayStatus) || "—"]].map(([label, value]) => <div key={label} className="rounded-xl border border-border p-4"><dt className="text-xs text-fg-muted">{label}</dt><dd className="ml-0 mt-2 text-lg font-bold tabular-nums">{value}</dd></div>)}
       </dl>
       <h3 className="text-lg font-bold">Attendance records · {data.total}</h3>
       {!data.events.length ? <p className="py-5 text-sm text-fg-muted">{data.total ? "No records on this page." : "No attendance recorded for this worker on this date."}</p> : <AttendanceRecordsTable events={data.events} />}

@@ -119,6 +119,7 @@ setLocation("/engineer/qa", "?project=P&tab=inspections&from=2026-10-01&to=2026-
 const viewProps = { ws, mode: "engineer", tabs: ["overview", "inspections", "defects", "snags"], dateFilter: true }
 reset(); render(View, viewProps)
 assert.equal(find(named("DateRangeFilter")).props.label, "Requested date"); assert.deepEqual(find(named("InspectionsPanel")).props.dates, october)
+assert.equal(find(named("InspectionsPanel")).props.mode, "engineer", "QA register uses Requested-first inspection filters")
 const tab = name => find(node => node.props?.role === "tab" && text(node).startsWith(name))
 tab("NCR register").props.onClick(); render(View, viewProps)
 assert.equal(find(named("DateRangeFilter")).props.label, "Raised date"); assert.deepEqual(find(named("DefectsPanel")).props.dates, october, "the dates carry over between registers")
@@ -141,6 +142,22 @@ assert.deepEqual(find(named("OverviewPanel")).props.dates, october, "Overview su
 setLocation("/foreman/quality-control", "?project=P&from=2026-10-01&to=2026-10-31")
 reset(); render(View, { ws, mode: "foreman", tabs: ["inspections"] })
 assert.ok(!has(named("DateRangeFilter")), "Foreman pages are unchanged"); assert.deepEqual(find(named("InspectionsPanel")).props.dates, allDates)
+
+// Engineer completion and history share the register navigation and keep their own content.
+const completionProps = { ...viewProps, tabs: ["inspections", "defects", "complete", "completed", "snags"], workTabs: {
+  complete: { count: 2, content: "Ready checklist content" }, completed: { count: 8, content: "Completed checklist history" },
+} }
+setLocation("/engineer/qa", "?project=P&tab=complete")
+reset(); render(View, completionProps)
+assert.equal(tab("Complete checklist").props["aria-selected"], true)
+assert.equal(text(tab("Complete checklist")), "Complete checklist2")
+assert.match(text(tree), /Ready checklist content/); assert.doesNotMatch(text(tree), /Completed checklist history|Review queue/)
+assert.ok(!has(named("DateRangeFilter")), "Requested/raised date filters never imply they filter completion dates")
+tab("Completed").props.onClick(); render(View, completionProps)
+assert.match(text(tree), /Completed checklist history/); assert.doesNotMatch(text(tree), /Ready checklist content/)
+tab("Inspections").props.onClick(); render(View, completionProps)
+assert.ok(has(named("InspectionsPanel")) && has(named("DateRangeFilter")))
+assert.doesNotMatch(text(tree), /Completed checklist history|Ready checklist content/)
 
 // ---- Panels: NCR register by raised day (Manila), inspections by requested day, client reports by reported day ----
 Object.assign(deps, {

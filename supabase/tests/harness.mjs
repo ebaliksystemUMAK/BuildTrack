@@ -60,5 +60,35 @@ export async function createDatabase({ upto = Infinity, quiet = false } = {}) {
       process.exit(2)
     }
   }
+  // Test-only fixture (20261028130000 blueprint type access): older suites were written when project membership gave every
+  // Engineer / Foreman the whole project, so new members here get Assigned work on every type. Production does not.
+  // 99-…-blueprint-type-access.cases.mjs turns it off (set_config('buildtrack.test_type_access', 'strict', false)).
+  const hasTypeAccess = (await db.query("select to_regclass('public.project_blueprint_access') is not null as ok")).rows[0].ok
+  if (hasTypeAccess) {
+    await db.exec(`
+      create function public.test_grant_all_blueprint_types() returns trigger language plpgsql security definer set search_path = '' as $$
+      begin
+        if coalesce(current_setting('buildtrack.test_type_access', true), '') <> 'strict' and new.member_role in ('engineer', 'foreman') then
+          insert into public.project_blueprint_access (project_id, user_id, blueprint_type, access_level)
+          select new.project_id, new.user_id, t, 'assigned'
+          from unnest(array['architectural', 'civil_structural', 'electrical', 'mechanical', 'plumbing_sanitary']) t
+          on conflict do nothing;
+        end if;
+        return new;
+      end $$;
+      create trigger zz_test_grant_all_blueprint_types after insert on public.project_members
+        for each row execute function public.test_grant_all_blueprint_types();
+      -- Keep the older audit / activity expectations unchanged: the fixture's grants are not what they test.
+      create function public.test_hide_fixture_access_audit() returns trigger language plpgsql security definer set search_path = '' as $$
+      begin
+        if coalesce(current_setting('buildtrack.test_type_access', true), '') <> 'strict' then
+          delete from public.audit_log where id = new.id;
+        end if;
+        return null;
+      end $$;
+      create trigger zz_test_hide_fixture_access_audit after insert on public.audit_log
+        for each row when (new.action like 'project_blueprint_access.%') execute function public.test_hide_fixture_access_audit();
+    `)
+  }
   return db
 }

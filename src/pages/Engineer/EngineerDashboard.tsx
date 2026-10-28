@@ -66,7 +66,7 @@ export default function EngineerDashboard({ onNavigate }: EngineerPageProps) {
   }, [pins, qa.defects, qa.inspections, today])
 
   const first = (profile?.full_name || "Engineer").split(" ")[0]
-  const links: Array<[EngineerPageKey, string]> = [["annotation", "Plans"], ["verification", `Review inbox${totals.for_review ? ` (${totals.for_review})` : ""}`], ["progress", "Progress"], ["qa", `QA register${qaToDo ? ` (${qaToDo})` : ""}`], ["assignments", "Assign"]]
+  const links: Array<[EngineerPageKey, string]> = [["annotation", "Plans"], ["qa", `QA register${qaToDo ? ` (${qaToDo})` : ""}`], ["progress", "Progress"], ["assignments", "Assign"]]
 
   return (
     <div className="engineer-page">

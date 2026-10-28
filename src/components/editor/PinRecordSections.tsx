@@ -175,7 +175,7 @@ export function PinIssuesSection({ pin, role, meId, team, canEdit, canWork, data
   const inspections = data.history.inspections
   const engineer = role === "engineer"
   const client = role === "client"
-  const foremen = team.filter((member) => member.role === "foreman")
+  const foremen = team.filter((member) => member.role === "foreman" && (member.can_take_work !== false || member.user_id === pin.assigned_to)) // type access (20261028130000)
   const open = (kind: NonNullable<Opened>["kind"], id: string) => setOpened({ kind, id })
   const loading = data.loading || data.history.loading
   const error = data.error || data.history.error

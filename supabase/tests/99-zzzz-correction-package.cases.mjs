@@ -93,8 +93,7 @@ export default async function ({ db, ids, as, asOwner, addUser, test, expectFail
   await test("Correction package: acceptance waits for the item's own NCR, not for unrelated pin NCRs",async()=>{
     await finish(packageIr,{})
     assert.equal(await reviewOf(floor),"for_review")
-    await expectFail("select public.review_checklist_item($1,true)",[floor],/linked to this work item/)
-    await db.query("select public.verify_defect($1,true,'Level re-checked on site')",[floorNcr])
+    assert.equal(await status("qa_defects",floorNcr),"closed", "Passing reinspection automatically closes its linked NCR")
     assert.equal(await status("qa_defects",siteNcr),"open")
     await db.query("select public.review_checklist_item($1,true)",[floor])
     assert.equal(await reviewOf(floor),"verified")
@@ -111,8 +110,7 @@ export default async function ({ db, ids, as, asOwner, addUser, test, expectFail
     await photo(wall,"wall-correction-1",draft)
     await as("pkgFore")
     const ir=(await pkg([wall],[wallNcr])).rows[0].id
-    await finish(ir,{})
-    await db.query("select public.verify_defect($1,false,'Paint still patchy at the corner')",[wallNcr])
+    await finish(ir,{ "Synthetic finish observation":"fail" })
     assert.equal(await status("qa_defects",wallNcr),"in_progress")
     assert.equal(await reviewOf(wall),"returned")
     assert.equal(await reviewOf(floor),"verified")
@@ -127,7 +125,7 @@ export default async function ({ db, ids, as, asOwner, addUser, test, expectFail
 
   await test("Correction package: work completes when the last blocker clears, never before",async()=>{
     await as("pkgEng")
-    await db.query("select public.verify_defect($1,true,'Corner checked, finish uniform')",[wallNcr])
+    assert.equal(await status("qa_defects",wallNcr),"closed")
     await db.query("select public.review_checklist_item($1,true)",[wall])
     assert.notEqual(await status("pins",pin),"verified")
     await as("pkgFore")

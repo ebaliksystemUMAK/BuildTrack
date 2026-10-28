@@ -153,6 +153,46 @@ const last = streams.at(-1)
 unmount()
 assert.equal(last.track.stops, 1, "Navigation/worker switch stops all camera tracks")
 
+// Daily progress report capture also requires a real camera frame and never offers a file/gallery picker.
+const { default: ReportCamera } = await compile("../src/components/DailyReportCamera.tsx", {
+  "./Modal": moduleUrl("export default function Modal(){return null}"),
+  "./ui/PageParts": moduleUrl('export const buttonPrimary="primary",buttonSecondary="secondary"'),
+  "../lib/photoStamp": moduleUrl('export const captureStamp=async()=>({taken_at:"2026-10-28T02:00:00Z"})'),
+})
+const reportAll = node => Array.isArray(node) ? node.flatMap(reportAll) : node && typeof node === "object" ? [node, ...reportAll(node.props?.children), ...reportAll(node.props?.footer)] : []
+let capturedReport = null
+const reportProps = { onCapture: (file, stamp) => { capturedReport = { file, stamp } }, onClose() {} }
+const renderReport = () => {
+  for (let pass = 0; pass < 2; pass++) {
+    cursor = 0; tree = ReportCamera(reportProps)
+    for (const element of reportAll(tree)) if (element.type === "video") element.props.ref.current = video
+    const queued = pending; pending = []; queued.forEach(fn => fn())
+  }
+}
+const reportButton = label => { const node = reportAll(tree).find(node => node.type === "button" && text(node) === label); assert.ok(node); return node }
+encode = callback => callback(new Blob(["original camera bytes"], { type: "image/jpeg" }))
+renderReport(); await new Promise(resolve => setImmediate(resolve)); renderReport()
+assert.ok(!reportAll(tree).some(node => node.type === "input"), "Daily report capture has no upload fallback")
+assert.equal(cameraRequests.at(-1).video.facingMode.ideal, "environment"); assert.equal(cameraRequests.at(-1).audio, false)
+assert.equal(reportButton("Capture photo").props.disabled, true)
+reportAll(tree).find(node => node.type === "video").props.onLoadedData(); renderReport()
+await reportButton("Capture photo").props.onClick(); await new Promise(resolve => setImmediate(resolve)); renderReport()
+assert.equal(capturedReport.file.type, "image/jpeg"); assert.equal(await capturedReport.file.text(), "original camera bytes")
+assert.equal(capturedReport.stamp.taken_at, "2026-10-28T02:00:00Z")
+assert.equal(encoded.at(-1).width, 1600); assert.equal(encoded.at(-1).height, 900)
+assert.equal(streams.at(-1).track.stops, 1)
+unmount()
+getMedia = async () => { throw { name: "NotAllowedError" } }
+renderReport(); await new Promise(resolve => setImmediate(resolve)); renderReport()
+assert.match(text(tree), /Camera permission was denied/); assert.ok(reportButton("Retry camera"))
+unmount()
+let resolveReportMedia
+getMedia = () => new Promise(resolve => { resolveReportMedia = resolve })
+renderReport(); unmount()
+const reportLate = { stops: 0, stop() { this.stops++ } }
+resolveReportMedia({ getTracks: () => [reportLate] }); await new Promise(resolve => setImmediate(resolve))
+assert.equal(reportLate.stops, 1, "Leaving the daily report releases a late camera stream")
+
 // Real worker form sends the camera File through the existing private upload/link workflow.
 let writes = [], uploads = []
 globalThis.__workerCameraDB = { from(table) {

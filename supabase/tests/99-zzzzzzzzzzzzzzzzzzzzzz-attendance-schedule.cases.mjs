@@ -62,13 +62,13 @@ export default async function ({ db, ids, as, asOwner, addUser, test, expectFail
 
     const lunchOut = await scan(at("12:00"))
     assert.equal(lunchOut.direction, "out"); assert.equal(lunchOut.schedule_flag, "early_out"); assert.equal(lunchOut.minutes_off, 300)
+    // Since 20261028010000: one Time IN and one Time OUT per day; later scans are "already timed out".
     const back = await scan(at("13:00"))
-    assert.equal(back.direction, "in"); assert.equal(back.schedule_flag, "returned", "Coming back is not judged late")
-    const home = await scan(at("17:05"))
-    assert.equal(home.direction, "out"); assert.equal(home.schedule_flag, "on_time"); assert.equal(home.minutes_off, null)
-    const older = await scan(at("16:00"))
-    assert.equal(older.status, "out_of_order"); assert.equal(older.event_id, home.event_id)
-    assert.deepEqual((await rows(ana)).map((r) => r.direction), ["in", "out", "in", "out"])
+    assert.equal(back.status, "repeat"); assert.equal(back.direction, "out"); assert.equal(back.event_id, lunchOut.event_id)
+    assert.equal((await scan(at("17:05"))).status, "repeat")
+    const older = await scan(at("11:00"))
+    assert.equal(older.status, "out_of_order"); assert.equal(older.event_id, lunchOut.event_id)
+    assert.deepEqual((await rows(ana)).map((r) => r.direction), ["in", "out"])
   })
 
   await test("Attendance scans: retries of the same event get the same answer; reused event IDs with other details fail", async () => {
@@ -123,7 +123,7 @@ export default async function ({ db, ids, as, asOwner, addUser, test, expectFail
   await test("Attendance scans: day summary counts late arrivals and ignored scans; ignored scans are visible to project staff only", async () => {
     await as("schedFore")
     const summary = (await db.query("select public.attendance_day_summary($1,'2026-03-02') s", [project])).rows[0].s
-    assert.deepEqual(summary, { scans: 4, workers: 1, clocked_in: 0, clocked_out: 1, late: 0, ignored: 3 })
+    assert.deepEqual(summary, { scans: 2, workers: 1, clocked_in: 0, clocked_out: 1, on_time: 1, late: 0, absent: 0, not_in_yet: 0, ignored: 5 })
     assert.equal((await db.query("select public.attendance_day_summary($1,'2026-03-03') s", [project])).rows[0].s.late, 1)
     assert.ok((await db.query("select 1 from public.attendance_ignored_scans where project_id=$1", [project])).rows.length >= 3)
     await as("schedClient")

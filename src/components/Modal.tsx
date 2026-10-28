@@ -57,8 +57,9 @@ export default function Modal({
       savedOverflow = document.body.style.overflow
       document.body.style.overflow = "hidden"
     }
-    const focusable = () => Array.from(panel.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])
-    const firstField = panel.current?.querySelector<HTMLElement>("input:not([type=hidden]), textarea, select")
+    const visible = (element: HTMLElement) => !element.closest("[hidden], [inert]")
+    const focusable = () => Array.from(panel.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(visible)
+    const firstField = Array.from(panel.current?.querySelectorAll<HTMLElement>("input:not([type=hidden]), textarea, select") ?? []).find(visible)
     ;(firstField ?? focusable()[0] ?? panel.current)?.focus()
 
     const onKey = (event: KeyboardEvent) => {

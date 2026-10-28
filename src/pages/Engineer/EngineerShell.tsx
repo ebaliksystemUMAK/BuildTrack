@@ -14,12 +14,12 @@ const labels: Record<EngineerPageKey, { label: string; icon: AdminIconName }> = 
   calendar: { label: "Project Calendar", icon: "calendar" },
   "project-blueprint": { label: "Blueprints", icon: "blueprint" },
   annotation: { label: "Plan Editor", icon: "pin" },
-  verification: { label: "Quality & reviews", icon: "clipboard" }, // legacy route only
+  verification: { label: "QA Register", icon: "clipboard" }, // legacy route only
   "report-issue": { label: "Issue Register", icon: "close" },
   progress: { label: "Progress by Zone", icon: "chart" },
   assignments: { label: "Assignment Board", icon: "users" },
   reports: { label: "Site Logs & Reports", icon: "file" },
-  qa: { label: "Quality & reviews", icon: "clipboard" },
+  qa: { label: "QA Register", icon: "clipboard" },
   checklists: { label: "Checklist Configuration", icon: "settings" },
 }
 

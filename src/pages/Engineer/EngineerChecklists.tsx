@@ -14,7 +14,7 @@ export default function EngineerChecklists(_: EngineerPageProps) {
     <div className="engineer-page">
       <ProjectContextBar listPath="/engineer/projects" listLabel="My projects" />
       <PageHead eyebrow="Quality assurance" title="Checklist configuration"
-        description="Reusable inspection criteria: copy from the company library and adapt, or create your own. On the plan, add each work checklist item with its applicable criteria in one save. The Foreman adds evidence and submits directly for QA." />
+        description="The checklists this project uses: add them from the company library and adapt them, or create your own, with the standards they cite. Only these are offered when you set a work item's criteria on the plan or request an inspection. The Foreman adds evidence and submits directly for QA." />
       {projectId ? <QaView ws={ws} mode="engineer" tabs={["checklists"]} /> : null}
     </div>
   )

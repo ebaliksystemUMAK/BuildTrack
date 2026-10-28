@@ -1,5 +1,7 @@
 import DefectTrends from "./DefectTrends"
 import QaRequirements from "./QaRequirements"
+import ChecklistDocumentation from "./ChecklistDocumentation"
+import ProjectChecklists from "./ProjectChecklists"
 import { useEffect, useMemo, useState } from "react"
 import Modal from "../Modal"
 import { EmptyState, Meter, StatCard, buttonPrimary, buttonSecondary, inputClass } from "../ui/PageParts"
@@ -51,17 +53,20 @@ export function OverviewPanel({ ws, mode, dates = allDates, onOpenInspection, on
   const s = useMemo(() => filtered ? qaOverviewSummary(inspections, defects, items.items, ws.today, ws.summary?.staff) : ws.summary, [filtered, inspections, defects, items.items, ws.today, ws.summary])
   const attention = useMemo(() => {
     const rows: Array<{ key: string; tone: string; text: string; sub: string; open: () => void }> = []
+    // Only records the person may act on ask for their attention (View only types stay readable in the registers).
+    const act = (record: { pin_id?: string | null; inspection_id?: string | null }) => ws.canActOn?.(record) ?? true
     for (const defect of defects) {
       if (defect.status === "closed") continue
       const due = dueState(defect, ws.today)
       const mine = defect.assigned_to === profile?.id
+      if (!act(defect)) continue
       if (mode === "engineer" && defect.status === "for_verification") rows.push({ key: defect.id, tone: "bg-sky-500", text: `${refNumber("ncr", defect.number)} is ready to verify`, sub: defect.title, open: () => onOpenDefect(defect.id) })
       else if (due.state === "overdue" && (mode === "engineer" || mine)) rows.push({ key: defect.id, tone: "bg-red-600", text: `${refNumber("ncr", defect.number)} is ${dueText(defect, ws.today).toLowerCase()}`, sub: defect.title, open: () => onOpenDefect(defect.id) })
       else if (mode === "foreman" && mine && (defect.status === "open" || defect.status === "in_progress")) rows.push({ key: defect.id, tone: due.state === "due_soon" ? "bg-amber-500" : "bg-fg-muted", text: `${refNumber("ncr", defect.number)} needs your action (${dueText(defect, ws.today).toLowerCase()})`, sub: defect.title, open: () => onOpenDefect(defect.id) })
     }
-    if (mode === "engineer") for (const inspection of inspections) if (inspection.status === "requested") rows.push({ key: inspection.id, tone: "bg-amber-500", text: `${refNumber("ir", inspection.number)} is waiting to be inspected`, sub: inspection.title, open: () => onOpenInspection(inspection.id) })
+    if (mode === "engineer") for (const inspection of inspections) if (inspection.status === "requested" && act(inspection)) rows.push({ key: inspection.id, tone: "bg-amber-500", text: `${refNumber("ir", inspection.number)} is waiting to be inspected`, sub: inspection.title, open: () => onOpenInspection(inspection.id) })
     return rows.slice(0, 8)
-  }, [defects, inspections, ws.today, mode, profile?.id, onOpenDefect, onOpenInspection])
+  }, [defects, inspections, ws, mode, profile?.id, onOpenDefect, onOpenInspection])
 
   const print = () => {
     if (!s || !ws.project) return
@@ -156,14 +161,17 @@ export function OverviewPanel({ ws, mode, dates = allDates, onOpenInspection, on
 export type InspectionKind = "work" | "stage"
 // Work item QA = requested from a work item (FLOOR, WALL…); stage / hold point = a separate inspection of a stage. Never interchangeable.
 // `dates` (QA register calendar filter) keeps inspections requested on those Manila days; search, filters and CSV follow it.
-export function InspectionsPanel({ ws, onOpen, onNew, canRequest, kind: fixedKind, dates = allDates }: { ws: QaWorkspace; onOpen: (id: string) => void; onNew: () => void; canRequest: boolean; kind?: InspectionKind; dates?: DateRange }) {
+export function InspectionsPanel({ ws, onOpen, onNew, canRequest, kind: fixedKind, dates = allDates, mode = "foreman" }: { ws: QaWorkspace; onOpen: (id: string) => void; onNew: () => void; canRequest: boolean; kind?: InspectionKind; dates?: DateRange; mode?: QaMode }) {
   const submissionIndex=useQaSubmissionIndex(ws.projectId)
   const groups=useMemo(()=>checklistGroups(submissionIndex.rows),[submissionIndex.rows])
   const [checklist,setChecklist]=useState("")
-  useEffect(()=>{setChecklist("")},[ws.projectId])
   const matchedIds=useMemo(()=>new Set(groups.find(group=>group.key===checklist)?.rows.map(row=>row.inspection_id) ?? []),[groups,checklist])
   const namesByInspection=useMemo(()=>new Map(submissionIndex.rows.map(row=>[row.inspection_id,checklistNames(row)])),[submissionIndex.rows])
-  const [status, setStatus] = useState<"all" | "open" | InspectionStatus>("all")
+  const [status, setStatus] = useState<"all" | "open" | InspectionStatus>(mode === "engineer" ? "requested" : "all")
+  useEffect(() => { setChecklist(""); setStatus(mode === "engineer" ? "requested" : "all") }, [ws.projectId, mode])
+  // Keep Requested available even when caught up; retain a selected status if its last record changes.
+  const statuses = (["requested", "in_progress", "passed", "conditional", "failed", "cancelled"] as const)
+    .filter(value => mode !== "engineer" || value === "requested" || value === status || ws.inspections.some(row => row.status === value))
   const [trade, setTrade] = useState<"all" | Trade>("all")
   const [query, setQuery] = useState("")
   const [kindFilter, setKindFilter] = useState<"all" | InspectionKind>(fixedKind ?? "all")
@@ -182,8 +190,9 @@ export function InspectionsPanel({ ws, onOpen, onNew, canRequest, kind: fixedKin
         {!fixedKind ? <select aria-label="Filter by request type" className={`${inputClass} !w-auto`} value={kindFilter} onChange={(event) => setKindFilter(event.target.value as typeof kindFilter)}><option value="all">All request types</option><option value="work">Work item QA</option><option value="stage">Stage / hold point</option></select> : null}
         {fixedKind !== "stage" ? <select aria-label="Filter by work item name" className={`${inputClass} !w-auto max-w-full`} value={checklist} disabled={submissionIndex.loading || Boolean(submissionIndex.error)} onChange={event=>setChecklist(event.target.value)}><option value="">All work items</option>{groups.map(group=><option key={group.key} value={group.key}>{group.name} ({group.rows.length} requests)</option>)}</select> : null}
         <select aria-label="Filter by status" className={`${inputClass} !w-auto`} value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
-          <option value="all">All statuses</option><option value="open">Waiting or in progress</option>
-          {(["requested", "in_progress", "passed", "conditional", "failed", "cancelled"] as const).map((value) => <option key={value} value={value}>{inspectionStatusLabels[value]}</option>)}
+          {mode !== "engineer" ? <><option value="all">All statuses</option><option value="open">Waiting or in progress</option></> : null}
+          {statuses.map((value) => <option key={value} value={value}>{inspectionStatusLabels[value]}</option>)}
+          {mode === "engineer" ? <option value="all">All statuses</option> : null}
         </select>
         <select aria-label="Filter by trade" className={`${inputClass} !w-auto`} value={trade} onChange={(event) => setTrade(event.target.value as typeof trade)}><option value="all">All trades</option>{trades.map((value) => <option key={value} value={value}>{tradeLabels[value]}</option>)}</select>
         <span className="ml-auto flex gap-2">
@@ -197,11 +206,11 @@ export function InspectionsPanel({ ws, onOpen, onNew, canRequest, kind: fixedKin
       ) : list.length === 0 ? <EmptyState title="Nothing matches">{isFiltered(dates) ? "Change the dates, the filters or the search." : "Change the filters or the search."}</EmptyState> : (
         <Table label="Inspections" head={["IR", "Inspection", "Trade", "Status", "Score", "Requested", "Target / owner", "Inspector"]}>
           {list.map((row: Inspection) => (
-            <tr key={row.id} className="hover:bg-surface-muted/60">
-              <td className="whitespace-nowrap px-3 py-2"><button type="button" className={rowButton} onClick={() => onOpen(row.id)}>{refNumber("ir", row.number)}</button></td>
+            <tr key={row.id} tabIndex={0} aria-label={`Open ${refNumber("ir", row.number)}: ${row.title}`} onClick={() => onOpen(row.id)} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(row.id) } }} className="cursor-pointer hover:bg-surface-muted/60 focus:bg-brand-soft focus-visible:outline-2 focus-visible:outline-brand">
+              <td className="whitespace-nowrap px-3 py-2"><button type="button" className={rowButton} onClick={event => { event.stopPropagation(); onOpen(row.id) }}>{refNumber("ir", row.number)}</button></td>
               <td className="px-3 py-2"><span className="block font-semibold">{row.title}</span>{row.location ? <span className="block text-xs text-fg-muted">{row.location}</span> : null}<span className="block text-xs font-bold text-brand-text">{kindOf(row.id) === "work" ? `Work item QA · ${(namesByInspection.get(row.id) ?? []).join(" · ")}` : "Stage / hold point"}</span></td>
               <td className="px-3 py-2 text-xs">{tradeLabels[row.trade]}</td>
-              <td className="px-3 py-2"><Chip tone={inspectionTone[row.status]}>{inspectionStatusLabels[row.status]}</Chip>{row.reinspection_of ? <span className="ml-1 text-[11px] font-bold text-fg-muted">re-inspection</span> : null}</td>
+              <td className="px-3 py-2"><Chip tone={inspectionTone[row.status]}>{inspectionStatusLabels[row.status]}</Chip>{(ws.canActOn?.(row) ?? true) ? null : <span className="ml-1"><Chip tone="border border-line bg-surface-muted text-fg-muted">View only</Chip></span>}{row.reinspection_of ? <span className="ml-1 text-[11px] font-bold text-fg-muted">re-inspection</span> : null}</td>
               <td className="px-3 py-2 tabular-nums">{row.score === null ? "-" : `${row.score}%`}</td>
               <td className="whitespace-nowrap px-3 py-2 text-xs text-fg-muted">{day(row.requested_at)} • {ws.nameOf(row.requested_by)}</td>
               <td className="px-3 py-2 text-xs"><span className={row.target_at && Date.parse(row.target_at) < Date.now() && ["requested", "in_progress"].includes(row.status) ? "font-bold text-danger-fg" : "text-fg-muted"}>{row.target_at ? new Date(row.target_at).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—"}</span><span className="block text-fg-muted">{ws.nameOf(row.escalation_owner ?? null)}</span></td>
@@ -266,7 +275,7 @@ export function DefectsPanel({ ws, mode, onOpen, onNew, scope, dates = allDates 
                 <td className="whitespace-nowrap px-3 py-2"><button type="button" className={rowButton} onClick={() => onOpen(row.id)}>{refNumber("ncr", row.number)}</button></td>
                 <td className="px-3 py-2"><button type="button" className={rowButton} onClick={e => { e.stopPropagation(); onOpen(row.id) }}>{row.title}</button><span className="block text-xs text-fg-muted">{tradeLabels[row.trade]}{row.reference ? ` • ${row.reference}` : ""}</span></td>
                 <td className="px-3 py-2"><Chip tone={severityTone[row.severity]}>{qaSeverityLabels[row.severity]}</Chip></td>
-                <td className="px-3 py-2"><Chip tone={defectTone[row.status]}>{defectStatusLabels[row.status]}</Chip></td>
+                <td className="px-3 py-2"><Chip tone={defectTone[row.status]}>{defectStatusLabels[row.status]}</Chip>{(ws.canActOn?.(row) ?? true) ? null : <span className="ml-1"><Chip tone="border border-line bg-surface-muted text-fg-muted">View only</Chip></span>}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-xs text-fg-muted">{ws.nameOf(row.assigned_to)}</td>
                 <td className={`whitespace-nowrap px-3 py-2 text-xs font-bold ${dueTone[due.state]}`}>{dueText(row, ws.today)}</td>
               </tr>
@@ -289,6 +298,7 @@ function Viewer({ template, canEdit, onClose, onDuplicate }: { template: Templat
       footer={<>{canEdit ? <button type="button" className={buttonSecondary} onClick={onDuplicate}>Copy to my project</button> : null}<button type="button" className={buttonSecondary} onClick={onClose}>Close</button></>}
     >
       {template.description ? <p className="mb-3 text-sm text-fg-muted">{template.description}</p> : null}
+      <div className="mb-3"><ChecklistDocumentation standards={template.standards} items={template.qa_template_items} /></div>
       <ol className="space-y-2">
         {template.qa_template_items.map((item, index) => (
           <li key={item.id} className="rounded-lg border border-line bg-surface p-3">
@@ -313,6 +323,8 @@ export function ChecklistsPanel({ ws, canEdit, canEditLibrary, onEdit }: { ws: Q
   const [viewing, setViewing] = useState<Template | null>(null)
   const [showArchived, setShowArchived] = useState(false)
   const [busy, setBusy] = useState(false)
+  // A project's Checklist configuration lists only that project's added checklists (20261028150000); the library view stays below.
+  if (ws.projectId) return <ProjectChecklists ws={ws} canEdit={canEdit} onEdit={onEdit} />
   const groups = [
     { name: "Company library", note: "Built in. Read-only; copy one to adapt it to your project.", list: ws.templates.filter((t) => t.project_id === null && (showArchived || !t.archived)) },
     { name: "This project", note: "Edited by the project's engineers.", list: ws.templates.filter((t) => t.project_id !== null && (showArchived || !t.archived)) },

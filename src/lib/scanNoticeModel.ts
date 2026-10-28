@@ -27,7 +27,7 @@ export function ignoredNotice(row: IgnoredScanRow): ScanNotice {
   const kept = row.kept
   const when = kept ? attendanceTime(kept.occurred_at) : "earlier"
   return row.reason === "repeat"
-    ? { key: `ignored:${row.id}`, tone: "warn", title: `Already timed ${word(kept?.direction)}`, message: `${name} already timed ${word(kept?.direction)} at ${when}. This scan was not recorded again.`, name, photoPath: row.worker?.photo_path ?? null, at: row.occurred_at, receivedAt: row.received_at }
+    ? { key: `ignored:${row.id}`, tone: "warn", title: `Already timed ${word(kept?.direction)}`, message: `${name} already timed ${word(kept?.direction)} at ${when}. This scan was not recorded again.${kept?.direction === "out" ? " Only one time in and one time out per day." : ""}`, name, photoPath: row.worker?.photo_path ?? null, at: row.occurred_at, receivedAt: row.received_at }
     : { key: `ignored:${row.id}`, tone: "warn", title: "Scan not recorded", message: `${name} already has a later scan today (time ${word(kept?.direction)} at ${when}). This older scan was not recorded.`, name, photoPath: row.worker?.photo_path ?? null, at: row.occurred_at, receivedAt: row.received_at }
 }
 

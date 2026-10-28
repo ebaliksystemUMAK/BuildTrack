@@ -128,14 +128,15 @@ export default function SystemSettings(_: AdminPageProps) {
             </fieldset>
           </Card>
 
-          <Card title="Standards and codes" description="Reference catalog, including cement, masonry and roofing standards. Include the edition; applicability and exact clauses must be confirmed by the project Engineer. Up to 30." updated={updatedOf(settingKeys.standards)} dirty={dirty.standards} busy={busy === "standards"} canEdit={canEdit} error={errors.standards ?? ""} onReset={load} onSave={() => void commit("standards", settingKeys.standards, standards.map((item) => ({ code: item.code.trim(), title: item.title.trim() })))}>
+          <Card title="Standards and codes" description="Reference catalog, including cement, masonry and roofing standards. Include the edition, and the official source link (https) where it is documented: checklists show it as the documentation of what they cite. Applicability and exact clauses must be confirmed by the project Engineer. Up to 30." updated={updatedOf(settingKeys.standards)} dirty={dirty.standards} busy={busy === "standards"} canEdit={canEdit} error={errors.standards ?? ""} onReset={load} onSave={() => void commit("standards", settingKeys.standards, standards.map((item) => ({ code: item.code.trim(), title: item.title.trim(), ...(item.source?.trim() ? { source: item.source.trim() } : {}) })))}>
             {standards.length === 0 ? <p className="rounded-lg border border-dashed border-line px-3 py-3 text-sm text-fg-muted">No standards yet.</p> : null}
             <ul className="space-y-2">
               {standards.map((item, index) => (
-                <li key={index} className="grid grid-cols-[9rem_1fr_auto] items-center gap-2">
+                <li key={index} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 sm:grid-cols-[9rem_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-center">
                   <input className={inputClass} aria-label={`Code ${index + 1}`} placeholder="Code" maxLength={40} value={item.code} disabled={!canEdit} onChange={(event) => setStandards((current) => current.map((row, i) => (i === index ? { ...row, code: event.target.value } : row)))} />
-                  <input className={inputClass} aria-label={`Title ${index + 1}`} placeholder="Title" maxLength={120} value={item.title} disabled={!canEdit} onChange={(event) => setStandards((current) => current.map((row, i) => (i === index ? { ...row, title: event.target.value } : row)))} />
-                  {canEdit ? <button type="button" aria-label={`Remove standard ${index + 1}`} className="h-9 w-9 rounded-lg text-danger-fg hover:bg-danger-soft" onClick={() => setStandards((current) => current.filter((_, i) => i !== index))}>×</button> : <span />}
+                  <input className={`${inputClass} col-start-1 sm:col-start-auto`} aria-label={`Title ${index + 1}`} placeholder="Title" maxLength={120} value={item.title} disabled={!canEdit} onChange={(event) => setStandards((current) => current.map((row, i) => (i === index ? { ...row, title: event.target.value } : row)))} />
+                  <input className={`${inputClass} col-start-1 sm:col-start-auto`} aria-label={`Official source ${index + 1}`} placeholder="Official source link (optional, https://)" type="url" inputMode="url" maxLength={300} value={item.source ?? ""} disabled={!canEdit} onChange={(event) => setStandards((current) => current.map((row, i) => (i === index ? { ...row, source: event.target.value } : row)))} />
+                  {canEdit ? <button type="button" aria-label={`Remove standard ${index + 1}`} className="col-start-2 row-start-1 h-9 w-9 rounded-lg text-danger-fg hover:bg-danger-soft sm:col-start-auto sm:row-start-auto" onClick={() => setStandards((current) => current.filter((_, i) => i !== index))}>×</button> : <span className="hidden sm:block" />}
                 </li>
               ))}
             </ul>

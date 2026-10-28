@@ -437,7 +437,8 @@ export function PinFields({ pin, team, onSaved, idPrefix = "pin" }: { pin: Pin; 
   const [form, setForm] = useState({ title: pin.title, description: pin.description ?? "", category: pin.category, discipline: (pin.discipline ?? "") as Discipline | "", severity: pin.severity ?? "medium", due_date: pin.due_date ?? "", assigned_to: pin.assigned_to ?? "" })
   const [errors, setErrors] = useState<{ title?: string; description?: string }>({})
   const [busy, setBusy] = useState(false)
-  const foremen = team.filter((member) => member.role === "foreman")
+  // Only Foremen with Assigned work access to this plan's type can take it (the current one stays listed).
+  const foremen = team.filter((member) => member.role === "foreman" && (member.can_take_work !== false || member.user_id === pin.assigned_to))
 
   const save = async (event: FormEvent) => {
     event.preventDefault()

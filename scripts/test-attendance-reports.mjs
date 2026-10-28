@@ -3,16 +3,26 @@ import { readFileSync } from "node:fs"
 import ts from "typescript"
 import { attendanceReportRange, attendanceReportSummary } from "../src/lib/attendanceReportModel.ts"
 import { attendanceReportHtml, attendanceReportCsv, attendanceReportFilename } from "../src/lib/attendanceReportPrint.ts"
-import { defaultScheduleDraft, scheduleDraft, scheduleFlagLabel, scheduleProblem, scheduleSummary } from "../src/lib/attendanceScheduleModel.ts"
+import { defaultScheduleDraft, scheduleDraft, scheduleFlagLabel, scheduleProblem, scheduleSummary, workDaysText } from "../src/lib/attendanceScheduleModel.ts"
+import { dailyStatusCounts, dailyStatusLabel, dailyStatusTone, directionLabel, undertimeLabel } from "../src/lib/attendanceStatusModel.ts"
 
 // Attendance schedule form rules (same limits as set_attendance_schedule) and labels for the database's flags.
 assert.equal(scheduleProblem(defaultScheduleDraft), "")
 for (const [patch, pattern] of [
   [{ timeIn: "" }, /time in/], [{ timeOut: "25:00" }, /time out/], [{ timeOut: "08:00" }, /later than time in/], [{ timeOut: "07:30" }, /later than time in/],
-  [{ grace: "121" }, /Grace/], [{ grace: "-1" }, /Grace/], [{ grace: "2.5" }, /Grace/], [{ repeat: "0" }, /Repeat/], [{ repeat: "" }, /Repeat/],
+  [{ grace: "121" }, /Grace/], [{ grace: "-1" }, /Grace/], [{ grace: "2.5" }, /Grace/], [{ repeat: "0" }, /Repeat/], [{ repeat: "" }, /Repeat/], [{ workDays: [] }, /working day/],
 ]) assert.match(scheduleProblem({ ...defaultScheduleDraft, ...patch }), pattern)
-assert.deepEqual(scheduleDraft({ project_id: "p", time_in: "07:30:00", time_out: "16:30:00", grace_minutes: 10, repeat_guard_minutes: 5 }), { timeIn: "07:30", timeOut: "16:30", grace: "10", repeat: "5" })
-assert.equal(scheduleSummary({ timeIn: "07:30", timeOut: "16:30", grace: "40", repeat: "5" }), "Time in 07:30 (late after 08:10) · Time out 16:30 · repeat scans within 5 min ignored")
+assert.deepEqual(scheduleDraft({ project_id: "p", time_in: "07:30:00", time_out: "16:30:00", grace_minutes: 10, repeat_guard_minutes: 5 }), { timeIn: "07:30", timeOut: "16:30", grace: "10", repeat: "5", workDays: [1, 2, 3, 4, 5, 6] }, "Schedules from before working days: Monday to Saturday")
+assert.deepEqual(scheduleDraft({ project_id: "p", time_in: "07:30:00", time_out: "16:30:00", grace_minutes: 10, repeat_guard_minutes: 5, work_days: [5, 1, 2] }).workDays, [1, 2, 5])
+assert.equal(scheduleSummary({ timeIn: "07:30", timeOut: "16:30", grace: "40", repeat: "5", workDays: [1, 2, 3, 4, 5] }), "Mon–Fri · Time in 07:30 (late after 08:10) · Time out 16:30 · repeat scans within 5 min ignored")
+assert.deepEqual([[1, 2, 3, 4, 5, 6, 7], [1, 2, 3, 4, 5, 7], [1, 3], [6, 7]].map(workDaysText), ["Every day", "Mon–Fri, Sun", "Mon, Wed", "Sat, Sun"])
+// Daily time record labels (status computed by attendance_daily_status).
+const st = (status, late = null, early = null) => ({ status, late_minutes: late, early_minutes: early })
+assert.deepEqual(["on_time", "late", "present", "absent", "not_in_yet", "rest_day", "no_schedule", "not_enrolled"].map((s) => dailyStatusLabel(st(s))), ["On time", "Late", "Present", "Absent", "Not in yet", "Rest day", "No schedule", "No fingerprint"])
+assert.equal(dailyStatusLabel(st("late", 75)), "Late 1 h 15 min"); assert.equal(undertimeLabel(st("on_time", null, 30)), "Early out 30 min"); assert.equal(undertimeLabel(st("on_time")), "")
+assert.deepEqual(["on_time", "late", "absent", "rest_day"].map(dailyStatusTone), ["ok", "warn", "bad", "muted"])
+assert.deepEqual(dailyStatusCounts([st("on_time"), st("late"), st("late"), st("absent"), st("rest_day")]), { on_time: 1, late: 2, absent: 1, not_in_yet: 0, present: 0 })
+assert.deepEqual([directionLabel("in"), directionLabel("out")], ["Time in", "Time out"])
 assert.equal(scheduleFlagLabel("late", 75), "Late 1 h 15 min"); assert.equal(scheduleFlagLabel("early_out", 60), "Early out 1 h")
 assert.equal(scheduleFlagLabel("on_time", null), "On time"); assert.equal(scheduleFlagLabel("returned", null), "Back on site")
 assert.equal(scheduleFlagLabel("no_schedule", null), ""); assert.equal(scheduleFlagLabel(null, null), "", "Scans from before schedules show nothing")
@@ -57,6 +67,19 @@ assert.ok(html.includes("Daily attendance summary")); assert.ok(html.includes("A
 assert.ok(csv.includes("'=HYPERLINK")); assert.ok(csv.includes("Project code")); assert.ok(csv.includes("Report period"))
 assert.ok(!attendanceReportFilename({ ...report, project: { ...report.project, code: "../../bad:name" } }).includes("/"))
 assert.match(attendanceReportHtml({ ...report, events: [] }), /No attendance recorded/)
+// Daily time record from the database: absent workers appear even without scans; wording is Time in / Time out.
+{
+  const days = [
+    { day: "2026-01-02", worker_id: "w1", full_name: "Ana Worker", worker_code: "A-1", trade: "Mason", time_in: "2026-01-02T00:20:00Z", time_out: "2026-01-02T08:30:00Z", status: "late", late_minutes: 20, early_minutes: 30 },
+    { day: "2026-01-02", worker_id: "w2", full_name: "Ben Worker", worker_code: "B-1", trade: "Mason", time_in: null, time_out: null, status: "absent", late_minutes: null, early_minutes: null },
+  ]
+  const withDays = attendanceReportHtml({ ...report, days })
+  assert.match(withDays, /Daily time record/); assert.match(withDays, /Ben Worker/); assert.match(withDays, /Absent/)
+  assert.match(withDays, /Late 20 min/); assert.match(withDays, /Early out 30 min/); assert.ok(withDays.includes("0 / 1 / 1"), "On time / late / absent worker-days")
+  assert.doesNotMatch(withDays, /Daily attendance summary/, "The time record replaces the scan summary")
+  assert.doesNotMatch(withDays + attendanceReportCsv(report), /Clock in|Clock out/)
+  assert.match(attendanceReportHtml(report), /Daily attendance summary/, "Without the database status the scan summary stays")
+}
 
 const url = source => "data:text/javascript;base64," + Buffer.from(source).toString("base64")
 async function compile(path, replacements = {}) {
@@ -133,6 +156,7 @@ const { default: Button, AttendanceReportDialog: Dialog } = await compile("../sr
   "../Modal": url("export default function Modal(){return null}"),
   "../../lib/attendanceModel": new URL("../src/lib/attendanceModel.ts", import.meta.url).href,
   "../../lib/attendanceReportModel": reportModel,
+  "../../lib/attendanceStatusModel": new URL("../src/lib/attendanceStatusModel.ts", import.meta.url).href,
   "../../lib/attendanceReportData": url("export const loadAttendanceReport=(...a)=>globalThis.__reportUI.load(...a)"),
   "../../lib/attendanceReportPrint": new URL("../src/lib/attendanceReportPrint.ts", import.meta.url).href,
   "../../lib/printReport": url("export const printHtml=(...a)=>globalThis.__reportUI.print(...a)"),

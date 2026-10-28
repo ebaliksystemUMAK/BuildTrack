@@ -3,6 +3,8 @@ import { AdminButton, PageIntro } from "./AdminShell"
 import type { AdminPageProps } from "./types"
 import Modal from "../../components/Modal"
 import ProjectCard, { type CardPerson } from "../../components/ProjectCard"
+import ProjectAccessDialog from "./ProjectAccessDialog"
+import { buttonPrimary, buttonSecondary } from "../../components/ui/PageParts"
 import type { Profile } from "../../lib/auth"
 import {
   disciplineLabels,
@@ -10,6 +12,7 @@ import {
   statusLabels,
   type Discipline,
   openProject,
+  rememberProject,
   useProjects,
   type Project,
   type ProjectMember,
@@ -62,8 +65,9 @@ const emptyForm: Form = {
   site_radius_m: "150",
 }
 
-const field = "mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg"
-const roleLabel: Record<ProjectMember["member_role"], string> = { engineer: "Engineer", foreman: "Foreman", client: "Client" }
+const field = "mt-1 min-h-10 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm font-normal text-fg"
+const legend = "px-1 text-xs font-bold uppercase tracking-wider text-brand-text"
+const cardAction = "inline-flex min-h-8 items-center rounded-lg border border-line bg-surface px-2.5 text-xs font-bold text-fg shadow-sm hover:border-brand/50 hover:text-brand-text"
 
 const displayName = (person: Profile | undefined) => person?.full_name || person?.email || "Unknown user"
 
@@ -97,7 +101,7 @@ function dbMessage(error: { code?: string; message: string }): string {
   return error.message
 }
 
-export default function ProjectManagement(_props: AdminPageProps) {
+export default function ProjectManagement({ onNavigate }: AdminPageProps) {
   const { projects, loading, error, reload } = useProjects()
   const [members, setMembers] = useState<ProjectMember[]>([])
   const [people, setPeople] = useState<Profile[]>([])
@@ -106,8 +110,6 @@ export default function ProjectManagement(_props: AdminPageProps) {
   const [errors, setErrors] = useState<FieldErrors>({})
   const [formError, setFormError] = useState("")
   const [shareId, setShareId] = useState<string | null>(null)
-  const [shareError, setShareError] = useState("")
-  const [shareQuery, setShareQuery] = useState("")
   const toast = useToast()
   const confirm = useConfirm()
   // All success / failure messages go through toasts now.
@@ -221,7 +223,7 @@ export default function ProjectManagement(_props: AdminPageProps) {
     setBusy(false)
     if (saveError) return setFormError(dbMessage(saveError))
     if (!data?.length) return setFormError("Nothing was saved. You may not have permission to manage projects.")
-    setMessage({ text: form.id ? "Project updated." : "Project created. Use Manage access to add the rest of its team.", ok: true })
+    setMessage({ text: form.id ? "Project updated." : "Project created. Use Team & access to add its team and choose their blueprint types.", ok: true })
     setForm(null)
     await Promise.all([reload(), loadPeople()]) // the engineer / foreman in charge are added to the team automatically
   }
@@ -235,35 +237,12 @@ export default function ProjectManagement(_props: AdminPageProps) {
     await Promise.all([reload(), loadPeople()])
   }
 
-  // Manage access works like Drive sharing: every add / remove is saved immediately.
+  // Manage access (team, then blueprint access per type) lives in ProjectAccessDialog; every change is saved at once.
   const shareProject = projects.find((project) => project.id === shareId) ?? null
-  const shareMembers = members.filter((member) => member.project_id === shareId)
-  const suggestions = people
-    .filter((person) => !shareMembers.some((member) => member.user_id === person.id))
-    .filter((person) => `${person.full_name ?? ""} ${person.email}`.toLowerCase().includes(shareQuery.trim().toLowerCase()))
-    .slice(0, 6)
-
-  const addAccess = async (person: Profile) => {
-    if (!shareId) return
-    setBusy(true)
-    setShareError("")
-    const { error: addError } = await supabase.from("project_members").insert({ project_id: shareId, user_id: person.id })
-    setBusy(false)
-    if (addError) return setShareError(dbMessage(addError))
-    setShareQuery("")
-    await Promise.all([loadPeople(), reload()])
-  }
-
-  const removeAccess = async (userId: string) => {
-    if (!shareId) return
-    const person = people.find((p) => p.id === userId)
-    if (!(await confirm({ title: `Remove ${person?.full_name || person?.email || "this person"} from the project?`, message: "They lose access to this project's plans and pins straight away.", confirmLabel: "Remove access", tone: "danger" }))) return
-    setBusy(true)
-    setShareError("")
-    const { error: removeError } = await supabase.from("project_members").delete().eq("project_id", shareId).eq("user_id", userId)
-    setBusy(false)
-    if (removeError) return setShareError(dbMessage(removeError))
-    await Promise.all([loadPeople(), reload()]) // removing a lead from the team also clears them as lead
+  const openAccess = (projectId: string) => setShareId(projectId)
+  const openBlueprints = (projectId: string) => {
+    rememberProject(projectId)
+    onNavigate("blueprint-upload", `?project=${projectId}`)
   }
 
   // Fills the site coordinates from the phone or laptop the admin is using, standing on the site.
@@ -282,7 +261,7 @@ export default function ProjectManagement(_props: AdminPageProps) {
       <PageIntro
         eyebrow="Projects • Admin"
         title="Project Management"
-        description="Create projects and choose who can see them. Engineers, Foremen and Clients only ever see the projects they are added to."
+        description="Create projects, build each project's team, and choose which blueprint types every Engineer and Foreman can open. Nobody sees a project they are not on."
         action={
           <AdminButton icon="plus" onClick={() => openForm()}>
             New project
@@ -291,32 +270,34 @@ export default function ProjectManagement(_props: AdminPageProps) {
       />
 
       {error || peopleError ? (
-        <div className="mb-3 flex items-center gap-3 rounded-lg bg-danger-soft px-4 py-2 text-sm text-danger-fg">
+        <div role="alert" className="mb-3 flex flex-wrap items-center gap-3 rounded-lg bg-danger-soft px-4 py-2 text-sm text-danger-fg">
           {error || peopleError}
-          <button className="font-bold underline" onClick={() => { void reload(); void loadPeople() }}>Retry</button>
+          <button className="min-h-6 font-bold underline" onClick={() => { void reload(); void loadPeople() }}>Retry</button>
         </div>
       ) : null}
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="mb-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center">
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search by code, name, location or client..."
+          placeholder="Search by code, name, location or client"
           aria-label="Search projects"
-          className="min-w-[240px] flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg"
+          className="min-h-10 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg"
         />
-        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as ProjectStatus | "all")} aria-label="Filter by status" className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg">
-          <option value="all">All statuses</option>
-          {(Object.keys(statusLabels) as ProjectStatus[]).map((key) => (
-            <option key={key} value={key}>{statusLabels[key]}</option>
-          ))}
-        </select>
-        <select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} aria-label="Sort projects" className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg">
-          <option value="newest">Newest first</option>
-          <option value="name">Name A-Z</option>
-          <option value="status">Status</option>
-        </select>
-        <span className="text-sm text-fg-muted">{visible.length} of {projects.length}</span>
+        <div className="grid grid-cols-2 gap-2 sm:contents">
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as ProjectStatus | "all")} aria-label="Filter by status" className="min-h-10 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg">
+            <option value="all">All statuses</option>
+            {(Object.keys(statusLabels) as ProjectStatus[]).map((key) => (
+              <option key={key} value={key}>{statusLabels[key]}</option>
+            ))}
+          </select>
+          <select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} aria-label="Sort projects" className="min-h-10 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg">
+            <option value="newest">Newest first</option>
+            <option value="name">Name A-Z</option>
+            <option value="status">Status</option>
+          </select>
+        </div>
+        <span className="text-sm text-fg-muted sm:whitespace-nowrap" aria-live="polite">{visible.length} of {projects.length}</span>
       </div>
 
       {loading ? <SkeletonCardGrid count={6} /> : null}
@@ -337,13 +318,10 @@ export default function ProjectManagement(_props: AdminPageProps) {
             onOpen={() => openProject("admin", project.id)}
             actions={
               <>
-                <button className="rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-bold text-fg shadow-sm hover:border-brand/50 hover:text-brand-text" onClick={() => openForm(project)}>
-                  Edit
-                </button>
-                <button className="rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-bold text-fg shadow-sm hover:border-brand/50 hover:text-brand-text" onClick={() => { setShareError(""); setShareQuery(""); setShareId(project.id) }}>
-                  Manage access
-                </button>
-                <button className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-danger-fg hover:bg-danger-soft" onClick={() => void removeProject(project)} aria-label={`Delete ${project.code}`}>
+                <button type="button" className={cardAction} onClick={() => openForm(project)} aria-label={`Edit details of ${project.code}`}>Details</button>
+                <button type="button" className={cardAction} onClick={() => openAccess(project.id)} aria-label={`Team and access of ${project.code}`}>Team & access</button>
+                <button type="button" className={cardAction} onClick={() => openBlueprints(project.id)} aria-label={`Blueprints of ${project.code}`}>Blueprints</button>
+                <button type="button" className="inline-flex min-h-8 items-center rounded-lg px-2.5 text-xs font-bold text-danger-fg hover:bg-danger-soft" onClick={() => void removeProject(project)} aria-label={`Delete ${project.code}`}>
                   Delete
                 </button>
               </>
@@ -353,39 +331,80 @@ export default function ProjectManagement(_props: AdminPageProps) {
       </div>
 
       {form ? (
-        <Modal title={form.id ? "Edit project" : "New project"} onClose={() => setForm(null)}>
-          <form className="space-y-3" noValidate onSubmit={(event) => void saveProject(event)}>
+        <Modal title={form.id ? `Edit ${form.code || "project"}` : "New project"} size="lg" onClose={() => setForm(null)}>
+          <form className="space-y-4" noValidate onSubmit={(event) => void saveProject(event)}>
             {formError ? <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-fg">{formError}</p> : null}
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-sm font-semibold">
-                Code *
-                <input className={field} maxLength={30} placeholder="VCB-024" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
-                {errorText("code")}
-              </label>
-              <label className="block text-sm font-semibold">
-                Client
-                <input className={field} placeholder="William Brothers Manila" value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })} />
-                {errorText("client_name")}
-              </label>
-            </div>
-            <label className="block text-sm font-semibold">
-              Project name *
-              <input className={field} maxLength={120} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-              {errorText("name")}
-            </label>
-            <label className="block text-sm font-semibold">
-              Location
-              <input className={field} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
-              {errorText("location")}
-            </label>
             <fieldset className="space-y-3 rounded-xl border border-line p-3">
-              <legend className="px-1 text-xs font-bold uppercase tracking-wider text-brand-text">Who takes care of this project</legend>
+              <legend className={legend}>Project</legend>
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]">
+                <label className="block text-sm font-semibold">
+                  Code *
+                  <input className={field} maxLength={30} placeholder="VCB-024" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
+                  {errorText("code")}
+                </label>
+                <label className="block text-sm font-semibold">
+                  Project name *
+                  <input className={field} maxLength={120} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                  {errorText("name")}
+                </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-sm font-semibold">
+                  Client
+                  <input className={field} placeholder="William Brothers Manila" value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })} />
+                  {errorText("client_name")}
+                </label>
+                <label className="block text-sm font-semibold">
+                  Location
+                  <input className={field} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
+                  {errorText("location")}
+                </label>
+              </div>
+              <label className="block text-sm font-semibold">
+                Description
+                <textarea className={field} rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              </label>
+            </fieldset>
+
+            <fieldset className="space-y-3 rounded-xl border border-line p-3">
+              <legend className={legend}>Schedule</legend>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-sm font-semibold">
+                  Phase
+                  <select className={field} value={form.phase} onChange={(e) => setForm({ ...form, phase: e.target.value as ProjectPhase })}>
+                    {(Object.keys(phaseLabels) as ProjectPhase[]).map((phase) => (
+                      <option key={phase} value={phase}>{phaseLabels[phase]}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm font-semibold">
+                  Status
+                  <select className={field} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as ProjectStatus })}>
+                    {(Object.keys(statusLabels) as ProjectStatus[]).map((status) => (
+                      <option key={status} value={status}>{statusLabels[status]}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm font-semibold">
+                  Start date
+                  <input className={field} type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
+                </label>
+                <label className="block text-sm font-semibold">
+                  End date
+                  <input className={field} type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} />
+                  {errorText("end_date")}
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset className="space-y-3 rounded-xl border border-line p-3">
+              <legend className={legend}>Who takes care of this project</legend>
               <label className="block text-sm font-semibold">
                 Person in charge (any name)
                 <input className={field} maxLength={120} placeholder="e.g. Mr. Roxan Valencia (no login needed)" value={form.manager_name} onChange={(e) => setForm({ ...form, manager_name: e.target.value })} />
                 {errorText("manager_name")}
               </label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm font-semibold">
                   Engineer in charge
                   <select className={field} value={form.lead_engineer_id} onChange={(e) => setForm({ ...form, lead_engineer_id: e.target.value })}>
@@ -405,15 +424,17 @@ export default function ProjectManagement(_props: AdminPageProps) {
                   </select>
                 </label>
               </div>
-              <p className="text-xs text-fg-muted">The engineer and foreman you pick are added to the project team automatically.</p>
+              <p className="text-xs text-fg-muted">They join the project team automatically. Choose their blueprint types in Team & access.</p>
             </fieldset>
+
             <fieldset className="rounded-xl border border-line p-3">
-              <legend className="px-1 text-xs font-bold uppercase tracking-wider text-brand-text">Scope of work</legend>
-              <div className="flex flex-wrap gap-4">
+              <legend className={legend}>Scope of work</legend>
+              <div className="flex flex-wrap gap-x-5 gap-y-2">
                 {(Object.keys(disciplineLabels) as Discipline[]).map((discipline) => (
-                  <label key={discipline} className="flex items-center gap-2 text-sm">
+                  <label key={discipline} className="flex min-h-8 items-center gap-2 text-sm">
                     <input
                       type="checkbox"
+                      className="h-4 w-4"
                       checked={form.disciplines.includes(discipline)}
                       onChange={(e) =>
                         setForm({
@@ -429,125 +450,43 @@ export default function ProjectManagement(_props: AdminPageProps) {
                 ))}
               </div>
             </fieldset>
-            <label className="block text-sm font-semibold">
-              Description
-              <textarea className={field} rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-sm font-semibold">
-                Phase
-                <select className={field} value={form.phase} onChange={(e) => setForm({ ...form, phase: e.target.value as ProjectPhase })}>
-                  {(Object.keys(phaseLabels) as ProjectPhase[]).map((phase) => (
-                    <option key={phase} value={phase}>{phaseLabels[phase]}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-sm font-semibold">
-                Status
-                <select className={field} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as ProjectStatus })}>
-                  {(Object.keys(statusLabels) as ProjectStatus[]).map((status) => (
-                    <option key={status} value={status}>{statusLabels[status]}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-sm font-semibold">
-                Start date
-                <input className={field} type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
-              </label>
-              <label className="block text-sm font-semibold">
-                End date
-                <input className={field} type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} />
-                {errorText("end_date")}
-              </label>
-            </div>
-            <fieldset className="rounded-xl border border-line p-3">
-              <legend className="px-1 text-sm font-bold">Site location <span className="font-normal text-fg-muted">(optional)</span></legend>
-              <p className="text-xs text-fg-muted">When set, every photo added on site is checked against it: the phone's position must be within the radius. Photos are never blocked; they are marked "At the site" or "Away from site". Stand on the site and press the button, or type the coordinates.</p>
-              <div className="mt-2 grid gap-3 sm:grid-cols-3">
+
+            <fieldset className="space-y-2 rounded-xl border border-line p-3">
+              <legend className={legend}>Site location (optional)</legend>
+              <p className="text-xs text-fg-muted">Photos taken on site are compared with this point and radius and marked "At the site" or "Away from site". They are never blocked.</p>
+              <div className="grid gap-3 sm:grid-cols-3">
                 <label className="block text-sm font-semibold">Latitude<input className={field} inputMode="decimal" value={form.site_lat} onChange={(e) => setForm({ ...form, site_lat: e.target.value })} placeholder="14.676000" /></label>
                 <label className="block text-sm font-semibold">Longitude<input className={field} inputMode="decimal" value={form.site_lng} onChange={(e) => setForm({ ...form, site_lng: e.target.value })} placeholder="120.983000" /></label>
                 <label className="block text-sm font-semibold">Radius (metres)<input className={field} inputMode="numeric" value={form.site_radius_m} onChange={(e) => setForm({ ...form, site_radius_m: e.target.value })} /></label>
               </div>
               {errorText("site_lat")}
               {errorText("site_radius_m")}
-              <button type="button" className="mt-2 text-sm font-bold text-brand-text hover:underline" onClick={() => void fillFromHere()}>Use my current location</button>
+              <button type="button" className="min-h-8 text-sm font-bold text-brand-text hover:underline" onClick={() => void fillFromHere()}>Use my current location</button>
             </fieldset>
-            <div className="flex items-center justify-between pt-2">
+
+            <div className="flex flex-col-reverse gap-2 border-t border-line pt-3 sm:flex-row sm:items-center sm:justify-between">
               {form.id ? (
-                <button type="button" className="text-sm font-semibold text-brand-text hover:underline" onClick={() => { setShareError(""); setShareQuery(""); setShareId(form.id!); setForm(null) }}>
-                  Manage access
+                <button type="button" className={buttonSecondary} onClick={() => { openAccess(form.id!); setForm(null) }}>
+                  Team & access
                 </button>
-              ) : <span />}
-              <AdminButton type="submit">{busy ? "Saving..." : form.id ? "Save changes" : "Create project"}</AdminButton>
+              ) : <span className="hidden sm:block" />}
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                <button type="button" className={buttonSecondary} onClick={() => setForm(null)}>Cancel</button>
+                <button type="submit" className={buttonPrimary} disabled={busy}>{busy ? "Saving..." : form.id ? "Save changes" : "Create project"}</button>
+              </div>
             </div>
           </form>
         </Modal>
       ) : null}
 
       {shareProject ? (
-        <Modal title={`Manage access: ${shareProject.code}`} onClose={() => setShareId(null)}>
-          <div className="space-y-4">
-            <p className="text-sm text-fg-muted">{shareProject.name}</p>
-            {shareError ? <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-fg">{shareError}</p> : null}
-            <div>
-              <input
-                value={shareQuery}
-                onChange={(event) => setShareQuery(event.target.value)}
-                placeholder="Add engineers, foremen or clients by name or email"
-                aria-label="Add people"
-                className={field}
-              />
-              {shareQuery.trim() || suggestions.length ? (
-                <ul className="mt-1 max-h-48 overflow-y-auto rounded-lg border border-line">
-                  {suggestions.length === 0 ? (
-                    <li className="px-3 py-2 text-sm text-fg-muted">No active people to add.</li>
-                  ) : (
-                    suggestions.map((person) => (
-                      <li key={person.id}>
-                        <button type="button" disabled={busy} onClick={() => void addAccess(person)} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-surface-muted disabled:opacity-60">
-                          <span>
-                            <strong className="text-fg">{displayName(person)}</strong>
-                            <span className="block text-xs text-fg-muted">{person.email}</span>
-                          </span>
-                          <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-semibold text-brand-text">{person.role ? roleLabel[person.role as ProjectMember["member_role"]] : ""}</span>
-                        </button>
-                      </li>
-                    ))
-                  )}
-                </ul>
-              ) : null}
-            </div>
-            <div>
-              <h3 className="mb-1 text-sm font-bold text-brand-text">People with access ({shareMembers.length})</h3>
-              {shareMembers.length === 0 ? (
-                <p className="text-sm text-fg-muted">Nobody yet. Only administrators can see this project.</p>
-              ) : (
-                <ul className="divide-y divide-line rounded-lg border border-line">
-                  {shareMembers.map((member) => {
-                    const person = peopleById.get(member.user_id)
-                    return (
-                      <li key={member.user_id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-                        <span>
-                          <strong className="text-fg">{displayName(person)}</strong>
-                          <span className="block text-xs text-fg-muted">{person?.email}</span>
-                        </span>
-                        <span className="flex items-center gap-2">
-                          <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-semibold text-brand-text">{roleLabel[member.member_role]}</span>
-                          <button type="button" disabled={busy} onClick={() => void removeAccess(member.user_id)} className="rounded px-2 py-0.5 text-xs font-semibold text-danger-fg hover:bg-danger-soft disabled:opacity-60" aria-label={`Remove ${displayName(person)}`}>
-                            Remove
-                          </button>
-                        </span>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </div>
-            <div className="text-right">
-              <AdminButton onClick={() => setShareId(null)}>Done</AdminButton>
-            </div>
-          </div>
-        </Modal>
+        <ProjectAccessDialog
+          project={shareProject}
+          people={people}
+          members={members}
+          onMembersChanged={async () => { await Promise.all([loadPeople(), reload()]) }}
+          onClose={() => setShareId(null)}
+        />
       ) : null}
     </div>
   )

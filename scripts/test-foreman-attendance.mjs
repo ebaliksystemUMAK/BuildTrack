@@ -94,12 +94,17 @@ globalThis.__foremanAttendanceState = {
   directory: { data: { workers: [a, b], total: 2 }, error: "", loading: false },
   records: { data: day, error: "", loading: false },
   detail: { data: detail, error: "", loading: false },
+  // Daily time record from attendance_daily_status (one row per worker for the day).
+  status: { data: [
+    { day: "2026-01-02", worker_id: a.id, full_name: a.full_name, worker_code: a.worker_code, trade: a.trade, time_in: "2026-01-02T00:12:00Z", time_out: "2026-01-02T08:30:00Z", status: "late", late_minutes: 12, early_minutes: 30 },
+    { day: "2026-01-02", worker_id: b.id, full_name: b.full_name, worker_code: b.worker_code, trade: b.trade, time_in: null, time_out: null, status: "absent", late_minutes: null, early_minutes: null },
+  ], error: "", loading: false },
 }
-const mockData = url("export const useAttendanceWorkers=(...a)=>{globalThis.__foremanAttendanceState.directoryArgs=a;return globalThis.__foremanAttendanceState.directory};export const useDailyAttendance=(...a)=>{globalThis.__foremanAttendanceState.recordsArgs=a;return globalThis.__foremanAttendanceState.records};export const useWorkerAttendance=(...a)=>{globalThis.__foremanAttendanceState.detailArgs=a;return globalThis.__foremanAttendanceState.detail};")
+const mockData = url("export const useAttendanceWorkers=(...a)=>{globalThis.__foremanAttendanceState.directoryArgs=a;return globalThis.__foremanAttendanceState.directory};export const useDailyAttendance=(...a)=>{globalThis.__foremanAttendanceState.recordsArgs=a;return globalThis.__foremanAttendanceState.records};export const useWorkerAttendance=(...a)=>{globalThis.__foremanAttendanceState.detailArgs=a;return globalThis.__foremanAttendanceState.detail};export const useDailyStatus=(...a)=>{globalThis.__foremanAttendanceState.statusArgs=a;return globalThis.__foremanAttendanceState.status};")
 const modal = url("export default function Modal(){return null}")
 const reportButton = url("export default function ReportButton(){return null}")
 const { default: ReportButton } = await import(reportButton)
-const { exports: UI, module: uiModule } = await compile("../src/components/attendance/ForemanWorkerAttendance.tsx", { react: hooks, "../../lib/attendanceModel": model, "../../lib/foremanAttendanceModel": helper, "../../lib/attendanceScheduleModel": new URL("../src/lib/attendanceScheduleModel.ts", import.meta.url).href, "../../lib/foremanAttendance": mockData, "../Modal": modal, "./WorkerPortrait": url("export default function Portrait(){return null}"), "./AttendanceReportButton": reportButton })
+const { exports: UI, module: uiModule } = await compile("../src/components/attendance/ForemanWorkerAttendance.tsx", { react: hooks, "../../lib/attendanceModel": model, "../../lib/foremanAttendanceModel": helper, "../../lib/attendanceStatusModel": new URL("../src/lib/attendanceStatusModel.ts", import.meta.url).href, "../../lib/attendanceScheduleModel": new URL("../src/lib/attendanceScheduleModel.ts", import.meta.url).href, "../../lib/foremanAttendance": mockData, "../Modal": modal, "./WorkerPortrait": url("export default function Portrait(){return null}"), "./AttendanceReportButton": reportButton })
 const originalWindow = globalThis.window
 globalThis.window = { setInterval: () => 1, clearInterval() {} }
 const all = node => Array.isArray(node) ? node.flatMap(all) : node && typeof node === "object" ? [node, ...all(node.props?.children)] : []
@@ -135,6 +140,18 @@ find(node => node.type === UI.ProjectAttendanceRecords).props.onWorker(a)
 render(UI.default, { projectId: "project", projectName: "Test project" })
 assert.equal(find(node => node.type === UI.WorkerAttendanceDetails).props.initialDay, "2026-01-02")
 find(node => node.type === UI.WorkerAttendanceDetails).props.onClose(); render(UI.default, { projectId: "project", projectName: "Test project" })
+// Records tab: Daily attendance (time in, time out, status) above the scan records.
+const statusPick = {}
+render(UI.ProjectAttendanceRecords, { projectId: "project", day: "2026-01-02", today: "2026-01-03", page: 0, onDay() {}, onPage() {}, onWorker: value => { statusPick.worker = value } })
+assert.deepEqual(globalThis.__foremanAttendanceState.statusArgs, ["project", "2026-01-02"])
+const statusTable = UI.DailyAttendanceTable(find(node => node.type === UI.DailyAttendanceTable).props)
+assert.equal(all(statusTable).find(node => node.type === "table").props["aria-label"], "Daily attendance")
+assert.deepEqual(all(statusTable).filter(node => node.type === "th").map(text), ["Worker", "Time in", "Time out", "Status", "Undertime"])
+assert.match(text(statusTable), /Late 12 min/); assert.match(text(statusTable), /Absent/); assert.match(text(statusTable), /Early out 30 min/)
+assert.match(text(tree), /On time 0 · Late 1 · Absent 1/); assert.doesNotMatch(text(tree), /Not in yet/, "Only for today")
+assert.doesNotMatch(text(tree), /Clock in|Clock out/)
+all(statusTable).find(node => node.type === "button" && text(node).startsWith(b.full_name)).props.onClick()
+assert.equal(statusPick.worker.id, b.id, "A status row opens that worker")
 assert.ok(!all(tree).some(node => node.type === UI.WorkerAttendanceDetails))
 
 reset()
@@ -160,7 +177,8 @@ const detailProps = { projectId: "project", worker: a, initialDay: "2026-01-02",
 render(UI.WorkerAttendanceDetails, detailProps)
 assert.match(text(tree), /Attendance summary/)
 assert.match(text(tree), /09123456789/); assert.match(text(tree), /worker@example.com/)
-assert.match(text(tree), /Clock-ins31/); assert.match(text(tree), /Clock-outs30/)
+assert.match(text(tree), /Time in/); assert.match(text(tree), /StatusLate 12 min/); assert.match(text(tree), /UndertimeEarly out 30 min/)
+assert.doesNotMatch(text(tree), /Clock/, "Time in / Time out wording only")
 assert.equal(find(node => node.type === ReportButton).props.workerId, a.id)
 assert.equal(find(node => node.type === ReportButton).props.anchorDay, "2026-01-02")
 assert.equal(all(tree).filter(node => node.type === "input" || node.type === "form").length, 0, "Profile fields are not editable")
@@ -222,7 +240,7 @@ globalThis.__attendanceResource = {
 const resource = await compile("../src/lib/foremanAttendance.ts", {
   react: resourceHooks,
   "./supabase": url("export const supabase=globalThis.__attendanceResource"),
-  "./foremanAttendanceData": url("export const loadAttendanceWorkers=(...a)=>globalThis.__attendanceResource.load(...a);export const loadDailyAttendance=(...a)=>globalThis.__attendanceResource.load(...a);export const loadWorkerAttendance=(...a)=>globalThis.__attendanceResource.load(...a);"),
+  "./foremanAttendanceData": url("export const loadAttendanceWorkers=(...a)=>globalThis.__attendanceResource.load(...a);export const loadDailyAttendance=(...a)=>globalThis.__attendanceResource.load(...a);export const loadWorkerAttendance=(...a)=>globalThis.__attendanceResource.load(...a);export const loadDailyStatus=(...a)=>globalThis.__attendanceResource.load(...a);"),
 })
 let resourceValue
 function renderResource(project) {

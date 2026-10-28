@@ -10,7 +10,7 @@ export type LiveTable =
   | "blueprints" | "blueprint_revisions" | "site_issue_reports" | "site_issue_photos" | "site_issue_photo_revisions"
   | "pins" | "pin_events" | "pin_photos" | "pin_checklist_items" | "daily_report_photos"
   | "qa_inspections" | "qa_inspection_items" | "qa_defects" | "qa_defect_events" | "qa_photos"
-  | "client_snags" | "snag_photos" | "daily_reports" | "project_questions" | "notifications"
+  | "client_snags" | "snag_photos" | "daily_reports" | "project_questions" | "notifications" | "site_visit_requests"
   | "daily_report_revisions" | "biometric_daily_totals" | "biometric_attendance_events"
   | "qa_work_attempts" | "qa_inspection_events" | "pin_qa_submissions"
 

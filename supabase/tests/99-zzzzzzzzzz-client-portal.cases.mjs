@@ -72,7 +72,7 @@ export default async function ({ db, ids, as, asOwner, addUser, test, expectFail
   await test("Client portal: pin-linked daily reports and their photos become visible only after Foreman submission", async () => {
     await as("portalFore")
     report = (await db.query("insert into public.daily_reports(project_id,report_date,work_done,linked_work) values($1,(now() at time zone 'Asia/Manila')::date,'Kitchen progress',$2::jsonb) returning id", [project, JSON.stringify([{ pin_id: pin, item_id: null }])])).rows[0].id
-    await db.query("insert into public.daily_report_photos(project_id,report_id,path) values($1,$2,$3)", [project, report, `${project}/${report}/progress.jpg`])
+    await db.query("insert into public.daily_report_photos(project_id,report_id,path,taken_at,capture_source) values($1,$2,$3,now(),'camera')", [project, report, `${project}/${report}/progress.jpg`])
     await as("portalClient")
     assert.equal((await db.query("select * from public.daily_reports where id=$1", [report])).rows.length, 0)
     assert.equal((await db.query("select * from public.daily_report_photos where report_id=$1", [report])).rows.length, 0)

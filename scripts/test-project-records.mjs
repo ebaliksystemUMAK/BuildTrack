@@ -93,6 +93,19 @@ render(reports.useQuestions, "B"); await tick(); const newQuestion = requests[1]
 oldQuestion.resolve({ data: [{ id: "old" }], error: null }); await tick(); render(reports.useQuestions, "B"); assert.equal(result.questions.length, 0)
 newQuestion.resolve({ data: [{ id: "new" }], error: null }); await tick(); render(reports.useQuestions, "B"); assert.equal(result.questions[0].id, "new")
 
+reset(); const Headcount = (await compile("../src/lib/reportAttendance.ts")).useReportAttendance
+render(() => Headcount("A", "2026-10-21")); const oldCount = requests[0]
+assert.deepEqual(oldCount.args, { p_project: "A", p_day: "2026-10-21" })
+render(() => Headcount("A", "2026-10-20")); assert.equal(result.count, null); assert.equal(result.loading, true)
+const currentCount = requests[1]
+oldCount.resolve({ data: 99, error: null }); await tick(); render(() => Headcount("A", "2026-10-20")); assert.equal(result.count, null)
+currentCount.resolve({ data: 7, error: null }); await tick(); render(() => Headcount("A", "2026-10-20")); assert.equal(result.count, 7)
+assert.ok(live.at(-1).sources.some(source => source.table === "biometric_attendance_events"))
+const countRetry = result.reload(); requests.at(-1).resolve({ data: null, error: { message: "offline" } }); await countRetry
+render(() => Headcount("A", "2026-10-20")); assert.equal(result.count, null); assert.match(result.error, /Could not load/)
+const beforeHistorical = requests.length
+render(() => Headcount("A", "2026-10-20", false)); assert.equal(result.loading, false); assert.equal(requests.length, beforeHistorical, "Historical reports never substitute live headcounts")
+
 reset(); const projects = await compile("../src/lib/projects.ts")
 render(projects.useProjectTeam, "A"); const oldTeam = requests[0]
 render(projects.useProjectTeam, "B"); assert.equal(result.team.length, 0)
@@ -136,6 +149,7 @@ document.hidden = false; documentEvents.get("visibilitychange")(); assert.equal(
 reset(); assert.ok(cleared); assert.equal(windowEvents.size, 0); assert.equal(documentEvents.size, 0)
 
 const pin = { id: "pin", project_id: "A", blueprint_id: "sheet", title: "Kitchen", category: "progress", status: "in_progress", assigned_to: "foreman" }
+let reportHeadcount = { count: 0, loading: false, error: "", reload: async () => {} }
 const item = { id: "floor", pin_id: "pin", text: "FLOOR", review_status: "verified", position: 0 }
 records[0].linked_work = [{ pin_id: "pin", item_id: "floor" }]
 Object.assign(globalThis.__recordDeps, {
@@ -147,6 +161,7 @@ Object.assign(globalThis.__recordDeps, {
   useToast: () => ({ error() {}, success() {} }), useConfirm: () => async () => true,
   followLink: (...args) => { globalThis.__lastReportLink = args },
   useAuth: () => ({ profile: { id: "foreman" } }), useProject: () => ({ project: { id: "A" } }), useProjectPins: () => ({ pins: [pin] }),
+  useReportAttendance: () => reportHeadcount,
 })
 const Engineer = (await compile("../src/pages/Engineer/EngineerReports.tsx")).default
 render(Engineer, { onNavigate() {} }); render(Engineer, { onNavigate() {} })
@@ -176,7 +191,18 @@ const Foreman = (await compile("../src/pages/Foreman/ForemanDailyProgressReport.
 for (let n = 0; n < 3; n++) render(Foreman, {})
 assert.match(text(tree), /2026-09-01/)
 assert.match(text(tree), /Historical report.*Read only/)
-assert.ok(!all(tree).some(node => node.type === "button" && text(node) === "Submit report"))
+assert.ok(!all(tree).some(node => node.type === "button" && text(node) === "Submit daily progress report"))
+assert.equal(find(node => node.props?.["aria-label"] === "Biometric worker headcount").props.value, archived.workers_count, "Historical headcount is preserved")
+reset(); globalThis.__recordDeps.useDailyReports = () => ({ reports: [], loading: false, reload: async () => {} })
+// Recompile to bind the new report source; the component uses a read-only biometric count, never a typed value.
+const EditableForeman = (await compile("../src/pages/Foreman/ForemanDailyProgressReport.tsx")).default
+window.location.search = "?project=A"; reportHeadcount = { ...reportHeadcount, count: 7 }
+render(EditableForeman, {}); render(EditableForeman, {})
+const countInput = find(node => node.props?.["aria-label"] === "Biometric worker headcount")
+assert.equal(countInput.props.value, 7); assert.equal(countInput.props.readOnly, true); assert.equal(countInput.props.onChange, undefined)
+reportHeadcount = { ...reportHeadcount, count: null, error: "Could not load biometric headcount" }
+render(EditableForeman, {})
+assert.equal(find(node => node.type === "button" && text(node) === "Submit daily progress report").props.disabled, true)
 reset(); globalThis.window = originalWindow; globalThis.document = originalDocument
 delete globalThis.__recordHooks; delete globalThis.__recordDeps; delete globalThis.__lastReportLink
 console.log("Project report pagination/scope/races, team refresh/error guards, reconnect polling, linked checklist status, report filters/privacy/deep links, real attendance reconciliation and historical Foreman reports passed")

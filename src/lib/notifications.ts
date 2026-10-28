@@ -116,6 +116,10 @@ export function timeAgo(iso: string, now = Date.now()): string {
 
 // Visual hint per notification kind: a short label and a tone class pair (semantic colours only).
 export const notificationKinds: Record<string, { label: string; tone: string }> = {
+  "visit.requested": { label: "Site visit", tone: "bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-100" },
+  "visit.confirmed": { label: "Visit confirmed", tone: "bg-green-100 text-green-900 dark:bg-green-900/30 dark:text-green-100" },
+  "visit.declined": { label: "Visit response", tone: "bg-red-100 text-red-900 dark:bg-red-900/30 dark:text-red-100" },
+  "visit.cancelled": { label: "Visit cancelled", tone: "bg-surface-muted text-fg-muted" },
   "access.request": { label: "Request", tone: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200" },
   "access.declined": { label: "Access", tone: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200" },
   "access.granted": { label: "Access", tone: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200" },

@@ -284,9 +284,11 @@ try {
     assert.equal(app.state.page, "valencia")
     assert.equal(app.render().type.name, "ErrorBoundary", "Static company route must not wait for an account guard")
   }
-  window.location.pathname = "/engineer/verification"
+  updateLocation("/engineer/verification?project=one&item=work-one")
   const protectedApp = new App({})
-  assert.equal(protectedApp.state.page, "engineer/verification")
+  assert.equal(protectedApp.state.page, "engineer/qa")
+  assert.equal(window.location.pathname, "/engineer/qa", "Old review links land in the QA register")
+  assert.equal(window.location.search, "?project=one&item=work-one", "Redirect preserves the linked checklist and project")
   assert.equal(protectedApp.render().type.name, "RouteGuard", "Workspace routes must remain protected")
   const css = readFileSync(new URL("../src/pages/Public/valencia.css", import.meta.url), "utf8")
   assert.match(css, /max-width: 720px/)

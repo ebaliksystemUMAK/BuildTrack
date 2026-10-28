@@ -34,7 +34,7 @@ export default function WorkSubmissionEvidence({ record }: { record: ReturnType<
   if (!submission) return null
   return <section className="space-y-3 rounded-xl border border-line p-3">
     <h3 className="font-bold">Foreman submission — {submission.item_ids ? `${submission.item_ids.length} checklist item(s) for review` : submission.all_complete ? "complete checklist" : "partial checklist"}</h3>
-    <p className="text-xs text-fg-muted">Submitted {formatStamp(submission.submitted_at)}. This immutable snapshot is evidence, not an Engineer Pass. Inspect against approved drawings, project specifications and the configured criteria below.</p>
+    <p className="text-xs text-fg-muted">Submitted {formatStamp(submission.submitted_at)}. This immutable snapshot is evidence, not an Engineer Pass. Inspect against approved drawings, project specifications and the configured criteria in the Checklist tab.</p>
     {groups.length>1 ? <label className="block space-y-1 text-xs font-bold">Checklist name<select className={inputClass} aria-label="Filter submission evidence by checklist name" value={filter} onChange={event=>setFilter(event.target.value)}><option value="">All checklist names</option>{groups.map(group=><option key={group.key} value={group.key}>{group.name}</option>)}</select></label> : null}
     {shownGroups.map(group=>{
       const items=submittedChecklistItems(submission,undefined,group.key)

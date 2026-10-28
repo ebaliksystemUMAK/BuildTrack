@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import DefectDetail from "./DefectDetail"
 import InspectionDetail from "./InspectionDetail"
 import NewDefectModal from "./NewDefectModal"
@@ -12,14 +12,15 @@ import { allDates, isFiltered, pastPresets, rangeProblem, rangeSearch, rangeText
 import type { Defect, Template } from "../../lib/qa"
 import type { QaWorkspace } from "../../lib/qaWorkspace"
 
-export type QaTab = "overview" | "inspections" | "defects" | "snags" | "checklists"
-const tabNames: Record<QaTab, string> = { overview: "Overview", inspections: "Inspections", defects: "NCR register", snags: "Client reports", checklists: "Inspection criteria" }
+export type QaTab = "overview" | "inspections" | "defects" | "snags" | "checklists" | "complete" | "completed"
+type WorkTabs = Partial<Record<"complete" | "completed", { count: number; content: ReactNode }>>
+const tabNames: Record<QaTab, string> = { overview: "Overview", inspections: "Inspections", defects: "NCR register", snags: "Client reports", checklists: "Inspection criteria", complete: "Complete checklist", completed: "Completed" }
 // One calendar range for the Overview and registers; each record uses its requested / raised / reported Manila day.
 const datedTabs: Partial<Record<QaTab, { label: string; noun: string }>> = { overview: { label: "Overview", noun: "Overview for" }, inspections: { label: "Requested", noun: "Inspections requested" }, defects: { label: "Raised", noun: "NCRs raised" }, snags: { label: "Reported", noun: "Client reports made" } }
 
 // The shared QA workspace. The Engineer page shows all four tabs; the Foreman's pages show one tab each (inspection requests,
 // the defects assigned to them, the checklists they will be inspected against). The database decides who may do what.
-export default function QaView({ ws, mode, tabs, canEditLibrary = false, inspectionKind, defectScope, dateFilter = false }: { ws: QaWorkspace; mode: QaMode; tabs: QaTab[]; canEditLibrary?: boolean; inspectionKind?: InspectionKind; defectScope?: (defect: Defect) => boolean; dateFilter?: boolean }) {
+export default function QaView({ ws, mode, tabs, canEditLibrary = false, inspectionKind, defectScope, dateFilter = false, workTabs }: { ws: QaWorkspace; mode: QaMode; tabs: QaTab[]; canEditLibrary?: boolean; inspectionKind?: InspectionKind; defectScope?: (defect: Defect) => boolean; dateFilter?: boolean; workTabs?: WorkTabs }) {
   const [search, setSearch] = useState(window.location.search)
   useEffect(() => { const changed = () => setSearch(window.location.search); window.addEventListener("popstate", changed); return () => window.removeEventListener("popstate", changed) }, [])
   const params = new URLSearchParams(search)
@@ -67,9 +68,12 @@ export default function QaView({ ws, mode, tabs, canEditLibrary = false, inspect
   const inspection = ws.inspections.find((row) => row.id === inspectionId) ?? null
   const defect = ws.defects.find((row) => row.id === defectId) ?? null
   const engineer = mode === "engineer"
+  // Per-type access (20261028130000): records of a View only type stay readable, without action buttons.
+  const actOn = (record: { pin_id?: string | null; inspection_id?: string | null }) => ws.canActOn?.(record) ?? true
+  const holdsWork = ws.holdsAnyWork ?? true
   const waiting = ws.inspections.filter((row) => row.status === "requested" || row.status === "in_progress").length
   const open = ws.defects.filter((row) => row.status !== "closed").length
-  const count: Partial<Record<QaTab, number>> = { inspections: waiting, defects: open, snags: snagData.snags.filter((row) => row.status === "submitted").length }
+  const count: Partial<Record<QaTab, number>> = { inspections: waiting, defects: open, snags: snagData.snags.filter((row) => row.status === "submitted").length, complete: workTabs?.complete?.count, completed: workTabs?.completed?.count }
   const project = ws.project ? { id: ws.project.id, name: ws.project.name, code: ws.project.code, location: ws.project.location } : null
 
   return (
@@ -89,15 +93,16 @@ export default function QaView({ ws, mode, tabs, canEditLibrary = false, inspect
       {dated ? (
         <div className="mb-3 space-y-2 rounded-2xl border border-line bg-surface p-3 shadow-sm">
           <DateRangeFilter label={`${dated.label} date`} range={range} presets={pastPresets} today={ws.today} onChange={changeRange} />
-          <p className="text-xs text-fg-muted">{isFiltered(dates) ? <><span className="font-bold text-fg">{dated.noun} {rangeText(dates)}</span> · Manila time. The same dates apply to the Overview, Inspections (requested), NCR register (raised) and Client reports (reported).</> : "Showing every date. Choose dates to narrow the Overview, Inspections (requested), NCR register (raised) and Client reports (reported)."} Overview figures show the current status of inspections requested and NCRs raised in the period, not a historical snapshot. Tab badges count all dates.</p>
+          <p className="text-xs text-fg-muted">{isFiltered(dates) ? <><span className="font-bold text-fg">{dated.noun} {rangeText(dates)}</span> · Manila time.</> : "Showing every date."} Dates apply to inspections requested, NCRs raised and client reports made.{tabs.includes("overview") ? " Overview figures show the current status of records in the period, not a historical snapshot." : ""} Tab badges count all dates.</p>
         </div>
       ) : null}
 
       {tab === "overview" ? <OverviewPanel ws={ws} mode={mode} dates={dates} onOpenInspection={setInspectionId} onOpenDefect={setDefectId} onGo={(next) => (tabs.includes(next) ? setTab(next) : undefined)} /> : null}
-      {tab === "inspections" ? <InspectionsPanel ws={ws} canRequest kind={inspectionKind} dates={dates} onOpen={setInspectionId} onNew={() => setRequesting(true)} /> : null}
-      {tab === "defects" ? <DefectsPanel ws={ws} mode={mode} scope={defectScope} dates={dates} onOpen={setDefectId} onNew={engineer ? () => setRaising(true) : null} /> : null}
+      {tab === "inspections" ? <InspectionsPanel ws={ws} mode={mode} canRequest={holdsWork} kind={inspectionKind} dates={dates} onOpen={setInspectionId} onNew={() => setRequesting(true)} /> : null}
+      {tab === "defects" ? <DefectsPanel ws={ws} mode={mode} scope={defectScope} dates={dates} onOpen={setDefectId} onNew={engineer && holdsWork ? () => setRaising(true) : null} /> : null}
       {tab === "snags" ? <SnagsPanel snags={snagData.snags} loading={snagData.loading} error={snagData.error} nameOf={ws.nameOf} dates={dates} onOpen={setSnagOpen} /> : null}
       {tab === "checklists" ? <ChecklistsPanel ws={ws} canEdit={engineer && Boolean(ws.projectId)} canEditLibrary={canEditLibrary} onEdit={(template, scope) => setEditing({ template, scope })} /> : null}
+      {tab === "complete" || tab === "completed" ? workTabs?.[tab]?.content : null}
 
       {inspection && project ? (
         <InspectionDetail
@@ -107,8 +112,10 @@ export default function QaView({ ws, mode, tabs, canEditLibrary = false, inspect
           weights={ws.weights}
           threshold={ws.threshold}
           defects={ws.defects}
-          canInspect={engineer}
-          canRequest
+          canInspect={engineer && actOn(inspection)}
+          canRequest={actOn(inspection)}
+          viewOnly={!actOn(inspection)}
+          viewOnlyType={ws.typeLabelOf?.(inspection) ?? null}
           nameOf={ws.nameOf}
           onClose={() => setInspectionId(null)}
           onChanged={ws.reloadAll}
@@ -123,8 +130,10 @@ export default function QaView({ ws, mode, tabs, canEditLibrary = false, inspect
           project={project}
           foremen={ws.foremen}
           today={ws.today}
-          canWork={!engineer}
-          canVerify={engineer}
+          canWork={!engineer && actOn(defect)}
+          canVerify={engineer && actOn(defect)}
+          viewOnly={!actOn(defect)}
+          viewOnlyType={ws.typeLabelOf?.(defect) ?? null}
           nameOf={ws.nameOf}
           onClose={() => setDefectId(null)}
           onChanged={ws.reloadAll}

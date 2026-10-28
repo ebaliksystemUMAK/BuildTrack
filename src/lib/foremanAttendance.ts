@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { supabase } from "./supabase"
-import { loadAttendanceWorkers, loadDailyAttendance, loadWorkerAttendance } from "./foremanAttendanceData"
+import { loadAttendanceWorkers, loadDailyAttendance, loadDailyStatus, loadWorkerAttendance } from "./foremanAttendanceData"
 
 let sequence = 0
 function useAttendanceResource<T>(project: string, key: string, load: () => Promise<T>) {
@@ -57,6 +57,10 @@ export function useAttendanceWorkers(project: string, search: string, page: numb
 export function useDailyAttendance(project: string, day: string, page: number) {
   const load = useCallback(() => loadDailyAttendance(project, day, page), [project, day, page])
   return useAttendanceResource(project, JSON.stringify(["daily", project, day, page]), load)
+}
+export function useDailyStatus(project: string, day: string) {
+  const load = useCallback(() => loadDailyStatus(project, day), [project, day])
+  return useAttendanceResource(project, JSON.stringify(["status", project, day]), load)
 }
 export function useWorkerAttendance(project: string, worker: string, day: string, page: number) {
   const load = useCallback(() => loadWorkerAttendance(project, worker, day, page), [project, worker, day, page])

@@ -10,8 +10,10 @@ import { useToast } from "../../lib/toast"
 import type { ClientPageProps } from "./types"
 import { clientPinPath, openClientPath } from "../../lib/clientPortalModel"
 import { useAuth } from "../../lib/auth"
+import SiteVisitsPanel from "../../components/SiteVisitsPanel"
 
 const when = (iso: string) => new Date(iso).toLocaleString("en-PH", { timeZone: "Asia/Manila", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })
+const readTab = () => new URLSearchParams(window.location.search).get("tab") === "visits" ? "visits" : "questions"
 
 // Ask the project team a question (about the project or one work item). The engineer answers here and you get a notification.
 export default function ClientCommunication(_: ClientPageProps) {
@@ -21,6 +23,7 @@ export default function ClientCommunication(_: ClientPageProps) {
   const { questions, loading, error, reload } = useQuestions(projectId)
   const toast = useToast()
   const [text, setText] = useState("")
+  const [tab, setTab] = useState<"questions" | "visits">(readTab)
   const [pinId, setPinId] = useState(() => new URLSearchParams(window.location.search).get("pin") ?? "")
   const [wanted, setWanted] = useState(() => new URLSearchParams(window.location.search).get("question"))
   const [problem, setProblem] = useState("")
@@ -29,7 +32,7 @@ export default function ClientCommunication(_: ClientPageProps) {
   const pins = work.pins.filter((pin) => pin.category !== "note")
   const mine = questions.filter(question => question.project_id === projectId && question.author_id === profile?.id)
   useEffect(() => {
-    const changed = () => { setWanted(new URLSearchParams(window.location.search).get("question")); setPinId(new URLSearchParams(window.location.search).get("pin") ?? "") }
+    const changed = () => { setWanted(new URLSearchParams(window.location.search).get("question")); setPinId(new URLSearchParams(window.location.search).get("pin") ?? ""); setTab(readTab()) }
     window.addEventListener("popstate", changed)
     return () => window.removeEventListener("popstate", changed)
   }, [])
@@ -60,9 +63,13 @@ export default function ClientCommunication(_: ClientPageProps) {
   return (
     <div className="client-page">
       <ProjectContextBar listPath="/client/overview" listLabel="Overview" />
-      <PageHead eyebrow="Communication" title="Ask the team" description="Questions go to the project engineers. Their answers appear below and you get a notification." />
+      <PageHead eyebrow="Client portal" title="Communication" description="Ask the project engineers a question or request a site visit. Responses and confirmations appear here." />
       {!projectId ? null : (
         <>
+          <div role="tablist" aria-label="Communication" className="mb-5 inline-flex max-w-full flex-wrap gap-1 rounded-xl border border-line bg-surface p-1 shadow-sm">
+            {([ ["questions", "Questions"], ["visits", "Site visits"] ] as const).map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={tab === key} className={`rounded-lg px-4 py-2 text-sm font-bold ${tab === key ? "bg-brand text-white" : "text-fg-muted hover:bg-surface-muted"}`} onClick={() => { setTab(key); const params = new URLSearchParams(window.location.search); params.set("tab", key); window.history.replaceState({}, "", `${window.location.pathname}?${params}`) }}>{label}</button>)}
+          </div>
+          {tab === "visits" ? <SiteVisitsPanel key={projectId} projectId={projectId} mode="client" /> : <>
           <form onSubmit={(event) => void ask(event)} noValidate className="mb-6 rounded-2xl border border-line bg-surface p-5 shadow-sm">
             <label className="block text-sm font-semibold">Your question
               <textarea className={`${inputClass} mt-1`} rows={3} maxLength={1000} value={text} onChange={(event) => setText(event.target.value)} placeholder="e.g. When will the lobby wall be finished?" />
@@ -106,6 +113,7 @@ export default function ClientCommunication(_: ClientPageProps) {
               ))}
             </ul>
           )}
+          </>}
         </>
       )}
     </div>

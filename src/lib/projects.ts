@@ -175,7 +175,8 @@ export function useProject(projectId: string | null) {
   return { project, loading, notFound }
 }
 
-export type TeamMember = { user_id: string; full_name: string; role: "engineer" | "foreman" | "client"; is_lead: boolean }
+// can_take_work: set by the plan editor for Foremen (false = no Assigned work access to the open sheet's type).
+export type TeamMember = { user_id: string; full_name: string; role: "engineer" | "foreman" | "client"; is_lead: boolean; can_take_work?: boolean }
 
 // Who is on a project (names and roles only). The database decides if the caller may see it.
 export function useProjectTeam(projectId: string | null) {

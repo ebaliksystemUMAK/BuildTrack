@@ -32,16 +32,19 @@ export default function ProjectWorkspace({ activePage, onNavigate, children }: {
   if (loading || !project) return <div className="p-6"><SkeletonCardGrid count={3} /></div>
   return (
     <>
-      <div className="mx-4 mt-5 rounded-2xl border border-line bg-surface p-4 sm:mx-6">
-        <button type="button" className="mb-3 text-sm font-bold text-brand-text hover:underline" onClick={() => onNavigate(can("projects.manage") ? "project-management" : "blueprint-upload", "?list=1")}>← All projects</button>
+      {/* Same container as the page below (.admin-page): the header lines up with every section's content. */}
+      <div className="admin-page pb-5">
+      <div className="rounded-2xl border border-line bg-surface p-4 shadow-[var(--bt-shadow)] sm:p-5">
+        <button type="button" className="mb-3 inline-flex min-h-6 items-center text-sm font-bold text-brand-text hover:underline" onClick={() => onNavigate(can("projects.manage") ? "project-management" : "blueprint-upload", "?list=1")}>← All projects</button>
         <p className="text-xs font-bold uppercase tracking-wider text-brand-text">{project.code}</p>
         <h2 className="mt-1 text-xl font-extrabold text-fg">{project.name}</h2>
         <p className="mt-1 text-sm text-fg-muted">{project.location || "Location not set"}</p>
         <nav aria-label="Project sections" className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
           {tabs.filter(({ key }) => !adminPagePermission[key] || can(adminPagePermission[key]!)).map(({ key, label }) => (
-            <a key={key} href={projectPath(id, key)} aria-current={activePage === key ? "page" : undefined} className={`rounded-lg px-3 py-2 text-sm font-bold ${activePage === key ? "bg-brand text-white" : "bg-surface-muted text-fg hover:bg-brand-soft"}`} onClick={(event) => { if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return; event.preventDefault(); onNavigate(key, `?project=${id}`) }}>{label}</a>
+            <a key={key} href={projectPath(id, key)} aria-current={activePage === key ? "page" : undefined} className={`inline-flex min-h-9 items-center rounded-lg px-3 text-sm font-bold ${activePage === key ? "bg-brand text-white" : "bg-surface-muted text-fg hover:bg-brand-soft"}`} onClick={(event) => { if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return; event.preventDefault(); onNavigate(key, `?project=${id}`) }}>{label}</a>
           ))}
         </nav>
+      </div>
       </div>
       {children}
     </>

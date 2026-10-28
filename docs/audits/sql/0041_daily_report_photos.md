@@ -4,7 +4,7 @@
 |---|---|
 | Migration | `supabase/migrations/0041_daily_report_photos.sql` |
 | Written | 2026-10-15 |
-| Applied | **NOT APPLIED — owner only** |
+| Applied | **Already present live** — verified 2026-10-18 and 2026-10-28; historical handover must not be rerun |
 | Depends on | 0001–0040 (reports, stamp/audit helpers, optimized RLS, realtime, role split) |
 | SHA-256 | `22518834cb45e34b1f47f2c569ceec113d447457d9c8c87203576f7159d4919d` |
 | Handover | [Complete SQL Editor script](0041_daily_report_photos.apply.sql) |

@@ -6,6 +6,7 @@ import { attendanceReportRange, attendanceReportSummary, reportPeriodTitle, type
 import { attendanceReportHtml, attendanceReportCsv, attendanceReportFilename } from "../../lib/attendanceReportPrint"
 import { printHtml } from "../../lib/printReport"
 import { downloadCsv } from "../../lib/progress"
+import { dailyStatusCounts } from "../../lib/attendanceStatusModel"
 
 type Props = {
   projectId: string
@@ -67,7 +68,7 @@ export function AttendanceReportDialog({ projectId, anchorDay, workerId, workerN
       {report && summary && <section aria-label="Generated attendance report" className="space-y-4 border-t border-border pt-5">
         <h3 className="text-lg font-bold">Report ready</h3>
         <p className="text-sm">{report.project.code} · {report.project.name}{report.worker ? ` · ${report.worker.full_name}` : ""}</p>
-        <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">{[["Scans", summary.scans], ["Workers", summary.workers], ["Clock-ins", summary.clockIns], ["Clock-outs", summary.clockOuts]].map(([label, value]) => <div key={label} className="rounded-xl border border-border p-3"><dt className="text-xs text-fg-muted">{label}</dt><dd className="ml-0 mt-1 text-xl font-bold">{value}</dd></div>)}</dl>
+        <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">{(report.days ? [["Scans", summary.scans], ["On time", dailyStatusCounts(report.days).on_time], ["Late", dailyStatusCounts(report.days).late], ["Absent", dailyStatusCounts(report.days).absent]] : [["Scans", summary.scans], ["Workers", summary.workers], ["Time-in scans", summary.clockIns], ["Time-out scans", summary.clockOuts]]).map(([label, value]) => <div key={label} className="rounded-xl border border-border p-3"><dt className="text-xs text-fg-muted">{label}</dt><dd className="ml-0 mt-1 text-xl font-bold">{value}</dd></div>)}</dl>
         {!summary.scans && <p className="text-sm text-fg-muted">No attendance recorded for this scope and period. The report will state this.</p>}
         <div className="flex flex-wrap gap-3">
           <button type="button" className="min-h-11 rounded-xl border border-border px-4 text-sm font-bold" onClick={() => {

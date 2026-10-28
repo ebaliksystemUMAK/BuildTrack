@@ -257,7 +257,7 @@ export default async function ({
         )
       ).rows[0].summary,
       // The late import (older than the worker's latest scan that day) is logged as ignored, not counted (20261027130000).
-      { scans: 3, workers: 2, clocked_in: 1, clocked_out: 1, late: 0, ignored: 1 },
+      { scans: 3, workers: 2, clocked_in: 1, clocked_out: 1, on_time: 0, late: 0, absent: 0, not_in_yet: 0, ignored: 1 },
     )
     assert.deepEqual(
       (
@@ -266,7 +266,7 @@ export default async function ({
           [other],
         )
       ).rows[0].summary,
-      { scans: 0, workers: 0, clocked_in: 0, clocked_out: 0, late: 0, ignored: 0 },
+      { scans: 0, workers: 0, clocked_in: 0, clocked_out: 0, on_time: 0, late: 0, absent: 0, not_in_yet: 0, ignored: 0 },
     )
     await as("attendanceClient")
     assert.equal(

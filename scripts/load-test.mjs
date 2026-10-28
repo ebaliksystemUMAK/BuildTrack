@@ -131,6 +131,27 @@ await measure("Foreman dashboard: my photos today (Manila)", "fore", async () =>
 ) photos where created_at >= (date_trunc('day', now() at time zone 'Asia/Manila') at time zone 'Asia/Manila')
 and created_at < ((date_trunc('day', now() at time zone 'Asia/Manila') + interval '1 day') at time zone 'Asia/Manila')`, [ids.fore, project])).rows[0].n))
 
+// Per-type access (20261028130000): half the sheets become Architectural and this Engineer holds only Civil / Structural,
+// so the narrowing rules run (everyone above holds every type, the usual case, and skips them).
+await addUser("engPart", "engineer")
+await asOwner()
+await db.query("select set_config('request.jwt.claims', '', false)")
+await db.query("update public.blueprints set blueprint_type = 'architectural' where id = any($1::uuid[])", [sheets.filter((_, i) => i % 2)])
+await db.query("select set_config('buildtrack.test_type_access', 'strict', false)")
+await db.query("insert into public.project_members (project_id, user_id) values ($1, $2)", [project, ids.engPart])
+await db.query("insert into public.project_blueprint_access (project_id, user_id, blueprint_type, access_level) values ($1, $2, 'civil_structural', 'assigned')", [project, ids.engPart])
+await db.query("select set_config('buildtrack.test_type_access', '', false)")
+await measure("One type of two: all pins of the project (paged)", "engPart", () => paged("select * from public.pins where project_id = $1 order by created_at, id", [project]))
+await measure("One type of two: NCR register (paged)", "engPart", () => paged("select * from public.qa_defects where project_id = $1 order by number desc", [project]))
+await measure("One type of two: QA boards work items (paged)", "engPart", () => paged("select * from public.pin_checklist_items where project_id = $1 order by pin_id, position, id", [project]))
+await measure("One type of two: QA summary (get_qa_summary)", "engPart", async () => ((await db.query("select public.get_qa_summary($1) s", [project])).rows[0].s ? 1 : 0))
+await measure("One type of two: pin timeline (get_pin_timeline)", "engPart", async () => (await db.query("select * from public.get_pin_timeline($1)", [pins[0]])).rows.length)
+await measure("One type of two: timeline events in 100-ID batches", "engPart", async () => {
+  let total = 0
+  for (let offset = 0; offset < pins.length; offset += 100) total += await paged("select pin_id from public.pin_events where pin_id = any($1::uuid[]) and kind='status' order by id", [pins.slice(offset, offset + 100)])
+  return total
+})
+
 // The app's own maths on the same rows (what the browser does after loading).
 await as("eng")
 // Supabase sends dates as text; PGlite returns Date objects, so convert to what the browser really receives.

@@ -7,7 +7,7 @@ export default async function ({ db, ids, as, asOwner, test, expectFail, count, 
   await as("dailyF")
   const report = (await db.query("insert into public.daily_reports(project_id,report_date,work_done) values ($1,(now() at time zone 'Asia/Manila')::date,'Site work complete') returning id", [project])).rows[0].id
   const path = (name) => `${project}/${report}/${name}.jpg`
-  const insert = "insert into public.daily_report_photos(report_id,project_id,path,taken_at) values ($1,$2,$3,now()) returning *"
+  const insert = "insert into public.daily_report_photos(report_id,project_id,path,taken_at,capture_source) values ($1,$2,$3,now(),'camera') returning *"
   let photo
   await test("Daily photos: author uploads into draft folder and DB stamps/derives identity", async () => {
     await as("dailyF")
@@ -35,7 +35,7 @@ export default async function ({ db, ids, as, asOwner, test, expectFail, count, 
   await test("Daily photos: wrong folder, nested path and incomplete GPS are rejected", async () => {
     await as("dailyF")
     for (const wrong of [`${ids.p1}/${report}/wrong.jpg`, `${project}/${ids.p1}/wrong.jpg`, `${project}/${report}/nested/wrong.jpg`, `${project}/${report}/..`]) await expectFail(insert, [report, project, wrong], /folder/)
-    await expectFail("insert into public.daily_report_photos(report_id,path,lat) values ($1,$2,10)", [report, path("gps")], /position_both/)
+    await expectFail("insert into public.daily_report_photos(report_id,path,lat,taken_at,capture_source) values ($1,$2,10,now(),'camera')", [report, path("gps")], /position_both/)
     await expectFail("insert into storage.objects(bucket_id,name,owner) values ('daily-photos',$1,$2)", [`${project}/${ids.p1}/bad.jpg`, ids.dailyF], /row-level security/)
   })
   await test("Daily photos: browser cannot spoof stamps, uploader, timestamps or update a photo", async () => {
@@ -84,7 +84,7 @@ export default async function ({ db, ids, as, asOwner, test, expectFail, count, 
     for (let i = 1; i < 50; i++) await db.query(insert, [report, project, path(`limit-${i}`)])
     await expectFail(insert, [report, project, path("fifty-one")], /at most 50/)
     await db.query("delete from public.daily_report_photos where path=$1", [path("limit-49")])
-    await expectFail("insert into public.daily_report_photos(report_id,path) values ($1,$2),($1,$3)", [report, path("bulk-a"), path("bulk-b")], /at most 50/)
+    await expectFail("insert into public.daily_report_photos(report_id,path,taken_at,capture_source) values ($1,$2,now(),'camera'),($1,$3,now(),'camera')", [report, path("bulk-a"), path("bulk-b")], /at most 50/)
     if ((await count("select count(*) n from public.daily_report_photos where report_id=$1", [report])) !== 49) throw new Error("multi-insert not rolled back")
   })
   await test("Daily photos: deleting a whole draft cascades its photos", async () => {

@@ -78,16 +78,44 @@ assert.ok(!all(tree).some(node => node.props?.inspectionKind === "stage"))
 let groups = find(node => node.type === Board).props.groups
 slots = []; render(Board, { ...boardProps, groups })
 assert.deepEqual(filters().map(text), ["Waiting 1", "Completed 1", "All 2"])
-const Engineer = await compile("../src/pages/Engineer/EngineerProgressVerification.tsx")
+const Engineer = await compile("../src/pages/Engineer/EngineerQa.tsx")
 slots = []; render(Engineer, { onNavigate: page => { navigated = page } })
 assert.doesNotMatch(text(tree), /Stage and hold|Synthetic stage request/)
-assert.equal(find(node => node.props?.label === "Waiting for you").props.value, 1, "Hidden stage requests are not counted as inbox tasks")
-groups = find(node => node.type === Board).props.groups
-slots = []; render(Board, { ...boardProps, groups })
-assert.deepEqual(filters().map(text), ["Inspect 1", "All 1"])
+assert.equal(find(node => node.props?.title === "QA register").props.title, "QA register")
+assert.doesNotMatch(text(tree), /Review queue|Waiting for you/)
+let register = find(node => node.props?.workTabs).props
+assert.deepEqual(register.tabs, ["inspections", "defects", "complete", "completed", "snags"])
+assert.equal(register.workTabs.complete.count, 0, "Inspection in progress cannot be completed")
+assert.equal(register.workTabs.completed.count, 1, "Completed checklists live inside the register")
+assert.deepEqual(register.workTabs.completed.content.props.groups[0].rows.map(row => row.item.id), ["FLOOR"])
+for (const tab of ["complete", "completed"]) {
+  assert.equal(register.workTabs[tab].content.props.showGroupFilters, false, "Engineer register tabs do not repeat the group tabs")
+  slots = []; render(Board, register.workTabs[tab].content.props)
+  assert.ok(!all(tree).some(node => node.props?.["aria-label"] === "Show work items"))
+}
+const originalRow = rows[0]
+rows[0] = { ...originalRow, view: { ...originalRow.view, action: "complete", stage: "passed" } }
+slots = []; render(Engineer, { onNavigate() {} })
+register = find(node => node.props?.workTabs).props
+assert.equal(register.workTabs.complete.count, 1)
+globalThis.__qaLayoutDeps.useItemParam = () => [null, id => { opened = id }]
+slots = []; render(Engineer, { onNavigate() {} })
+register = find(node => node.props?.workTabs).props
+slots = []; render(Board, register.workTabs.complete.content.props)
+assert.ok(!all(tree).some(node => node.props?.["aria-label"] === "Show work items"))
+assert.ok(all(tree).some(node => node.props?.["aria-label"] === "Search work items"), "Search remains available without duplicate tabs")
+find(node => node.type === "button" && text(node) === "Open").props.onClick()
+assert.equal(opened, "WALL", "Complete checklist opens the exact work item and retains its guarded completion action")
+rows[0] = originalRow
+groups = [{ key: "inspect", short: "Inspect", title: "Inspect", rows: [rows[0]] }]
 // The page's other lists (here Recently completed) are separate: own chip, shown under All, hidden under Inspect.
 const sections = () => all(tree).filter(node => node.type === "section").map(node => node.props["aria-label"])
 const extras = [{ key: "recent", short: "Completed", title: "Recently completed", count: 2, content: "two completed pins" }]
+slots = []; render(Board, { ...boardProps, groups, extras, showGroupFilters: false })
+assert.deepEqual(sections(), ["Inspect", "Recently completed"], "Without group tabs all records remain accessible")
+slots = []; render(Board, { ...boardProps, groups: [], extras, showGroupFilters: false, emptyTitle: "All caught up" })
+assert.deepEqual(sections(), ["Recently completed"])
+assert.ok(!all(tree).some(node => node.props?.title === "All caught up"), "Extras-only history does not show a misleading empty state")
 slots = []; render(Board, { ...boardProps, groups, extras })
 assert.deepEqual(filters().map(text), ["Inspect 1", "Completed 2", "All 3"], "All is now more than Inspect, and stays last")
 assert.deepEqual(sections(), ["Inspect"])
@@ -108,10 +136,8 @@ assert.deepEqual(sections(), ["Recently completed"])
 assert.equal(filters()[0].props["aria-pressed"], true, "an extras-only board opens its first available list")
 rows[0].item.review_status = "verified"
 slots = []; render(Engineer, { onNavigate: page => { navigated = page } })
-const blocked = find(node => node.type === Board).props.extras.find(extra => extra.key === "blocked")
-assert.equal(blocked.count, 1, "blocked work is its own list on the board")
-all(blocked.content).find(node => node.type === "button" && text(node) === "QA register").props.onClick()
-assert.equal(navigated, "qa", "Existing inspection blockers retain a route to the register")
+register = find(node => node.props?.workTabs).props
+assert.equal(register.workTabs.completed.count, 2, "A completed checklist stays in history while another requirement blocks its work pin")
 assert.equal(workspace.inspections.length, 1, "Removing stage UI never deletes historical inspection data")
 // Foreman Corrections: Other NCRs and Site issues are separate lists with their own chips, not sections below the board.
 globalThis.__qaLayoutDeps.useIssueRegister = () => ({ everRaised: new Set(), reports: [] })
@@ -272,6 +298,10 @@ assert.equal(filters().at(-1).props["aria-pressed"], false)
 // The actual NCR table applies the board's outer scope AND its status/class/trade/search filters; CSV follows the same rows.
 let csv = "", tableOpened = ""
 Object.assign(globalThis.__qaLayoutDeps, qaModel, { allDates, inRange, isFiltered, toCsv, downloadCsv: (_name, contents) => { csv = contents } })
+Object.assign(globalThis.__qaLayoutDeps, {
+  useQaSubmissionIndex: () => ({ rows: [], loading: false, error: "" }),
+  checklistGroups: () => [], checklistNames: () => [],
+})
 const DefectsPanel = await compile("../src/components/qa/QaPanels.tsx", "DefectsPanel")
 const fullNcr = defect => ({ ...defect, severity: "major", trade: "architectural", raised_at: "2026-10-26T01:00:00Z", due_date: null })
 workspace.today = "2026-10-26"
@@ -287,6 +317,49 @@ find(node => node.props?.["aria-label"] === "Filter by status").props.onChange({
 assert.match(text(tree), /Kitchen completed fix/); assert.doesNotMatch(text(tree), /Kitchen finish|Laundry alignment/)
 find(node => node.props?.["aria-label"] === "Filter by class").props.onChange({ target: { value: "critical" } }); render(DefectsPanel, panelProps)
 assert.ok(!all(tree).some(node => node.type === "tr"))
+
+// Engineer inspections open on Requested, omit unused statuses, and open from the whole row.
+const InspectionsPanel = await compile("../src/components/qa/QaPanels.tsx", "InspectionsPanel")
+const inspection = (id, number, status) => ({ id, number, status, title: `Inspection ${id}`, trade: "general", score: null, requested_at: "2026-10-28T01:00:00Z", requested_by: "foreman", inspector_id: null, target_at: null })
+const inspectionProps = { ws: { ...workspace, inspections: [inspection("request", 21, "requested"), inspection("pass", 22, "passed"), inspection("fail", 23, "failed")] }, mode: "engineer", canRequest: false, onNew() {}, onOpen: id => { tableOpened = id; inspectionOpens++ } }
+let inspectionOpens = 0
+const statusControl = () => find(node => node.props?.["aria-label"] === "Filter by status")
+const statusOptions = () => all(statusControl()).filter(node => node.type === "option").map(node => node.props.value)
+slots = []; render(InspectionsPanel, inspectionProps)
+assert.equal(statusControl().props.value, "requested")
+assert.deepEqual(statusOptions(), ["requested", "passed", "failed", "all"], "Only relevant states and All remain; no duplicate waiting aggregate")
+assert.match(text(tree), /IR-0021/); assert.doesNotMatch(text(tree), /IR-0022|IR-0023/)
+let inspectionRow = find(node => node.type === "tr")
+assert.equal(inspectionRow.props.tabIndex, 0)
+inspectionRow.props.onClick(); assert.equal(tableOpened, "request")
+for (const key of ["Enter", " "]) {
+  let prevented = false
+  inspectionRow.props.onKeyDown({ key, target: inspectionRow, currentTarget: inspectionRow, preventDefault() { prevented = true } })
+  assert.ok(prevented)
+}
+const beforeChildKey = inspectionOpens
+inspectionRow.props.onKeyDown({ key: "Enter", target: {}, currentTarget: inspectionRow, preventDefault() { assert.fail("Do not handle child keyboard events twice") } })
+assert.equal(inspectionOpens, beforeChildKey)
+const irButton = all(inspectionRow).find(node => node.type === "button")
+let stopped = false
+irButton.props.onClick({ stopPropagation() { stopped = true } })
+assert.ok(stopped, "The IR button does not bubble into a second open")
+assert.equal(inspectionOpens, beforeChildKey + 1)
+find(node => node.type === "button" && text(node) === "Export CSV").props.onClick()
+assert.match(csv, /IR-0021/); assert.doesNotMatch(csv, /IR-0022|IR-0023/)
+statusControl().props.onChange({ target: { value: "all" } }); render(InspectionsPanel, inspectionProps)
+assert.equal(all(tree).filter(node => node.type === "tr").length, 3, "All keeps inspection history accessible")
+statusControl().props.onChange({ target: { value: "passed" } }); render(InspectionsPanel, inspectionProps)
+assert.match(text(tree), /IR-0022/); assert.doesNotMatch(text(tree), /IR-0021|IR-0023/)
+render(InspectionsPanel, { ...inspectionProps, ws: { ...inspectionProps.ws, inspections: [] } })
+assert.equal(statusControl().props.value, "passed")
+assert.ok(statusOptions().includes("passed"), "A live update cannot leave the selected value missing from the dropdown")
+slots = []; render(InspectionsPanel, { ...inspectionProps, ws: { ...inspectionProps.ws, inspections: [] } })
+assert.equal(statusControl().props.value, "requested")
+assert.deepEqual(statusOptions(), ["requested", "all"])
+slots = []; render(InspectionsPanel, { ...inspectionProps, mode: "foreman" })
+assert.equal(statusControl().props.value, "all", "Foreman inspection filters keep their existing default")
+assert.ok(statusOptions().includes("open"))
 
 globalThis.window = originalWindow
 delete globalThis.__qaLayoutHooks; delete globalThis.__qaLayoutDeps; delete globalThis.__qaLayoutBoard

@@ -9,6 +9,7 @@ import { daysBetween, downloadCsv, isOverdue, byZone, summarize, toCsv } from ".
 import { printHtml, reportHtml } from "../../lib/printReport"
 import WeeklyReportModal from "../../components/WeeklyReportModal"
 import ProjectQuestions from "../../components/ProjectQuestions"
+import SiteVisitsPanel from "../../components/SiteVisitsPanel"
 import { useDefects, useInspections } from "../../lib/qa"
 import { getSelectedProjectId } from "../../lib/projects"
 import { useProjectWork } from "../../lib/projectWork"
@@ -19,8 +20,11 @@ import { useToast } from "../../lib/toast"
 import type { EngineerPageProps } from "./types"
 import { filterSiteLogs, siteLogReports, type SiteReportState } from "../../lib/siteReportsModel"
 
-type Tab = "reports" | "questions"
-const initialTab = (): Tab => (new URLSearchParams(window.location.search).get("tab") === "questions" ? "questions" : "reports")
+type Tab = "reports" | "questions" | "visits"
+const initialTab = (): Tab => {
+  const tab = new URLSearchParams(window.location.search).get("tab")
+  return tab === "questions" || tab === "visits" ? tab : "reports"
+}
 
 // Site logs (the foreman's submitted daily reports), client questions to answer, and a printable progress report.
 export default function EngineerReports({ onNavigate }: EngineerPageProps) {
@@ -89,7 +93,7 @@ export default function EngineerReports({ onNavigate }: EngineerPageProps) {
       <PageHead
         eyebrow="Reports"
         title="Site logs and reports"
-        description="Daily reports from the foreman, questions from the client, and a printable progress report."
+        description="Daily reports from the foreman, client questions and site visit requests, and printable progress reports."
         actions={
           <>
             <button type="button" className={buttonSecondary} onClick={printProgress} disabled={!projectId || work.loading || Boolean(work.error)}>Status snapshot</button>
@@ -101,8 +105,8 @@ export default function EngineerReports({ onNavigate }: EngineerPageProps) {
       {!projectId ? null : (
         <>
           <div className="mb-4 inline-flex max-w-full flex-wrap gap-0.5 rounded-xl border border-line bg-surface p-1 shadow-sm" role="tablist" aria-label="Reports">
-            {([["reports", `Daily reports (${logs.length})`], ["questions", `Client questions${unanswered ? ` (${unanswered} new)` : ""}`]] as const).map(([key, label]) => (
-              <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={`rounded-lg px-3.5 py-1.5 text-sm font-bold transition ${tab === key ? "bg-brand text-white shadow-[0_6px_14px_-8px_rgba(158,31,147,0.9)]" : "text-fg-muted hover:bg-surface-muted hover:text-fg"}`}>{label}</button>
+            {([["reports", `Daily reports (${logs.length})`], ["questions", `Client questions${unanswered ? ` (${unanswered} new)` : ""}`], ["visits", "Site visits"]] as const).map(([key, label]) => (
+              <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => { setTab(key); const params = new URLSearchParams(window.location.search); params.set("tab", key); window.history.replaceState({}, "", `${window.location.pathname}?${params}`) }} className={`rounded-lg px-3.5 py-1.5 text-sm font-bold transition ${tab === key ? "bg-brand text-white shadow-[0_6px_14px_-8px_rgba(158,31,147,0.9)]" : "text-fg-muted hover:bg-surface-muted hover:text-fg"}`}>{label}</button>
             ))}
           </div>
 
@@ -166,7 +170,7 @@ export default function EngineerReports({ onNavigate }: EngineerPageProps) {
                 </ul>
               )}
             </>
-          ) : (
+          ) : tab === "visits" ? <SiteVisitsPanel key={projectId} projectId={projectId} mode="engineer" nameOf={work.nameOf} /> : (
             <ProjectQuestions questions={questions} loading={questionsLoading} error={questionsError} nameOf={work.nameOf} pinOf={(id) => { const pin = work.pins.find((row) => row.id === id); return pin ? { title: pin.title, sheetId: pin.blueprint_id } : null }} onAnswered={reloadQuestions} />
           )}
         </>

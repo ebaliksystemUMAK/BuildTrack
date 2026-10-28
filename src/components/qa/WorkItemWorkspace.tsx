@@ -22,6 +22,7 @@ import { formatStamp, type PinPhoto } from "../../lib/blueprints"
 import { photoEligible, photoPreviewBlocked } from "../../lib/photoStamp"
 import { manilaToday } from "../../lib/progress"
 import { useProject, useProjectTeam } from "../../lib/projects"
+import { usePinTypeAccess } from "../../lib/blueprintAccess"
 import { defectStatusLabels, defectTone, dueText, inspectionStatusLabels, inspectionTone, qaActions, useInspectionItems, useTemplates, type Defect, type Inspection } from "../../lib/qa"
 import { useSettings } from "../../lib/settings"
 import { supabase } from "../../lib/supabase"
@@ -59,8 +60,11 @@ export default function WorkItemWorkspace({ itemId, onClose, onChanged, fromPlan
   useEffect(() => { draftRemark.current = null; setTab(null); setEditingCriteria(false) }, [itemId])
 
   const nameOf = (id: string | null) => (id ? team.find((member) => member.user_id === id)?.full_name ?? "Someone on the team" : "Unassigned")
-  const engineer = profile?.role === "engineer"
-  const foreman = Boolean(pin && profile?.role === "foreman" && profile.status === "active" && pin.assigned_to === profile.id)
+  // Per-type access (20261028130000): with View only on this plan's type the work item is readable, without action buttons.
+  // Without the access hook (isolated renders) the role rules alone apply, as before.
+  const { canAct, viewOnly, typeLabel } = usePinTypeAccess(pin ?? null, profile?.role, profile?.id) ?? { canAct: true, viewOnly: false, typeLabel: null }
+  const engineer = profile?.role === "engineer" && canAct
+  const foreman = Boolean(pin && profile?.role === "foreman" && profile.status === "active" && pin.assigned_to === profile.id) && canAct
   const view = stage?.view ?? null
   const current = stage?.current ?? null
   const showReturnAction = engineer && !stage?.open && (item?.review_status === "verified"
@@ -161,6 +165,7 @@ export default function WorkItemWorkspace({ itemId, onClose, onChanged, fromPlan
   return (
     <Modal title={`${pin.title} → ${name}`} description={`Inspection criteria: ${data.templateName ?? "not approved yet"} · Foreman: ${nameOf(pin.assigned_to)}`} size="2xl" onClose={busy ? () => undefined : onClose} footer={footer}>
       <div className="min-w-0 space-y-4">
+        {viewOnly ? <p role="status" className="rounded-lg border border-line bg-surface-muted px-3 py-2 text-sm text-fg"><strong>View only.</strong> You can read this work item; people with Assigned work access to {typeLabel ?? "this"} plans act on it.</p> : null}
         <NextActionCard view={view} responsible={responsible}>
           {engineer && !stage.attempts.length && !stage.open && pin.status !== "verified" ? <button type="button" className={buttonSecondary} onClick={() => setEditingCriteria(true)}>{item.qa_template_id ? "Edit item & criteria" : "Add criteria to this item"}</button> : null}
         </NextActionCard>
@@ -219,12 +224,12 @@ export default function WorkItemWorkspace({ itemId, onClose, onChanged, fromPlan
 
       {inspectionOpen && project ? (() => {
         const inspection = history.inspections.find((row) => row.id === inspectionOpen)
-        return inspection ? <InspectionDetail key={inspection.id} inspection={inspection} project={project} weights={settings.weights} threshold={settings.threshold} defects={defects} canInspect={engineer} canRequest={engineer || foreman}
+        return inspection ? <InspectionDetail key={inspection.id} inspection={inspection} project={project} weights={settings.weights} threshold={settings.threshold} defects={defects} canInspect={engineer} canRequest={engineer || foreman} viewOnly={viewOnly} viewOnlyType={typeLabel}
           nameOf={nameOf} onClose={() => setInspectionOpen(null)} onChanged={reload} onOpenDefect={(row) => { setInspectionOpen(null); setDefectOpen(row.id) }} onOpenInspection={setInspectionOpen} /> : null
       })() : null}
       {defectOpen && project ? (() => {
         const defect = defects.find((row) => row.id === defectOpen)
-        return defect ? <DefectDetail key={defect.id} defect={defect} project={project} foremen={team.filter((member) => member.role === "foreman")} today={manilaToday()} canWork={!engineer} canVerify={engineer}
+        return defect ? <DefectDetail key={defect.id} defect={defect} project={project} foremen={team.filter((member) => member.role === "foreman")} today={manilaToday()} canWork={profile?.role !== "engineer" && canAct} canVerify={engineer} viewOnly={viewOnly} viewOnlyType={typeLabel}
           nameOf={nameOf} onClose={() => setDefectOpen(null)} onChanged={reload} onOpenInspection={(id) => { setDefectOpen(null); setInspectionOpen(id) }} /> : null
       })() : null}
       {returning && showReturnAction ? <ReturnDialog name={name} reopen={item.review_status === "verified"} busy={busy} onClose={() => setReturning(false)} onSubmit={async (reason) => { if (await run(() => qaActions.reviewItem(item.id, false, reason), "Not returned", `${name} returned for correction`)) setReturning(false) }} /> : null}

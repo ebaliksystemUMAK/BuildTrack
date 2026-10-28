@@ -35,6 +35,7 @@ export type Template = {
   standards: string[]
   is_system: boolean
   archived: boolean
+  work_item_criteria?: boolean // a work item's own criteria copy, not a project checklist (20261028150000)
   updated_at: string
   qa_template_items: TemplateItem[]
 }

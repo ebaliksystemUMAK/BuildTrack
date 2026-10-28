@@ -74,10 +74,11 @@ export default function AttendanceBoard({
       </div>
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         {[
-          ["Workers scanned", data.summary.workers],
-          ["Latest scan: IN", data.summary.clocked_in],
-          ["Latest scan: OUT", data.summary.clocked_out],
-          ["Recorded scans", data.summary.scans],
+          // Daily status from the database (one Time IN / Time OUT per worker per day; see attendance_daily_status).
+          ["On time", data.summary.on_time ?? 0],
+          ["Late", data.summary.late ?? 0],
+          ["Absent", data.summary.absent ?? 0],
+          ["Not in yet", data.summary.not_in_yet ?? 0],
         ].map(([label, count]) => (
           <div
             key={label}
@@ -141,8 +142,8 @@ export default function AttendanceBoard({
                     onChange={(event) => setDirection(event.target.value)}
                   >
                     <option value="">All scans</option>
-                    <option value="in">Clock in</option>
-                    <option value="out">Clock out</option>
+                    <option value="in">Time in</option>
+                    <option value="out">Time out</option>
                   </select>
                 </label>
                 <label className="space-y-1 text-xs font-semibold">
@@ -254,7 +255,7 @@ export default function AttendanceBoard({
                               : "bg-sky-100 text-sky-800"
                           }`}
                         >
-                          {event.direction === "in" ? "Clock in" : "Clock out"}
+                          {event.direction === "in" ? "Time in" : "Time out"}
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-5 py-4 font-mono text-xs">
@@ -303,8 +304,8 @@ export default function AttendanceBoard({
               >
                 <strong className="block text-xl">
                   {active.direction === "in"
-                    ? "Clock-in recorded"
-                    : "Clock-out recorded"}
+                    ? "Time in recorded"
+                    : "Time out recorded"}
                 </strong>
                 <span className="text-sm">
                   {attendanceTime(active.occurred_at)} ·{" "}

@@ -7,6 +7,7 @@ import {
   scheduleDraft,
   scheduleProblem,
   scheduleSummary,
+  weekdayNames,
   type AttendanceSchedule as Schedule,
   type ScheduleDraft,
 } from "../../lib/attendanceScheduleModel"
@@ -51,7 +52,7 @@ export default function AttendanceSchedule({ projectId }: { projectId: string })
 
   const problem = scheduleProblem(draft)
   const changed = JSON.stringify(draft) !== JSON.stringify(scheduleDraft(saved))
-  const set = (key: keyof ScheduleDraft) => (value: string) => setDraft((old) => ({ ...old, [key]: value }))
+  const set = (key: Exclude<keyof ScheduleDraft, "workDays">) => (value: string) => setDraft((old) => ({ ...old, [key]: value }))
 
   async function save(event: FormEvent) {
     event.preventDefault()
@@ -64,6 +65,7 @@ export default function AttendanceSchedule({ projectId }: { projectId: string })
         p_time_out: draft.timeOut,
         p_grace: Number(draft.grace),
         p_repeat: Number(draft.repeat),
+        p_work_days: draft.workDays,
       })
       if (error) throw new Error(error.message || "The schedule could not be saved.")
       toast.success("Attendance schedule saved", scheduleSummary(draft))
@@ -122,6 +124,22 @@ export default function AttendanceSchedule({ projectId }: { projectId: string })
               <span id="schedule-repeat-help" className="mt-1 block text-xs font-normal text-fg-muted">A second scan this soon after the last one is not recorded again.</span>
             </label>
           </div>
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-bold text-fg">Working days</legend>
+            <div className="flex flex-wrap gap-2">
+              {weekdayNames.map((name, index) => {
+                const day = index + 1
+                const on = draft.workDays.includes(day)
+                return (
+                  <label key={name} className={`inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 text-sm font-semibold ${on ? "border-brand bg-brand-soft text-fg" : "border-line bg-surface text-fg-muted"}`}>
+                    <input type="checkbox" className="h-4 w-4" checked={on} onChange={() => setDraft((old) => ({ ...old, workDays: on ? old.workDays.filter((d) => d !== day) : [...old.workDays, day].sort((a, b) => a - b) }))} />
+                    {name}
+                  </label>
+                )
+              })}
+            </div>
+            <p className="text-xs text-fg-muted">Workers are marked Absent only on working days; other days are rest days.</p>
+          </fieldset>
           {problem ? (
             <p role="alert" className="text-sm font-semibold text-danger-fg">{problem}</p>
           ) : (
@@ -135,10 +153,11 @@ export default function AttendanceSchedule({ projectId }: { projectId: string })
       <div className="rounded-xl border border-line bg-surface-muted/50 p-4 text-sm text-fg">
         <p className="font-bold">How scans are counted</p>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-fg-muted">
-          <li>The system decides Time IN or Time OUT, not a switch on the scanner. A worker's first scan of the day (Philippine time) is IN, the next is OUT, then IN again after a break.</li>
-          <li>A scan within the repeat window of the worker's last scan is ignored, so scanning twice never creates a second IN or a wrong OUT.</li>
+          <li>One Time in and one Time out per worker per day (Philippine time): the first scan is Time in, the next scan after the repeat window is Time out. Any later scan shows "Already timed out" and is not recorded.</li>
+          <li>A scan within the repeat window of the worker's last scan is ignored, so scanning twice never creates a second Time in or a wrong Time out. Use at least 10–15 minutes.</li>
           <li>A scan that arrives late from the scanner and is older than the worker's last scan is ignored rather than changing the order.</li>
-          <li>The first IN after the grace period is marked Late (minutes counted from time in); an OUT before time out is marked Early out. Coming back after a break is not marked late.</li>
+          <li>Time in after the grace period is Late (minutes counted from time in); Time out before the scheduled time out is Early out (undertime).</li>
+          <li>No Time in on a working day once the time out has passed is Absent. Before that it shows Not in yet. Workers without a registered fingerprint are never marked absent.</li>
           <li>Ignored scans are kept in the record for checking; they never count as attendance.</li>
         </ul>
       </div>

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 import ts from "typescript"
 import { checklistProblem } from "../src/lib/qaModel.ts"
 import { completionProblem } from "../src/lib/workItemModel.ts"
+import { pickableChecklists } from "../src/lib/qaChecklists.ts"
 
 // Real React component controls, isolated hooks and fake RPCs. No production fixtures or credentials.
 let slots = [], cursor = 0, effects = [], tree, role = "foreman", calls = [], confirmation = true, saved = 0, preflightItem = null
@@ -15,7 +16,7 @@ const hooks = {
 }
 globalThis.__directQaHooks = hooks
 Object.defineProperty(globalThis, "navigator", { configurable: true, value: { onLine: true } })
-const pin = { id: "pin", project_id: "project", title: "KITCHEN", assigned_to: "foreman", status: "in_progress", qa_template_id: null }
+const pin = { id: "pin", project_id: "project", blueprint_id: "sheet", title: "KITCHEN", assigned_to: "foreman", status: "in_progress", qa_template_id: null }
 const item = { id: "floor", text: "FLOOR", pin_id: pin.id, project_id: pin.project_id, done: false, remark: "", review_status: "not_submitted", qa_template_id: "criteria" }
 const criterion = { id: "c1", text: "Synthetic floor check", acceptance_criteria: "Synthetic floor pass condition", reference: "TEST only", kind: "check", severity: "major", requires_photo: false, hold_point: false, unit: null, min_value: null, max_value: null }
 const template = { id: "criteria", name: "Floor-specific criteria", archived: false, qa_template_items: [criterion] }
@@ -35,7 +36,9 @@ globalThis.__directQaDeps = {
   useTemplates: () => ({ templates: [template], loading: false, error: "" }),
   useProject: () => ({ project: null }), useProjectTeam: () => ({ team: [] }), useSettings: () => ({ settings: {} }),
   useConfirm: () => async () => confirmation, useToast: () => ({ success() {}, error() {}, info() {} }),
-  checklistProblem, pinLevelDefects: () => [], completionProblem, supabase: fakeDb,
+  // Per-type access: this person holds Assigned work on the sheet type (view-only behaviour is covered by test:blueprint-access).
+  usePinTypeAccess: () => ({ canAct: true, viewOnly: false, typeLabel: "Civil / Structural" }),
+  checklistProblem, pickableChecklists, pinLevelDefects: () => [], completionProblem, supabase: fakeDb,
   qaActions: {
     async submitItems(pinId, items) { calls.push({ name: "submitItems", pinId, items }); return { ok: true } },
     async completeItem(itemId) { calls.push({ name: "completeItem", itemId }); return { ok: true } },

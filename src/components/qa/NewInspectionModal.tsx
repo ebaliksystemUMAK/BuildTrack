@@ -3,6 +3,7 @@ import Modal from "../Modal"
 import { buttonPrimary, buttonSecondary, inputClass } from "../ui/PageParts"
 import type { Pin } from "../../lib/blueprints"
 import { qaActions, tradeLabels, type Template } from "../../lib/qa"
+import { pickableChecklists } from "../../lib/qaChecklists"
 import { useToast } from "../../lib/toast"
 import { Chip } from "./QaBits"
 import { usePinQa } from "../../lib/pinQa"
@@ -31,8 +32,9 @@ export default function NewInspectionModal({
   onCreated: (inspectionId: string) => void | Promise<void>
 }) {
   const toast = useToast()
-  const usable = useMemo(() => templates.filter((template) => !template.archived), [templates])
-  const [templateId, setTemplateId] = useState(initialTemplateId ?? usable[0]?.id ?? "")
+  // Only the checklists added to this project (Checklist configuration), never the library or a work item's own criteria.
+  const usable = useMemo(() => pickableChecklists(templates, projectId), [templates, projectId])
+  const [templateId, setTemplateId] = useState(initialTemplateId && usable.some((template) => template.id === initialTemplateId) ? initialTemplateId : (usable[0]?.id ?? ""))
   const chosen = usable.find((template) => template.id === templateId)
   const [title, setTitle] = useState("")
   const [pinId, setPinId] = useState(initialPinId ?? "")
@@ -65,10 +67,7 @@ export default function NewInspectionModal({
     finally { setBusy(false); pending.current=false }
   }
 
-  const groups = [
-    { name: "Company library", list: usable.filter((template) => template.project_id === null) },
-    { name: "This project", list: usable.filter((template) => template.project_id !== null) },
-  ].filter((group) => group.list.length)
+  const groups = [{ name: "This project", list: usable }].filter((group) => group.list.length)
 
   return (
     <Modal
@@ -87,7 +86,8 @@ export default function NewInspectionModal({
         {blocked ? <p role="status" className="rounded-lg bg-amber-100 p-3 text-sm text-amber-950">{blockReason}</p> : null}
         <div>
           <label className={label} htmlFor="qa-template">Checklist</label>
-          <select id="qa-template" className={inputClass} value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
+          {usable.length === 0 ? <p role="status" className="mb-2 rounded-lg border border-dashed border-line p-3 text-sm text-fg-muted">No checklist has been added to this project yet. The project Engineer adds them in Checklist configuration.</p> : null}
+          <select id="qa-template" className={inputClass} value={templateId} disabled={usable.length === 0} onChange={(event) => setTemplateId(event.target.value)}>
             {groups.map((group) => (
               <optgroup key={group.name} label={group.name}>
                 {group.list.map((template) => <option key={template.id} value={template.id}>{template.name} ({tradeLabels[template.trade]})</option>)}

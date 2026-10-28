@@ -3,6 +3,15 @@ import { manilaDayRange } from "./foremanDashboardModel"
 import type { AttendanceEvent, AttendanceWorker } from "./attendanceModel"
 import { RECORD_PAGE_SIZE, WORKER_PAGE_SIZE, validAttendanceDay, workerSearchPattern, type WorkerDaySummary } from "./foremanAttendanceModel"
 import { attendanceDay } from "./attendanceModel"
+import type { DailyStatusRow } from "./attendanceStatusModel"
+
+// One row per worker for the day: Time in, Time out and status (On time / Late / Absent / ...), from the database.
+export async function loadDailyStatus(project: string, day: string): Promise<DailyStatusRow[]> {
+  dayQuery(project, day)
+  const result = await supabase.rpc("attendance_daily_status", { p_project: project, p_from: day, p_to: day })
+  if (result.error) throw new Error("Daily attendance status could not be loaded. Retrying automatically.")
+  return (result.data ?? []) as DailyStatusRow[]
+}
 
 export type DirectoryData = { workers: AttendanceWorker[]; total: number }
 export type DailyRecordsData = { events: AttendanceEvent[]; total: number }

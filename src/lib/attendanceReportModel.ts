@@ -1,6 +1,7 @@
 import { attendanceDay, attendanceTime } from "./attendanceModel.ts"
 import { validAttendanceDay } from "./foremanAttendanceModel.ts"
 import { scheduleFlagLabel } from "./attendanceScheduleModel.ts"
+import type { DailyStatusRow } from "./attendanceStatusModel.ts"
 
 export type AttendanceReportPeriod = "daily" | "weekly" | "monthly"
 export type AttendanceReportPerson = { id: string; full_name: string; worker_code: string; trade: string }
@@ -29,6 +30,9 @@ export type AttendanceReportData = {
   worker: AttendanceReportPerson | null
   range: AttendanceReportRange
   events: AttendanceReportEvent[]
+  // Daily time record per worker and day (On time / Late / Absent ...), from attendance_daily_status. Missing when
+  // the database cannot provide it; the report then falls back to the scan summary.
+  days?: DailyStatusRow[]
   generatedAt: string
 }
 export type AttendanceDailyRow = {

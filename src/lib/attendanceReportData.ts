@@ -1,5 +1,6 @@
 import { supabase } from "./supabase"
 import { attendanceReportRange, type AttendanceReportPeriod, type AttendanceReportEvent, type AttendanceReportData, type AttendanceReportPerson } from "./attendanceReportModel"
+import type { DailyStatusRow } from "./attendanceStatusModel"
 
 const PAGE_SIZE = 1000
 const ROW_CAP = 50000
@@ -34,5 +35,12 @@ export async function loadAttendanceReport(projectId: string, period: Attendance
     if (rows.length !== PAGE_SIZE) throw new Error("Not all report records were returned. No partial report was generated; please retry.")
   }
   if (events.length !== expected) throw new Error("The full report was not returned. Try a shorter period.")
-  return { project: project.data, worker: person.data as AttendanceReportPerson | null, range, events, generatedAt: new Date().toISOString() }
+  let days: DailyStatusRow[] | undefined
+  try {
+    const status = await supabase.rpc("attendance_daily_status", { p_project: projectId, p_from: range.startDay, p_to: range.throughDay })
+    if (!status.error && Array.isArray(status.data)) days = (status.data as DailyStatusRow[]).filter(row => !workerId || row.worker_id === workerId)
+  } catch {
+    days = undefined
+  }
+  return { project: project.data, worker: person.data as AttendanceReportPerson | null, range, events, days, generatedAt: new Date().toISOString() }
 }

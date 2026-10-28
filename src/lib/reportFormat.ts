@@ -17,6 +17,8 @@ export type DailyReport = {
   author_id: string
   weather: Weather
   workers_count: number
+  workers_source?: "manual" | "biometrics"
+  workers_synced_at?: string | null
   work_done: string
   issues: string | null
   delays: string | null
@@ -57,7 +59,7 @@ export function dailyReportHtml(report: DailyReport, project: { code: string; na
       ["Date", reportDateLong(report.report_date)],
       ["Prepared by", authorName],
       ["Weather", weatherLabels[report.weather]],
-      ["Workers on site", String(report.workers_count)],
+      [report.workers_source === "biometrics" ? "Workers present (biometrics)" : "Workers on site", String(report.workers_count)],
     ],
     sections: [
       { heading: "Work done", body: report.work_done || "-" },

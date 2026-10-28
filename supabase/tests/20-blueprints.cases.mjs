@@ -177,7 +177,9 @@ export default async function ({ db, ids, as, asOwner, test, expectOk, expectFai
 
   await test("Storage: assigned Engineer uploads into the project folder only", async () => {
     await as("eng1", "aal2")
-    await expectOk("insert into storage.objects (bucket_id, name) values ('blueprints', $1)", [`${P1}/abc/plan.pdf`])
+    // Files live in the sheet's folder (<project>/<sheet>/...): since 20261028130000 the sheet's type decides who may add them.
+    const sheet = (await db.query("insert into public.blueprints (project_id, title) values ($1, 'Storage folder sheet') returning id", [P1])).rows[0].id
+    await expectOk("insert into storage.objects (bucket_id, name) values ('blueprints', $1)", [`${P1}/${sheet}/plan.pdf`])
     await expectFail("insert into storage.objects (bucket_id, name) values ('blueprints', $1)", [`${other}/abc/plan.pdf`], /row-level security/)
     await expectFail("insert into storage.objects (bucket_id, name) values ('blueprints', 'junk/plan.pdf')", [], /row-level security/)
     await expectFail("insert into storage.objects (bucket_id, name) values ('other-bucket', $1)", [`${P1}/x.pdf`], /foreign key|row-level security/)
