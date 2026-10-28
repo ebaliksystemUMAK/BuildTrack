@@ -14,12 +14,12 @@ const labels: Record<EngineerPageKey, { label: string; icon: AdminIconName }> = 
   calendar: { label: "Project Calendar", icon: "calendar" },
   "project-blueprint": { label: "Blueprints", icon: "blueprint" },
   annotation: { label: "Plan Editor", icon: "pin" },
-  verification: { label: "Review Inbox", icon: "inbox" },
+  verification: { label: "Quality & reviews", icon: "clipboard" }, // legacy route only
   "report-issue": { label: "Issue Register", icon: "close" },
   progress: { label: "Progress by Zone", icon: "chart" },
   assignments: { label: "Assignment Board", icon: "users" },
   reports: { label: "Site Logs & Reports", icon: "file" },
-  qa: { label: "QA Register", icon: "clipboard" },
+  qa: { label: "Quality & reviews", icon: "clipboard" },
   checklists: { label: "Checklist Configuration", icon: "settings" },
 }
 
@@ -38,7 +38,7 @@ export default function EngineerShell({
   const inProject = mode === "project"
   const counts = usePinCounts(activePage, projectId)
   const qaCount = useQaBadge("engineer", profile?.id ?? null, activePage, projectId)
-  const badge = (key: EngineerPageKey) => (!inProject ? 0 : key === "verification" ? counts.review : key === "report-issue" ? counts.issue : key === "qa" ? qaCount : 0) || undefined
+  const badge = (key: EngineerPageKey) => (!inProject ? 0 : key === "report-issue" ? counts.issue : key === "qa" ? counts.review + qaCount : 0) || undefined
   const item = (key: EngineerPageKey) => ({ key, ...labels[key], badge: badge(key) })
 
   return (
@@ -48,14 +48,14 @@ export default function EngineerShell({
       groups={inProject ? [
         { label: "Project", items: [item("dashboard"), item("calendar")] },
         { label: "Plans", items: [item("project-blueprint")] },
-        { label: "Field & quality", items: [item("verification"), item("qa"), item("checklists"), item("report-issue"), item("progress")] },
+        { label: "Field & quality", items: [item("qa"), item("checklists"), item("report-issue"), item("progress")] },
         { label: "Team & reports", items: [item("assignments"), item("reports")] },
       ] : [{ label: "Workspace", items: [item("projects")] }]}
       active={inProject ? activePage : "projects"}
       onNavigate={(key) => onNavigate(key as EngineerPageKey)}
       project={inProject ? (project ? { code: project.code, name: project.name, sub: phaseLabels[project.phase] } : null) : undefined}
       onAllProjects={inProject ? () => onNavigate("projects") : undefined}
-      mobileTabs={inProject ? ["dashboard", "verification", "qa", "project-blueprint"] : []}
+      mobileTabs={inProject ? ["dashboard", "qa", "project-blueprint"] : []}
     >
       {inProject || activePage === "projects" ? children : <FieldProjects role="engineer" notice={notFound ? "That project is not available: it was removed or is no longer assigned to you." : "Choose a project to open that page."} />}
     </AppShell>

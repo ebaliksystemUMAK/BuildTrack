@@ -39,7 +39,6 @@ const EngineerReportIssue = lazy(() => import("./pages/Engineer/EngineerReportIs
 const EngineerProgress = lazy(() => import("./pages/Engineer/EngineerProgress"))
 const EngineerAssignments = lazy(() => import("./pages/Engineer/EngineerAssignments"))
 const EngineerReports = lazy(() => import("./pages/Engineer/EngineerReports"))
-const EngineerQa = lazy(() => import("./pages/Engineer/EngineerQa"))
 const EngineerChecklists = lazy(() => import("./pages/Engineer/EngineerChecklists"))
 const ProjectCalendarPage = lazy(() => import("./pages/ProjectCalendarPage"))
 import type { EngineerPageKey } from "./pages/Engineer/types"
@@ -127,6 +126,11 @@ function pageFromPath(): Page {
       "checklists",
       "calendar",
     ]
+    // Review inbox has been folded into the QA workspace. Keep shared notification/bookmark links working.
+    if ((key as string) === "verification") {
+      window.history.replaceState({}, "", `/engineer/qa${window.location.search}${window.location.hash}`)
+      return "engineer/qa"
+    }
     if (validKeys.includes(key)) return `engineer/${key}`
   }
   if (window.location.pathname.startsWith("/foreman/")) {
@@ -222,10 +226,11 @@ export default class App extends Component<Record<string, never>, AppState> {
 
   // Every Engineer / Foreman page except the project list carries the selected project, so each project stays separate.
   navigateEngineer = (nextPage: EngineerPageKey) => {
-    const path = fieldPagePath("engineer", nextPage, getSelectedProjectId())
+    const page = nextPage === "verification" ? "qa" : nextPage
+    const path = fieldPagePath("engineer", page, getSelectedProjectId())
     window.history.pushState({}, "", path)
     window.scrollTo({ top: 0, behavior: "smooth" })
-    this.setState({ page: `engineer/${nextPage}` })
+    this.setState({ page: `engineer/${page}` })
   }
 
   navigateForeman = (nextPage: ForemanPageKey) => {
@@ -318,7 +323,7 @@ export default class App extends Component<Record<string, never>, AppState> {
         progress: <EngineerProgress {...pageProps} />,
         assignments: <EngineerAssignments {...pageProps} />,
         reports: <EngineerReports {...pageProps} />,
-        qa: <EngineerQa {...pageProps} />,
+        qa: <EngineerProgressVerification {...pageProps} />,
         checklists: <EngineerChecklists {...pageProps} />,
         calendar: <ProjectCalendarPage role="engineer" />,
       }[activePage]

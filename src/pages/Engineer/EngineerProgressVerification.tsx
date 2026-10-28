@@ -6,6 +6,7 @@ import ChecklistPhotos from "../../components/ChecklistPhotos"
 import DefectDetail from "../../components/qa/DefectDetail"
 import OpenOnBlueprint from "../../components/OpenOnBlueprint"
 import InspectionDetail from "../../components/qa/InspectionDetail"
+import QaView from "../../components/qa/QaView"
 import { Chip } from "../../components/qa/QaBits"
 import WorkItemBoard, { type BoardExtra } from "../../components/qa/WorkItemBoard"
 import WorkItemWorkspace from "../../components/qa/WorkItemWorkspace"
@@ -27,9 +28,7 @@ import type { EngineerPageProps } from "./types"
 
 const listButton = "flex w-full flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-left text-sm hover:bg-surface-muted"
 
-// The Engineer's review inbox: everything waiting for an Engineer decision, grouped by the decision. One guided review per work item
-// (inspect -> decide its NCR corrections -> complete checklist), with NCRs outside work items listed separately.
-// The QA register is for searching, exports and history; this page is for acting.
+// One Engineer QA workspace: the action queue and the project register share the same data, without separate navigation destinations.
 export default function EngineerProgressVerification({ onNavigate }: EngineerPageProps) {
   const projectId = getSelectedProjectId()
   const ws = useQaWorkspace(projectId)
@@ -39,8 +38,21 @@ export default function EngineerProgressVerification({ onNavigate }: EngineerPag
   const [inspectionId, setInspectionId] = useState<string | null>(null)
   const [defectId, setDefectId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(new URLSearchParams(window.location.search).get("pin"))
-  useEffect(() => { const changed = () => setSelectedId(new URLSearchParams(window.location.search).get("pin")); window.addEventListener("popstate", changed); return () => window.removeEventListener("popstate", changed) }, [])
+  const [workspacePanel, setWorkspacePanel] = useState<"review" | "register">(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.has("tab") || params.has("inspection") || params.has("defect") || params.has("snag") ? "register" : "review"
+  })
+  useEffect(() => {
+    const changed = () => {
+      const params = new URLSearchParams(window.location.search)
+      setSelectedId(params.get("pin"))
+      setWorkspacePanel(params.has("tab") || params.has("inspection") || params.has("defect") || params.has("snag") ? "register" : "review")
+    }
+    window.addEventListener("popstate", changed)
+    return () => window.removeEventListener("popstate", changed)
+  }, [])
   useEffect(() => { setSelectedId(new URLSearchParams(window.location.search).get("pin")) }, [projectId])
+  const openRegister = () => setWorkspacePanel("register")
 
   const rows = items.rows
   const linked = useMemo(() => new Set(rows.flatMap((row) => row.ncrs.map((ncr) => ncr.id))), [rows])
@@ -77,7 +89,7 @@ export default function EngineerProgressVerification({ onNavigate }: EngineerPag
         const blockers = ws.defects.filter((row) => row.pin_id === pin.id && row.status !== "closed")
         return <li key={pin.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm">
           <strong>{pin.title}</strong><span className="text-xs text-fg-muted">{work.sheetOf(pin.blueprint_id)}</span>
-          <span className="ml-auto flex flex-wrap gap-1.5">{blockers.map((row) => <button key={row.id} type="button" className={buttonSecondary + " !py-1 !text-xs"} onClick={() => setDefectId(row.id)}>{refNumber("ncr", row.number)} · {defectStatusLabels[row.status]}</button>)}{!blockers.length ? <button type="button" className={buttonSecondary + " !py-1 !text-xs"} onClick={() => onNavigate("qa")}>QA register</button> : null}</span>
+          <span className="ml-auto flex flex-wrap gap-1.5">{blockers.map((row) => <button key={row.id} type="button" className={buttonSecondary + " !py-1 !text-xs"} onClick={() => setDefectId(row.id)}>{refNumber("ncr", row.number)} · {defectStatusLabels[row.status]}</button>)}{!blockers.length ? <button type="button" className={buttonSecondary + " !py-1 !text-xs"} onClick={openRegister}>Open QA register</button> : null}</span>
         </li>
       })}</ul> },
     { key: "older", short: "Older submissions", title: "Older whole-work submissions", hint: "Submitted before item-by-item QA; review them as a whole.", count: legacy.length,
@@ -97,18 +109,24 @@ export default function EngineerProgressVerification({ onNavigate }: EngineerPag
     <div className="engineer-page">
       <ProjectContextBar listPath="/engineer/projects" listLabel="My projects" />
       <PageHead
-        eyebrow="Inspection"
-        title="Review inbox"
-        description="Inspect each checklist, close its NCRs, then click Complete checklist. The work pin completes when every checklist is completed and every NCR and inspection is clear."
-        actions={<><button type="button" className={buttonSecondary} onClick={() => onNavigate("qa")}>QA register</button><button type="button" className={buttonSecondary} onClick={() => onNavigate("annotation")}>Open the plan</button></>}
+        eyebrow="Quality assurance"
+        title="Quality & reviews"
+        description="Review incoming work and corrections, then search the complete inspection, NCR and client-report register in one workspace."
+        actions={<button type="button" className={buttonSecondary} onClick={() => onNavigate("annotation")}>Open the plan</button>}
       />
 
       {!projectId ? null : (
         <>
+          <div className="mb-5 inline-flex max-w-full flex-wrap gap-0.5 rounded-xl border border-line bg-surface p-1 shadow-sm" role="tablist" aria-label="Quality workspace">
+            <button type="button" role="tab" aria-selected={workspacePanel === "review"} onClick={() => setWorkspacePanel("review")} className={`rounded-lg px-3.5 py-1.5 text-sm font-bold transition ${workspacePanel === "review" ? "bg-brand text-white shadow-[0_6px_14px_-8px_rgba(158,31,147,0.9)]" : "text-fg-muted hover:bg-surface-muted hover:text-fg"}`}>Review queue</button>
+            <button type="button" role="tab" aria-selected={workspacePanel === "register"} onClick={openRegister} className={`rounded-lg px-3.5 py-1.5 text-sm font-bold transition ${workspacePanel === "register" ? "bg-brand text-white shadow-[0_6px_14px_-8px_rgba(158,31,147,0.9)]" : "text-fg-muted hover:bg-surface-muted hover:text-fg"}`}>QA register</button>
+          </div>
+
+          {workspacePanel === "review" ? <>
           <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Waiting for you" value={yours + otherNcrs.length + legacy.length} tone="amber" note={`${yours} checklist item${yours === 1 ? "" : "s"} · ${otherNcrs.length} other NCR${otherNcrs.length === 1 ? "" : "s"}`} />
             <StatCard label="Waiting for the Foreman" value={rows.filter((row) => row.view.owner === "Foreman" && row.view.stage !== "preparing").length} tone="sky" note="Ready to submit or correcting" />
-            <StatCard label="Open NCRs" value={ws.defects.filter((row) => row.status !== "closed").length} tone="red" onClick={() => onNavigate("qa")} note="See the QA register" />
+            <StatCard label="Open NCRs" value={ws.defects.filter((row) => row.status !== "closed").length} tone="red" onClick={openRegister} note="See the QA register" />
             <StatCard label="Completed work" value={work.pins.filter((pin) => pin.status === "verified").length} tone="green" note={`of ${work.pins.filter((pin) => pin.category !== "note").length} work pins`} />
           </div>
 
@@ -121,6 +139,7 @@ export default function EngineerProgressVerification({ onNavigate }: EngineerPag
             onClose={() => setInspectionId(null)} onChanged={reload} onOpenDefect={(row) => { setInspectionId(null); setDefectId(row.id) }} onOpenInspection={setInspectionId} /> : null}
           {defect && project ? <DefectDetail key={defect.id} defect={defect} project={project} foremen={ws.foremen} today={ws.today} canWork={false} canVerify nameOf={ws.nameOf}
             onClose={() => setDefectId(null)} onChanged={reload} onOpenInspection={(id) => { setDefectId(null); setInspectionId(id) }} /> : null}
+          </> : <QaView ws={ws} mode="engineer" tabs={["overview", "inspections", "defects", "snags"]} dateFilter />}
         </>
       )}
     </div>
