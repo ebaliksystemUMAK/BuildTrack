@@ -3,6 +3,10 @@ import Modal from "../../components/Modal"
 import { EmptyState, buttonPrimary, buttonSecondary, inputClass } from "../../components/ui/PageParts"
 import { SkeletonList } from "../../components/ui/Skeleton"
 import { requestableRoles, type RequestedRole } from "../../lib/access"
+
+// Invitations give a field role, or Project Manager (an Admin then assigns their projects).
+type InviteRole = RequestedRole | "project_manager"
+const inviteRoles: Array<{ key: InviteRole; label: string }> = [...requestableRoles, { key: "project_manager", label: "Project Manager" }]
 import { formatDate } from "../../lib/admin"
 import { useConfirm } from "../../lib/confirm"
 import { formatInviteCode } from "../../lib/profileTools"
@@ -12,7 +16,7 @@ import { useToast } from "../../lib/toast"
 import { PageIntro, Panel, StatusBadge, AdminButton } from "./AdminShell"
 import type { AdminPageProps } from "./types"
 
-type Invite = { id: string; code: string; assigned_role: RequestedRole; discipline: Discipline | null; note: string | null; max_uses: number; uses: number; expires_at: string; disabled: boolean; created_at: string }
+type Invite = { id: string; code: string; assigned_role: InviteRole; discipline: Discipline | null; note: string | null; max_uses: number; uses: number; expires_at: string; disabled: boolean; created_at: string }
 
 const state = (invite: Invite) => {
   if (invite.disabled) return { label: "Disabled", tone: "neutral" as const }
@@ -84,7 +88,7 @@ export default function InviteCodes(_: AdminPageProps) {
                   return (
                     <tr key={invite.id}>
                       <td className="is-strong"><span className="font-mono tracking-widest">{formatInviteCode(invite.code)}</span></td>
-                      <td>{requestableRoles.find((item) => item.key === invite.assigned_role)?.label}{invite.discipline ? ` • ${disciplineLabels[invite.discipline]}` : ""}</td>
+                      <td>{inviteRoles.find((item) => item.key === invite.assigned_role)?.label}{invite.discipline ? ` • ${disciplineLabels[invite.discipline]}` : ""}</td>
                       <td>{invite.uses} / {invite.max_uses}</td>
                       <td className="is-muted">{formatDate(invite.expires_at)}</td>
                       <td className="is-muted">{invite.note ?? "—"}</td>
@@ -116,7 +120,7 @@ export default function InviteCodes(_: AdminPageProps) {
 
 function CreateInviteModal({ onClose, onCreated }: { onClose: () => void; onCreated: (code: string) => void }) {
   const toast = useToast()
-  const [role, setRole] = useState<RequestedRole>("foreman")
+  const [role, setRole] = useState<InviteRole>("foreman")
   const [discipline, setDiscipline] = useState<Discipline | "">("")
   const [uses, setUses] = useState(1)
   const [days, setDays] = useState(14)
@@ -130,7 +134,7 @@ function CreateInviteModal({ onClose, onCreated }: { onClose: () => void; onCrea
     if (!Number.isInteger(days) || days < 1 || days > 90) return setError("Valid days must be between 1 and 90.")
     setError("")
     setBusy(true)
-    const { data, error: rpcError } = await supabase.rpc("create_invite", { p_role: role, p_discipline: role === "client" ? null : discipline || null, p_note: note.trim() || null, p_max_uses: uses, p_days: days })
+    const { data, error: rpcError } = await supabase.rpc("create_invite", { p_role: role, p_discipline: role === "engineer" || role === "foreman" ? discipline || null : null, p_note: note.trim() || null, p_max_uses: uses, p_days: days })
     setBusy(false)
     if (rpcError || !data) {
       const message = /aal2|MFA/i.test(rpcError?.message ?? "") ? "Confirm your authenticator code first." : (rpcError?.message ?? "Could not create the code.")
@@ -147,8 +151,8 @@ function CreateInviteModal({ onClose, onCreated }: { onClose: () => void; onCrea
         {error ? <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-fg">{error}</p> : null}
         <fieldset>
           <legend className="mb-2 text-sm font-semibold">Role it gives</legend>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {requestableRoles.map((item) => (
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {inviteRoles.map((item) => (
               <label key={item.key} className={`cursor-pointer rounded-xl border p-3 text-sm transition ${role === item.key ? "border-brand bg-brand-soft" : "border-line hover:bg-surface-muted"}`}>
                 <input type="radio" name="invite-role" className="sr-only" checked={role === item.key} onChange={() => setRole(item.key)} />
                 <span className="block font-bold">{item.label}</span>
@@ -156,7 +160,7 @@ function CreateInviteModal({ onClose, onCreated }: { onClose: () => void; onCrea
             ))}
           </div>
         </fieldset>
-        {role !== "client" ? (
+        {role === "engineer" || role === "foreman" ? (
           <label className="block text-sm font-semibold">Discipline (optional)
             <select className={`${inputClass} mt-1`} value={discipline} onChange={(event) => setDiscipline(event.target.value as Discipline | "")}>
               <option value="">Not set</option>

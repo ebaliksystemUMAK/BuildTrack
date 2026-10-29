@@ -7,7 +7,7 @@ import { validPhotoDate } from "./photoGalleryModel.ts"
 import { pinPlanPath } from "./pinRecordsModel.ts"
 import { qaRecordPath } from "./qaAttemptsModel.ts"
 
-export type CalendarRole = "admin" | "engineer" | "foreman" | "client"
+export type CalendarRole = "admin" | "project_manager" | "engineer" | "foreman" | "client"
 export type CalendarKind = "work" | "inspection" | "reinspection" | "ncr" | "milestone"
 export type CalendarView = "month" | "week" | "day" | "schedule"
 export type CalendarEvent = {
@@ -18,9 +18,10 @@ export type CalendarEvent = {
 export const calendarKinds: CalendarKind[] = ["work", "inspection", "reinspection", "ncr", "milestone"]
 export const calendarLabels: Record<CalendarKind, string> = { work: "Work deadlines", inspection: "QA inspections", reinspection: "Reinspections", ncr: "NCR deadlines", milestone: "Project milestones" }
 export const calendarViews: CalendarView[] = ["month", "week", "day", "schedule"]
-export const calendarKindsFor = (role: CalendarRole): CalendarKind[] => role === "engineer" || role === "foreman" ? calendarKinds : ["work", "milestone"]
-export const calendarQaAllowed = (role: CalendarRole) => role === "engineer" || role === "foreman"
-export const calendarRoleMatches = (role: CalendarRole, actual: string | null | undefined) => role === actual || role === "admin" && actual === "super_admin"
+// Project Managers monitor the whole schedule, QA included (read-only).
+export const calendarKindsFor = (role: CalendarRole): CalendarKind[] => role === "engineer" || role === "foreman" || role === "project_manager" ? calendarKinds : ["work", "milestone"]
+export const calendarQaAllowed = (role: CalendarRole) => role === "engineer" || role === "foreman" || role === "project_manager"
+export const calendarRoleMatches = (role: CalendarRole, actual: string | null | undefined) => role === actual || role === "admin" && actual === "super_admin" || role === "project_manager" && (actual === "admin" || actual === "super_admin")
 
 const time = (day: string) => Date.parse(`${day}T12:00:00Z`)
 const iso = (stamp: number) => new Date(stamp).toISOString().slice(0, 10)
@@ -88,12 +89,12 @@ export function projectCalendarEvents(input: { role: CalendarRole; userId: strin
       const date = manilaDayOf(row.target_at)
       if (!date) { undated++; continue }
       const kind = row.reinspection_of ? "reinspection" : "inspection"
-      events.push({ id: `inspection:${row.id}`, projectId: project.id, kind, title: `${refNumber("ir", row.number)} · ${row.title}`, date, at: row.target_at ?? null, status: inspectionStatusLabels[row.status], location: location(row.pin_id), owner: input.nameOf(row.inspector_id ?? row.escalation_owner ?? null), note: "Inspection target time in Philippine time. This is a target, not an invented meeting duration.", completed: ["passed", "conditional", "failed"].includes(row.status), recordHref: qaRecordPath(role as "engineer" | "foreman", project.id, "inspection", row.id), pinHref: pinHref(row.pin_id, "issues") })
+      events.push({ id: `inspection:${row.id}`, projectId: project.id, kind, title: `${refNumber("ir", row.number)} · ${row.title}`, date, at: row.target_at ?? null, status: inspectionStatusLabels[row.status], location: location(row.pin_id), owner: input.nameOf(row.inspector_id ?? row.escalation_owner ?? null), note: "Inspection target time in Philippine time. This is a target, not an invented meeting duration.", completed: ["passed", "conditional", "failed"].includes(row.status), recordHref: qaRecordPath(role as "engineer" | "foreman" | "project_manager", project.id, "inspection", row.id), pinHref: pinHref(row.pin_id, "issues") })
     }
     for (const row of input.defects) {
       if (row.project_id !== project.id || role === "foreman" && (!userId || row.assigned_to !== userId)) continue
       if (!row.due_date || !validPhotoDate(row.due_date)) { undated++; continue }
-      events.push({ id: `ncr:${row.id}`, projectId: project.id, kind: "ncr", title: `${refNumber("ncr", row.number)} · ${row.title}`, date: row.due_date, at: null, status: defectStatusLabels[row.status], location: location(row.pin_id), owner: input.nameOf(row.assigned_to), note: "Corrective action deadline from the NCR. Closing or changing the NCR updates this event.", completed: row.status === "closed", recordHref: qaRecordPath(role as "engineer" | "foreman", project.id, "defect", row.id), pinHref: pinHref(row.pin_id, "issues") })
+      events.push({ id: `ncr:${row.id}`, projectId: project.id, kind: "ncr", title: `${refNumber("ncr", row.number)} · ${row.title}`, date: row.due_date, at: null, status: defectStatusLabels[row.status], location: location(row.pin_id), owner: input.nameOf(row.assigned_to), note: "Corrective action deadline from the NCR. Closing or changing the NCR updates this event.", completed: row.status === "closed", recordHref: qaRecordPath(role as "engineer" | "foreman" | "project_manager", project.id, "defect", row.id), pinHref: pinHref(row.pin_id, "issues") })
     }
   }
   for (const [key, title, date] of [["start", "Project start", project.start_date], ["end", "Target completion", project.end_date]] as const) {

@@ -7,10 +7,12 @@ import MfaPage from "../pages/Auth/MfaPage"
 import { useAuth, type AppRole } from "../lib/auth"
 import { invokeFunction } from "../lib/functions"
 import { GATE_FAILED_MESSAGE, NO_ACCOUNT_MESSAGE, clearOAuthIntent, readOAuthIntent, setLoginNotice } from "../lib/oauthIntent"
+import { PM_WORKSPACE_ROLES, adminToPmPath } from "../lib/projectRoutes"
 import { supabase } from "../lib/supabase"
 
 const homeFor = (role: AppRole | null): Page => {
   if (role === "super_admin" || role === "admin") return "admin/dashboard"
+  if (role === "project_manager") return "pm/projects"
   if (role === "engineer") return "engineer/projects"
   if (role === "foreman") return "foreman/projects"
   if (role === "client") return "client/overview"
@@ -24,8 +26,9 @@ const RETURN_KEY = "buildtrack.returnTo"
 
 const rolesForArea: Record<string, AppRole[]> = {
   attendance: ["super_admin", "admin", "engineer", "foreman"],
-  "pin-link": ["super_admin", "admin", "engineer", "foreman", "client", "user"],
+  "pin-link": ["super_admin", "admin", "project_manager", "engineer", "foreman", "client", "user"],
   admin: ["super_admin", "admin"],
+  pm: [...PM_WORKSPACE_ROLES],
   engineer: ["engineer"],
   foreman: ["foreman"],
   client: ["client"],
@@ -143,8 +146,15 @@ export default function RouteGuard({
         window.dispatchEvent(new PopStateEvent("popstate"))
       } else navigate(homeFor(profile?.role ?? null))
     }
-    else if (session && active && !isPublic && !allowed) navigate(homeFor(profile?.role ?? null))
-  }, [loading, gate, session, unregistered, active, isPublic, allowed, page, profile, navigate])
+    else if (session && active && !isPublic && !allowed) {
+      // A Project Manager opening an Admin project link (shared plan or pin link) continues in their own workspace.
+      const pmTarget = profile?.role === "project_manager" && area === "admin" ? adminToPmPath(window.location.pathname, window.location.search) : null
+      if (pmTarget) {
+        window.history.replaceState({}, "", pmTarget)
+        window.dispatchEvent(new PopStateEvent("popstate"))
+      } else navigate(homeFor(profile?.role ?? null))
+    }
+  }, [loading, gate, session, unregistered, active, isPublic, allowed, page, profile, navigate, area])
 
   // A completed pending registration never gets a workspace or the old full-page approval screen.
   // An incomplete Google registration is the one exception: it must stay signed in long enough to

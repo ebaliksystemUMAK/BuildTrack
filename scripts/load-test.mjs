@@ -152,6 +152,15 @@ await measure("One type of two: timeline events in 100-ID batches", "engPart", a
   return total
 })
 
+// Project Manager (20261029100000): reads through can_view_project / is_staff on an assigned project, never type-narrowed.
+await addUser("pm", "project_manager")
+await asOwner()
+await db.query("insert into public.project_managers (project_id, user_id, designation) values ($1, $2, 'primary')", [project, ids.pm])
+await measure("Project Manager: all pins of the project (paged)", "pm", () => paged("select * from public.pins where project_id = $1 order by created_at, id", [project]))
+await measure("Project Manager: NCR register (paged)", "pm", () => paged("select * from public.qa_defects where project_id = $1 order by number desc", [project]))
+await measure("Project Manager: QA summary (get_qa_summary)", "pm", async () => ((await db.query("select public.get_qa_summary($1) s", [project])).rows[0].s ? 1 : 0))
+await measure("Project Manager: project audit log, newest 50", "pm", async () => (await db.query("select * from public.get_project_audit_log($1, null, 50, 0)", [project])).rows.length)
+
 // The app's own maths on the same rows (what the browser does after loading).
 await as("eng")
 // Supabase sends dates as text; PGlite returns Date objects, so convert to what the browser really receives.

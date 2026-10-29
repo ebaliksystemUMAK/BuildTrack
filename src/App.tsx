@@ -4,7 +4,7 @@ import ErrorBoundary from "./components/ErrorBoundary"
 import { SkeletonCardGrid } from "./components/ui/Skeleton"
 import RouteGuard from "./components/RouteGuard"
 import ProjectWorkspace from "./pages/Admin/ProjectWorkspace"
-import { fieldPagePath, projectPath, projectSections, readProjectRoute, type ProjectSection } from "./lib/projectRoutes"
+import { fieldPagePath, isPmPage, projectPath, projectSections, readProjectRoute, type ProjectSection } from "./lib/projectRoutes"
 import { getSelectedProjectId } from "./lib/projects"
 const LandingPage = lazy(() => import("./pages/Public/LandingPage"))
 const ValenciaIntroduction = lazy(() => import("./pages/Public/ValenciaIntroduction"))
@@ -29,6 +29,17 @@ const AdminQaChecklists = lazy(() => import("./pages/Admin/AdminQaChecklists"))
 const AccessReview = lazy(() => import("./pages/Admin/AccessReview"))
 const ProjectBackup = lazy(() => import("./pages/Admin/ProjectBackup"))
 import type { AdminPageKey } from "./pages/Admin/types"
+import PmShell from "./pages/ProjectManager/PmShell"
+import PmProjects from "./pages/ProjectManager/PmProjects" // also the shell's fallback project list, so it ships with the shell
+const PmDashboard = lazy(() => import("./pages/ProjectManager/PmDashboard"))
+const PmDetails = lazy(() => import("./pages/ProjectManager/PmDetails"))
+const PmTeam = lazy(() => import("./pages/ProjectManager/PmTeam"))
+const PmBlueprints = lazy(() => import("./pages/ProjectManager/PmBlueprints"))
+const PmQuality = lazy(() => import("./pages/ProjectManager/PmQuality"))
+const PmAttendance = lazy(() => import("./pages/ProjectManager/PmAttendance"))
+const PmReports = lazy(() => import("./pages/ProjectManager/PmReports"))
+const PmAuditLog = lazy(() => import("./pages/ProjectManager/PmAuditLog"))
+import type { PmPageKey } from "./pages/ProjectManager/types"
 import EngineerShell from "./pages/Engineer/EngineerShell"
 const EngineerDashboard = lazy(() => import("./pages/Engineer/EngineerDashboard"))
 const EngineerProjects = lazy(() => import("./pages/Engineer/EngineerProjects"))
@@ -69,7 +80,7 @@ const withLoading = (node: ReactNode) => (
   <Suspense fallback={<div className="p-6"><SkeletonCardGrid count={3} label="Loading the page" /></div>}>{node}</Suspense>
 )
 
-export type Page = "home" | "valencia" | "login" | "register" | "pin-link" | "attendance" | `admin/${AdminPageKey}` | `engineer/${EngineerPageKey}` | `foreman/${ForemanPageKey}` | `client/${ClientPageKey}` | `user/${UserPageKey}`
+export type Page = "home" | "valencia" | "login" | "register" | "pin-link" | "attendance" | `admin/${AdminPageKey}` | `pm/${PmPageKey}` | `engineer/${EngineerPageKey}` | `foreman/${ForemanPageKey}` | `client/${ClientPageKey}` | `user/${UserPageKey}`
 
 function pageFromPath(): Page {
   const publicPath = window.location.pathname.replace(/\/$/, "") || "/"
@@ -106,6 +117,10 @@ function pageFromPath(): Page {
       "calendar",
     ]
     if (validKeys.includes(key)) return `admin/${key}`
+  }
+  if (window.location.pathname.startsWith("/pm/")) {
+    const key = window.location.pathname.replace("/pm/", "").replace(/\/$/, "")
+    if (isPmPage(key)) return `pm/${key}`
   }
   if (window.location.pathname.startsWith("/engineer/")) {
     const key = window.location.pathname.replace(
@@ -240,6 +255,15 @@ export default class App extends Component<Record<string, never>, AppState> {
     this.setState({ page: `foreman/${nextPage}` })
   }
 
+  // Project Manager pages carry the selected project like the Engineer / Foreman pages; extra parameters (e.g. tab=) ride along.
+  navigatePm = (nextPage: PmPageKey, search = "") => {
+    const base = fieldPagePath("pm", nextPage, getSelectedProjectId())
+    const extra = search.replace(/^\?/, "")
+    window.history.pushState({}, "", extra ? `${base}${base.includes("?") ? "&" : "?"}${extra}` : base)
+    window.scrollTo({ top: 0, behavior: "smooth" })
+    this.setState({ page: `pm/${nextPage}` })
+  }
+
   navigateUser = (nextPage: UserPageKey) => {
     const path = `/user/${nextPage}`
     window.history.pushState({}, "", path)
@@ -305,6 +329,27 @@ export default class App extends Component<Record<string, never>, AppState> {
             ? <ProjectWorkspace key={`${getSelectedProjectId()}:${activePage}`} activePage={activePage as ProjectSection} onNavigate={this.navigateAdmin}>{withLoading(page)}</ProjectWorkspace>
             : withLoading(page)}
         </AdminShell>
+      )
+    }
+    if (this.state.page.startsWith("pm/")) {
+      const activePage = this.state.page.replace("pm/", "") as PmPageKey
+      const pageProps = { onNavigate: this.navigatePm }
+      const page = {
+        projects: <PmProjects {...pageProps} />,
+        dashboard: <PmDashboard {...pageProps} />,
+        details: <PmDetails {...pageProps} />,
+        team: <PmTeam {...pageProps} />,
+        blueprints: <PmBlueprints {...pageProps} />,
+        calendar: <ProjectCalendarPage role="project_manager" />,
+        quality: <PmQuality {...pageProps} />,
+        attendance: <PmAttendance {...pageProps} />,
+        reports: <PmReports {...pageProps} />,
+        audit: <PmAuditLog {...pageProps} />,
+      }[activePage]
+      return (
+        <PmShell activePage={activePage} onNavigate={this.navigatePm}>
+          {withLoading(page)}
+        </PmShell>
       )
     }
     if (this.state.page.startsWith("engineer/")) {

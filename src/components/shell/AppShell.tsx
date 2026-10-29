@@ -15,9 +15,9 @@ import logo from "../../assets/valencia/logo-source.png"
 export type ShellNavItem = { key: string; label: string; icon: AdminIconName; badge?: number }
 export type ShellNavGroup = { label: string; items: ShellNavItem[] }
 // Each workspace has its own identity (accent, sidebar, page headers); the colours live in index.css under [data-persona].
-export type ShellPersona = "admin" | "engineer" | "foreman" | "client" | "user"
+export type ShellPersona = "admin" | "manager" | "engineer" | "foreman" | "client" | "user"
 
-const roleName: Record<AppRole, string> = { super_admin: "Super Admin", admin: "Administrator", engineer: "Engineer", foreman: "Foreman", client: "Client", user: "Basic account" }
+const roleName: Record<AppRole, string> = { super_admin: "Super Admin", admin: "Administrator", project_manager: "Project Manager", engineer: "Engineer", foreman: "Foreman", client: "Client", user: "Basic account" }
 const COLLAPSE_KEY = "buildtrack.sidebar.collapsed"
 
 const initials = (value: string) => value.split(/\s+|@/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "BT"

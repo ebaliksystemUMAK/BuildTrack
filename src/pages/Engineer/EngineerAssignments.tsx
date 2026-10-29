@@ -8,6 +8,7 @@ import { followLink } from "../../lib/notifications"
 import { pinPlanPath } from "../../lib/pinRecordsModel"
 import { isOverdue } from "../../lib/progress"
 import { getSelectedProjectId } from "../../lib/projects"
+import { assignWorkItem } from "../../lib/projectManagers"
 import { useProjectWork } from "../../lib/projectWork"
 import { supabase } from "../../lib/supabase"
 import { useToast } from "../../lib/toast"
@@ -19,6 +20,11 @@ const filterLabels: Record<AssignmentFilter, string> = { assigned: "Assigned", u
 
 // A detailed work list, including assignees no longer in the team. Filtering never changes assignments.
 export default function EngineerAssignments(_: EngineerPageProps) {
+  return AssignmentBoard({ variant: "engineer" }) // same hooks, same tree as before the board was shared
+}
+
+// Shared with the Project Manager workspace (variant "pm"): the same board, saved through assign_work_item, under a section heading.
+export function AssignmentBoard({ variant, readOnly = false }: { variant: "engineer" | "pm"; readOnly?: boolean }) {
   const projectId = getSelectedProjectId()
   const work = useProjectWork(projectId)
   const toast = useToast()
@@ -47,10 +53,16 @@ export default function EngineerAssignments(_: EngineerPageProps) {
     pending.current = true
     setSaving(pinId)
     try {
-      const { data, error } = await supabase.from("pins").update({ assigned_to: assignedTo }).eq("id", pinId).eq("project_id", requestProject).eq("updated_at", pin.updated_at).select("*")
-      if (currentProject.current !== requestProject) return
-      if (error || !data?.length) throw new Error(error ? dbMessage(error) : "This work changed or is no longer assignable. The board will reload; review the current record before trying again.")
-      const saved = data[0] as Pin
+      let saved: Pin
+      if (variant === "pm") {
+        saved = (await assignWorkItem(pinId, assignedTo, pin.updated_at)) as Pin
+        if (currentProject.current !== requestProject) return
+      } else {
+        const { data, error } = await supabase.from("pins").update({ assigned_to: assignedTo }).eq("id", pinId).eq("project_id", requestProject).eq("updated_at", pin.updated_at).select("*")
+        if (currentProject.current !== requestProject) return
+        if (error || !data?.length) throw new Error(error ? dbMessage(error) : "This work changed or is no longer assignable. The board will reload; review the current record before trying again.")
+        saved = data[0] as Pin
+      }
       work.setPins(current => current.map(item => item.id === pinId && item.project_id === requestProject ? { ...saved, x: Number(saved.x), y: Number(saved.y) } : item))
       await work.reload().catch(() => undefined)
       if (currentProject.current !== requestProject) return
@@ -63,19 +75,17 @@ export default function EngineerAssignments(_: EngineerPageProps) {
     } finally { pending.current = false; setSaving(null) }
   }
 
-  return (
-    <div className="engineer-page" style={{ width: "min(100%, 1280px)" }}>
-      <ProjectContextBar listPath="/engineer/projects" listLabel="My projects" />
-      <PageHead eyebrow="Planning" title="Assignment board"
-        description="All project work pins, including completed work. Saved assignments are shared with the Foreman's My work and QA pages; unassigned work does not appear in a Foreman's task list."
-        actions={<div className="flex flex-wrap items-end gap-3"><label className="text-xs font-semibold">Sheet
+  const filters = (<div className="flex flex-wrap items-end gap-3"><label className="text-xs font-semibold">Sheet
           <select value={sheet} onChange={event => setSheet(event.target.value)} aria-label="Filter by sheet" className={inputClass + " mt-1"}>
             <option value="all">All sheets</option>
             {work.blueprints.map(bp => <option key={bp.id} value={bp.id}>{bp.title}</option>)}
           </select>
         </label><label className="text-xs font-semibold">Work status<select aria-label="Filter by work status" className={inputClass + " mt-1"} value={status} onChange={event => setStatus(event.target.value as typeof status)}>
           <option value="all">All statuses</option><option value="open">Open work only</option>{(Object.keys(statusLabels) as PinStatus[]).map(key => <option key={key} value={key}>{statusLabels[key]}</option>)}
-        </select></label></div>} />
+        </select></label></div>)
+  const pm = variant === "pm"
+  const body = (
+    <>
       {!projectId ? null : work.loading ? <SkeletonList rows={4} label="Loading assignments" />
         : work.error ? <p role="alert" className="rounded-lg bg-danger-soft p-4 text-sm text-danger-fg">{work.error} <button type="button" className="underline" onClick={() => void work.reload()}>Retry</button></p>
         : <div className="space-y-4">
@@ -89,7 +99,7 @@ export default function EngineerAssignments(_: EngineerPageProps) {
             </div>
             <p role="status" className="text-xs text-fg-muted">{shown.length} of {available.length} work pin{available.length === 1 ? "" : "s"} shown</p>
           </div>
-          {!foremen.length ? <p role="status" className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-950 dark:bg-amber-900/40 dark:text-amber-100">No Foreman is on this project yet. Ask an administrator to add one to the team before assigning work.</p> : null}
+          {!foremen.length ? <p role="status" className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-950 dark:bg-amber-900/40 dark:text-amber-100">{pm ? "No Foreman is on this project yet. Add one to the team above before assigning work." : "No Foreman is on this project yet. Ask an administrator to add one to the team before assigning work."}</p> : null}
           {!shown.length ? <EmptyState title={available.length ? `No ${assignment === "assigned" ? "assigned" : "unassigned"} work in this selection` : "No work in this selection"}>
             Choose another assignment filter, sheet or status to see more work. Notes are not assignable work.
           </EmptyState> : <section aria-label="Assignment details" className="overflow-hidden rounded-xl border border-line bg-surface">
@@ -99,11 +109,32 @@ export default function EngineerAssignments(_: EngineerPageProps) {
             <ul className="divide-y divide-line">
               {shown.map(pin => <AssignmentRow key={pin.id} pin={pin} sheet={work.sheetOf(pin.blueprint_id)} assignee={work.nameOf(pin.assigned_to)}
                 foremen={foremen.map(member => ({ id: member.user_id, name: member.full_name }))} late={isOverdue(pin, work.today)}
-                saving={saving === pin.id} busy={saving !== null} onAssign={target => void assign(pin.id, target)}
-                onOpen={() => followLink(pinPlanPath("engineer", { projectId: pin.project_id, pinId: pin.id, sheetId: pin.blueprint_id }), pin.project_id)} />)}
+                saving={saving === pin.id} busy={saving !== null || readOnly} onAssign={target => void assign(pin.id, target)}
+                onOpen={() => followLink(pinPlanPath(pm ? "project_manager" : "engineer", { projectId: pin.project_id, pinId: pin.id, sheetId: pin.blueprint_id }), pin.project_id)} />)}
             </ul>
           </section>}
         </div>}
+    </>
+  )
+  if (pm) return (
+    <section aria-labelledby="pm-assignments" className="mt-6">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 id="pm-assignments" className="border-l-4 border-accent pl-3 text-lg font-extrabold text-brand-strong">Work assignments</h2>
+          <p className="mt-1 pl-4 text-sm text-fg-muted">Move work items between Foremen. The Foreman needs Assigned work access to the plan's type. Locked work, work awaiting the Engineer's review and completed work keep their Foreman.</p>
+        </div>
+        {filters}
+      </div>
+      {body}
+    </section>
+  )
+  return (
+    <div className="engineer-page" style={{ width: "min(100%, 1280px)" }}>
+      <ProjectContextBar listPath="/engineer/projects" listLabel="My projects" />
+      <PageHead eyebrow="Planning" title="Assignment board"
+        description="All project work pins, including completed work. Saved assignments are shared with the Foreman's My work and QA pages; unassigned work does not appear in a Foreman's task list."
+        actions={filters} />
+      {body}
     </div>
   )
 }

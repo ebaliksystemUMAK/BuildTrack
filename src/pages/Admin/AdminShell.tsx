@@ -9,22 +9,22 @@ import AdminIcon, { type AdminIconName } from "./AdminIcon"
 import type { AdminNavigate, AdminPageKey } from "./types"
 
 export const pageTitles: Record<AdminPageKey, string> = {
-  dashboard: "Admin Dashboard",
+  dashboard: "Company Dashboard",
   "user-management": "User Management & Approval",
-  biometrics: "Worker Biometric Registration",
-  "project-management": "Project Management",
+  biometrics: "Biometric Management",
+  "project-management": "All Projects",
   "blueprint-upload": "Blueprint Management",
   "blueprint-mapping": "Blueprint Mapping Monitor",
   "blueprint-progress": "Blueprint Progress Tracking",
   "blueprint-version": "Blueprint Version Control",
   "project-overview": "Project Overview",
   calendar: "Project Calendar",
-  invites: "Invitation Codes",
-  "audit-log": "Audit Log",
+  invites: "Invitations",
+  "audit-log": "Company Audit Log",
   settings: "System Settings",
-  "access-review": "Access Review",
-  backup: "Backup & Export",
-  "qa-checklists": "QA Checklists",
+  "access-review": "Global Access Review",
+  backup: "Full Backup & Export",
+  "qa-checklists": "Company QA Template Library",
 }
 
 const navItems: Array<{
@@ -32,20 +32,20 @@ const navItems: Array<{
   label: string
   icon: "grid" | "users" | "fingerprint" | "building" | "blueprint" | "pin" | "chart" | "history"
 }> = [
-  { key: "dashboard", label: "Dashboard", icon: "grid" },
-  { key: "user-management", label: "User Management", icon: "users" },
-  { key: "invites", label: "Invitation Codes", icon: "users" },
-  { key: "audit-log", label: "Audit Log", icon: "history" },
-  { key: "access-review", label: "Access Review", icon: "users" },
-  { key: "biometrics", label: "Biometric Registration", icon: "fingerprint" },
-  { key: "project-management", label: "Project Management", icon: "building" },
+  { key: "dashboard", label: "Company dashboard", icon: "grid" },
+  { key: "user-management", label: "User management", icon: "users" },
+  { key: "invites", label: "Invitations", icon: "users" },
+  { key: "audit-log", label: "Company audit log", icon: "history" },
+  { key: "access-review", label: "Global access review", icon: "users" },
+  { key: "biometrics", label: "Biometric management", icon: "fingerprint" },
+  { key: "project-management", label: "All projects", icon: "building" },
   { key: "project-overview", label: "Project Overview", icon: "building" },
   { key: "blueprint-mapping", label: "Blueprint Mapping", icon: "pin" },
   { key: "blueprint-progress", label: "Progress Tracking", icon: "chart" },
   { key: "blueprint-version", label: "Version Control", icon: "history" },
-  { key: "qa-checklists", label: "QA Checklists", icon: "blueprint" },
-  { key: "backup", label: "Backup & Export", icon: "history" },
-  { key: "settings", label: "System Settings", icon: "grid" },
+  { key: "qa-checklists", label: "QA template library", icon: "blueprint" },
+  { key: "backup", label: "Full backup & export", icon: "history" },
+  { key: "settings", label: "System settings", icon: "grid" },
 ]
 
 const samplePages: AdminPageKey[] = []
@@ -290,12 +290,12 @@ export default function AdminShell({
     label,
     items: visible.filter((item) => keys.includes(item.key)).map((item) => ({ key: item.key, label: item.label, icon: item.icon, badge: item.key === "user-management" ? reviewCount : undefined })),
   })
+  // Company administration; Project Managers use their own workspace for daily operations.
   const groups = [
     group("Overview", ["dashboard"]),
+    group("Projects", ["project-management"]),
     group("People & access", ["user-management", "invites", "access-review", "audit-log"]),
-    group("Projects", ["project-management", "project-overview"]),
-    group("Plans & quality", ["blueprint-mapping", "blueprint-progress", "blueprint-version", "qa-checklists"]),
-    group("Operations", ["biometrics", "backup", "settings"]),
+    group("Company", ["biometrics", "qa-checklists", "settings", "backup"]),
   ].filter((entry) => entry.items.length)
 
   return (
@@ -306,7 +306,7 @@ export default function AdminShell({
       active={activePage}
       onNavigate={(key) => onNavigate(key as AdminPageKey)}
       project={project ? { code: project.code, name: project.name, sub: phaseLabels[project.phase] } : null}
-      projectEmpty="All projects (pick one in Project Management)"
+      projectEmpty="All projects (pick one in All projects)"
       mobileTabs={["dashboard", "user-management", "project-management", "audit-log"]}
       banner={samplePages.includes(activePage) ? <SampleNotice /> : null}
     >

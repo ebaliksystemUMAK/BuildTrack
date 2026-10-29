@@ -732,6 +732,16 @@ aside nav { scrollbar-color: rgba(255, 255, 255, .22) transparent; }
   --persona-rail: repeating-linear-gradient(-45deg, rgba(241, 139, 0, .9) 0 10px, rgba(17, 13, 8, .95) 10px 20px) 0 0 / 100% 6px no-repeat, radial-gradient(120% 55% at 0% 0%, rgba(241, 139, 0, .30), transparent 60%), linear-gradient(180deg, #1c150c, #0f0b06);
   --persona-tabbar: rgba(20, 15, 8, .96);
 }
+/* Project Manager ("Project office"): forest green with a schedule-bar rail */
+[data-persona="manager"] {
+  --persona: #15803d;
+  --persona-2: #4ade80;
+  --persona-light: #86efac;
+  --persona-text: light-dark(#166534, #86efac);
+  --persona-soft: light-dark(#ecfdf3, #10261a);
+  --persona-rail: repeating-linear-gradient(180deg, transparent 0 26px, rgba(134, 239, 172, .06) 26px 27px), radial-gradient(120% 55% at 0% 0%, rgba(21, 128, 61, .40), transparent 60%), linear-gradient(180deg, #0c1a12, #060e09);
+  --persona-tabbar: rgba(8, 18, 12, .96);
+}
 [data-persona="client"] {
   --persona: #0f766e;
   --persona-2: #2dd4bf;
@@ -792,6 +802,13 @@ aside nav { scrollbar-color: rgba(255, 255, 255, .22) transparent; }
 }
 [data-persona="client"] :is(.bt-pagehead__title, .client-intro h1) { font-family: "Playfair Display", Georgia, serif; font-weight: 700; letter-spacing: -.01em; }
 [data-persona="client"] .bt-stat { border-radius: 20px; }
+
+/* Project Manager: header with a schedule bar along the bottom edge */
+[data-persona="manager"] :is(.bt-pagehead, .admin-page-intro) {
+  padding: 18px 20px; border: 1px solid color-mix(in srgb, var(--persona) 20%, var(--line)); border-radius: 16px;
+  background: linear-gradient(90deg, var(--persona) 0 22%, var(--persona-2) 22% 34%, color-mix(in srgb, var(--persona) 25%, var(--line)) 34% 100%) bottom / 100% 4px no-repeat, linear-gradient(135deg, var(--persona-soft), var(--surface) 70%);
+}
+[data-persona="manager"] .bt-stat { border-radius: 14px; }
 
 /* Admin: clean control-center header (divider only), dense tiles */
 [data-persona="admin"] :is(.bt-pagehead, .admin-page-intro) { border-bottom-width: 2px; border-image: linear-gradient(90deg, var(--persona), var(--persona-2) 30%, var(--line) 30%) 1; }

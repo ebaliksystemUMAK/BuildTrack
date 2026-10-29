@@ -11,7 +11,7 @@ import type { Session } from "@supabase/supabase-js"
 import { invokeFunction } from "./functions"
 import { supabase } from "./supabase"
 
-export type AppRole = "super_admin" | "admin" | "engineer" | "foreman" | "client" | "user"
+export type AppRole = "super_admin" | "admin" | "project_manager" | "engineer" | "foreman" | "client" | "user"
 export type UserStatus = "pending" | "active" | "rejected" | "disabled"
 export type AdminPermission =
   | "users.view"
@@ -76,6 +76,7 @@ const readSaved = (): SavedImpersonation | null => {
 
 export const roleHomePath = (role: AppRole | null): string => {
   if (role === "super_admin" || role === "admin") return "/admin/dashboard"
+  if (role === "project_manager") return "/pm/projects"
   if (role === "engineer") return "/engineer/projects"
   if (role === "foreman") return "/foreman/projects"
   if (role === "client") return "/client/overview"

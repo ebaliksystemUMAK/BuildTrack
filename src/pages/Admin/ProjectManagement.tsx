@@ -4,6 +4,9 @@ import type { AdminPageProps } from "./types"
 import Modal from "../../components/Modal"
 import ProjectCard, { type CardPerson } from "../../components/ProjectCard"
 import ProjectAccessDialog from "./ProjectAccessDialog"
+import ProjectManagersDialog from "./ProjectManagersDialog"
+import { setProjectArchived, useProjectManagers } from "../../lib/projectManagers"
+import { slotsOf } from "../../lib/projectManagerModel"
 import { buttonPrimary, buttonSecondary } from "../../components/ui/PageParts"
 import type { Profile } from "../../lib/auth"
 import {
@@ -110,6 +113,10 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
   const [errors, setErrors] = useState<FieldErrors>({})
   const [formError, setFormError] = useState("")
   const [shareId, setShareId] = useState<string | null>(null)
+  const [managersId, setManagersId] = useState<string | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
+  const [managerPeople, setManagerPeople] = useState<Array<{ id: string; full_name: string | null; email: string }>>([])
+  const { managers, reload: reloadManagers } = useProjectManagers("all")
   const toast = useToast()
   const confirm = useConfirm()
   // All success / failure messages go through toasts now.
@@ -122,17 +129,19 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
   const [sort, setSort] = useState<"newest" | "name" | "status">("newest")
 
   const loadPeople = useCallback(async () => {
-    const [memberResult, profileResult] = await Promise.all([
+    const [memberResult, profileResult, managerResult] = await Promise.all([
       supabase.from("project_members").select("project_id, user_id, member_role"),
       supabase.from("profiles").select("*").in("role", ["engineer", "foreman", "client"]).eq("status", "active"),
+      supabase.from("profiles").select("id, full_name, email").eq("role", "project_manager").eq("status", "active").order("full_name"),
     ])
-    if (memberResult.error || profileResult.error) {
+    if (memberResult.error || profileResult.error || managerResult.error) {
       setPeopleError("Could not load the team list. Check your connection and retry.")
       return
     }
     setPeopleError("")
     setMembers((memberResult.data as ProjectMember[] | null) ?? [])
     setPeople((profileResult.data as Profile[] | null) ?? [])
+    setManagerPeople((managerResult.data as Array<{ id: string; full_name: string | null; email: string }> | null) ?? [])
   }, [])
 
   useEffect(() => {
@@ -149,13 +158,14 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
     const text = query.trim().toLowerCase()
     const list = projects.filter(
       (project) =>
+        (showArchived || !project.archived_at) &&
         (statusFilter === "all" || project.status === statusFilter) &&
         (!text || `${project.code} ${project.name} ${project.location ?? ""} ${project.client_name ?? ""}`.toLowerCase().includes(text)),
     )
     if (sort === "name") return [...list].sort((a, b) => a.name.localeCompare(b.name))
     if (sort === "status") return [...list].sort((a, b) => a.status.localeCompare(b.status))
     return list
-  }, [projects, query, statusFilter, sort])
+  }, [projects, query, statusFilter, sort, showArchived])
 
   const openForm = (project?: Project) => {
     setErrors({})
@@ -237,6 +247,25 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
     await Promise.all([reload(), loadPeople()])
   }
 
+  // Archiving keeps every record; the project's Project Managers can still read it but not change it. Restoring undoes it.
+  const archiveProject = async (project: Project, archived: boolean) => {
+    if (!(await confirm(archived
+      ? { title: `Archive ${project.code}?`, message: `${project.name} is kept with all its records. Its Project Managers can still read it but can no longer change it. You can restore it later.`, confirmLabel: "Archive project" }
+      : { title: `Restore ${project.code}?`, message: "Its Project Managers can manage it again.", confirmLabel: "Restore project" }))) return
+    try {
+      await setProjectArchived(project.id, archived)
+      setMessage({ text: archived ? "Project archived." : "Project restored.", ok: true })
+      await reload()
+    } catch (error) {
+      setMessage({ text: (error as Error).message, ok: false })
+    }
+  }
+  const managersProject = projects.find((project) => project.id === managersId) ?? null
+  const managerLine = (projectId: string) => {
+    const slots = slotsOf(managers, projectId)
+    return slots.primary ? `PM: ${slots.primary.full_name}${slots.backup ? ` • Backup: ${slots.backup.full_name}` : ""}` : slots.backup ? `Backup PM: ${slots.backup.full_name}` : "No Project Manager"
+  }
+
   // Manage access (team, then blueprint access per type) lives in ProjectAccessDialog; every change is saved at once.
   const shareProject = projects.find((project) => project.id === shareId) ?? null
   const openAccess = (projectId: string) => setShareId(projectId)
@@ -260,8 +289,8 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
     <div className="admin-page">
       <PageIntro
         eyebrow="Projects • Admin"
-        title="Project Management"
-        description="Create projects, build each project's team, and choose which blueprint types every Engineer and Foreman can open. Nobody sees a project they are not on."
+        title="All projects"
+        description="Create and archive projects and assign their primary and backup Project Managers. Project Managers handle day-to-day operations in their own workspace."
         action={
           <AdminButton icon="plus" onClick={() => openForm()}>
             New project
@@ -276,7 +305,7 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
         </div>
       ) : null}
 
-      <div className="mb-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center">
+      <div className="mb-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] sm:items-center">
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -297,6 +326,7 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
             <option value="status">Status</option>
           </select>
         </div>
+        <label className="flex min-h-10 items-center gap-2 text-sm font-semibold text-fg sm:whitespace-nowrap"><input type="checkbox" className="h-4 w-4" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />Show archived</label>
         <span className="text-sm text-fg-muted sm:whitespace-nowrap" aria-live="polite">{visible.length} of {projects.length}</span>
       </div>
 
@@ -318,9 +348,12 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
             onOpen={() => openProject("admin", project.id)}
             actions={
               <>
+                <span className="mr-auto min-w-0 max-w-full truncate text-[11px] font-semibold text-fg-muted" title={managerLine(project.id)}>{managerLine(project.id)}</span>
+                <button type="button" className={cardAction} onClick={() => setManagersId(project.id)} aria-label={`Project Managers of ${project.code}`}>Managers</button>
                 <button type="button" className={cardAction} onClick={() => openForm(project)} aria-label={`Edit details of ${project.code}`}>Details</button>
                 <button type="button" className={cardAction} onClick={() => openAccess(project.id)} aria-label={`Team and access of ${project.code}`}>Team & access</button>
                 <button type="button" className={cardAction} onClick={() => openBlueprints(project.id)} aria-label={`Blueprints of ${project.code}`}>Blueprints</button>
+                <button type="button" className={cardAction} onClick={() => void archiveProject(project, !project.archived_at)} aria-label={`${project.archived_at ? "Restore" : "Archive"} ${project.code}`}>{project.archived_at ? "Restore" : "Archive"}</button>
                 <button type="button" className="inline-flex min-h-8 items-center rounded-lg px-2.5 text-xs font-bold text-danger-fg hover:bg-danger-soft" onClick={() => void removeProject(project)} aria-label={`Delete ${project.code}`}>
                   Delete
                 </button>
@@ -477,6 +510,16 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
             </div>
           </form>
         </Modal>
+      ) : null}
+
+      {managersProject ? (
+        <ProjectManagersDialog
+          project={managersProject}
+          managers={managers}
+          people={managerPeople}
+          onChanged={async () => { await Promise.all([reloadManagers(), loadPeople()]) }}
+          onClose={() => setManagersId(null)}
+        />
       ) : null}
 
       {shareProject ? (

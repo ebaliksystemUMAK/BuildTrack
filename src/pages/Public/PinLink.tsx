@@ -6,6 +6,7 @@ import { useAuth, type AppRole } from "../../lib/auth"
 const target: Record<AppRole, string> = {
   super_admin: "/admin/project-overview",
   admin: "/admin/project-overview",
+  project_manager: "/pm/blueprints",
   engineer: "/engineer/annotation",
   foreman: "/foreman/dashboard",
   client: "/client/blueprint",

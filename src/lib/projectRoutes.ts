@@ -20,10 +20,40 @@ export function projectPath(projectId: string, section: ProjectSection = "projec
   return `/admin/projects/${encodeURIComponent(projectId)}/${projectSections[section]}`
 }
 
-// Engineer and Foreman work one project at a time: "projects" is the list of their assigned projects (no project context);
-// every other page belongs to the selected project, which travels in ?project= so each project stays separate and shareable.
-export type FieldRole = "engineer" | "foreman"
+// Engineer, Foreman and Project Manager work one project at a time: "projects" is the list of their assigned projects (no project
+// context); every other page belongs to the selected project, which travels in ?project= so each project stays separate and shareable.
+export type FieldRole = "engineer" | "foreman" | "pm"
 export const FIELD_PROJECT_LIST = "projects"
+
+// Project Manager workspace pages (/pm/<page>?project=<id>).
+export const PM_WORKSPACE_ROLES = ["project_manager"] as const
+export const PM_PAGES = ["projects", "dashboard", "details", "team", "blueprints", "calendar", "quality", "attendance", "reports", "audit"] as const
+export type PmPage = (typeof PM_PAGES)[number]
+export const isPmPage = (value: string): value is PmPage => (PM_PAGES as readonly string[]).includes(value)
+
+// A Project Manager who opens an Admin project link (shared plan / pin links, older notifications) lands on the same place in
+// their own workspace. Returns null when the link has no Project Manager equivalent.
+const adminSectionToPm: Record<string, { page: PmPage; tab?: string }> = {
+  "project-overview": { page: "dashboard" },
+  "blueprint-upload": { page: "blueprints" },
+  "blueprint-mapping": { page: "blueprints", tab: "mapping" },
+  "blueprint-progress": { page: "blueprints", tab: "progress" },
+  "blueprint-version": { page: "blueprints", tab: "versions" },
+  calendar: { page: "calendar" },
+}
+export function adminToPmPath(pathname: string, search: string): string | null {
+  const route = readProjectRoute(pathname)
+  const key = route ? route.section : pathname.replace(/^\/admin\//, "").replace(/\/$/, "")
+  const target = adminSectionToPm[key]
+  if (!target) return null
+  const params = new URLSearchParams(search)
+  const projectId = route?.projectId ?? params.get("project")
+  if (!projectId) return null
+  params.set("project", projectId)
+  if (target.tab) params.set("tab", target.tab)
+  params.delete("list")
+  return `/pm/${target.page}?${params.toString()}`
+}
 
 export function fieldPagePath(role: FieldRole, page: string, projectId: string | null) {
   return page === FIELD_PROJECT_LIST || !projectId ? `/${role}/${page}` : `/${role}/${page}?project=${encodeURIComponent(projectId)}`

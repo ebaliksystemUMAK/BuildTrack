@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import DefectDetail from "./DefectDetail"
 import InspectionDetail from "./InspectionDetail"
 import NewDefectModal from "./NewDefectModal"
@@ -20,7 +20,9 @@ const datedTabs: Partial<Record<QaTab, { label: string; noun: string }>> = { ove
 
 // The shared QA workspace. The Engineer page shows all four tabs; the Foreman's pages show one tab each (inspection requests,
 // the defects assigned to them, the checklists they will be inspected against). The database decides who may do what.
-export default function QaView({ ws, mode, tabs, canEditLibrary = false, inspectionKind, defectScope, dateFilter = false, workTabs }: { ws: QaWorkspace; mode: QaMode; tabs: QaTab[]; canEditLibrary?: boolean; inspectionKind?: InspectionKind; defectScope?: (defect: Defect) => boolean; dateFilter?: boolean; workTabs?: WorkTabs }) {
+// readOnly (Project Manager monitoring): every record opens as View only, with no request, inspection, verification or checklist edits.
+export default function QaView({ ws: source, mode, tabs, canEditLibrary = false, inspectionKind, defectScope, dateFilter = false, workTabs, readOnly = false }: { ws: QaWorkspace; mode: QaMode; tabs: QaTab[]; canEditLibrary?: boolean; inspectionKind?: InspectionKind; defectScope?: (defect: Defect) => boolean; dateFilter?: boolean; workTabs?: WorkTabs; readOnly?: boolean }) {
+  const ws = useMemo<QaWorkspace>(() => (readOnly ? { ...source, canActOn: () => false, holdsAnyWork: false } : source), [source, readOnly])
   const [search, setSearch] = useState(window.location.search)
   useEffect(() => { const changed = () => setSearch(window.location.search); window.addEventListener("popstate", changed); return () => window.removeEventListener("popstate", changed) }, [])
   const params = new URLSearchParams(search)
@@ -101,7 +103,7 @@ export default function QaView({ ws, mode, tabs, canEditLibrary = false, inspect
       {tab === "inspections" ? <InspectionsPanel ws={ws} mode={mode} canRequest={holdsWork} kind={inspectionKind} dates={dates} onOpen={setInspectionId} onNew={() => setRequesting(true)} /> : null}
       {tab === "defects" ? <DefectsPanel ws={ws} mode={mode} scope={defectScope} dates={dates} onOpen={setDefectId} onNew={engineer && holdsWork ? () => setRaising(true) : null} /> : null}
       {tab === "snags" ? <SnagsPanel snags={snagData.snags} loading={snagData.loading} error={snagData.error} nameOf={ws.nameOf} dates={dates} onOpen={setSnagOpen} /> : null}
-      {tab === "checklists" ? <ChecklistsPanel ws={ws} canEdit={engineer && Boolean(ws.projectId)} canEditLibrary={canEditLibrary} onEdit={(template, scope) => setEditing({ template, scope })} /> : null}
+      {tab === "checklists" ? <ChecklistsPanel ws={ws} canEdit={!readOnly && engineer && Boolean(ws.projectId)} canEditLibrary={!readOnly && canEditLibrary} onEdit={(template, scope) => setEditing({ template, scope })} /> : null}
       {tab === "complete" || tab === "completed" ? workTabs?.[tab]?.content : null}
 
       {inspection && project ? (

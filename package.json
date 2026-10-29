@@ -39,8 +39,9 @@
     "test:qa-reinspection": "node scripts/test-qa-reinspection.mjs",
     "test:blueprint-access": "node scripts/test-blueprint-access.mjs",
     "test:project-checklists": "node scripts/test-project-checklists.mjs",
+    "test:project-manager": "node scripts/test-project-manager.mjs",
     "test:load": "node scripts/load-test.mjs",
-    "check": "tsc --noEmit && pnpm test:lib && pnpm test:comparison && pnpm test:issue-editor && pnpm test:attendance && pnpm test:biometric-access && pnpm test:worker-camera && pnpm test:worker-enrollment && pnpm test:scan-notices && pnpm test:foreman-attendance && pnpm test:admin-worker-profiles && pnpm test:attendance-reports && pnpm test:direct-qa && pnpm test:work-item-evidence && pnpm test:qa-board-layout && pnpm test:project-records && pnpm test:client-portal && pnpm test:site-visits && pnpm test:valencia && pnpm test:public-navigation && pnpm test:qa-photo-markup && pnpm test:date-filters && pnpm test:project-calendar && pnpm test:assignments && pnpm test:pin-records && pnpm test:qa-reinspection && pnpm test:blueprint-access && pnpm test:project-checklists && pnpm test:sql && pnpm build"
+    "check": "tsc --noEmit && pnpm test:lib && pnpm test:comparison && pnpm test:issue-editor && pnpm test:attendance && pnpm test:biometric-access && pnpm test:worker-camera && pnpm test:worker-enrollment && pnpm test:scan-notices && pnpm test:foreman-attendance && pnpm test:admin-worker-profiles && pnpm test:attendance-reports && pnpm test:direct-qa && pnpm test:work-item-evidence && pnpm test:qa-board-layout && pnpm test:project-records && pnpm test:client-portal && pnpm test:site-visits && pnpm test:valencia && pnpm test:public-navigation && pnpm test:qa-photo-markup && pnpm test:date-filters && pnpm test:project-calendar && pnpm test:assignments && pnpm test:pin-records && pnpm test:qa-reinspection && pnpm test:blueprint-access && pnpm test:project-checklists && pnpm test:project-manager && pnpm test:sql && pnpm build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",

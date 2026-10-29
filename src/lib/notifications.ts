@@ -29,7 +29,7 @@ async function refreshReminders() {
   }
   await supabase.rpc("generate_due_notifications")
   await supabase.rpc("generate_defect_reminders")
-  await supabase.rpc("generate_escalations") // engineers: late-work digest; admins: serious cases only (0038)
+  await supabase.rpc("generate_escalations") // engineers: late-work digest; admins and Project Managers: serious cases only (0038)
   await supabase.rpc("generate_inspection_reminders")
 }
 
@@ -150,6 +150,12 @@ export const notificationKinds: Record<string, { label: string; tone: string }> 
   "qa.defect_due": { label: "NCR due", tone: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200" },
   "qa.defect_overdue": { label: "NCR overdue", tone: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200" },
   "alert.overdue": { label: "Running late", tone: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200" },
+  "project.manager_assigned": { label: "Project Manager", tone: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200" },
+  "project.manager_removed": { label: "Project Manager", tone: "bg-surface-muted text-fg-muted" },
+  "project.archived": { label: "Archived", tone: "bg-surface-muted text-fg-muted" },
+  "project.restored": { label: "Restored", tone: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200" },
+  "attendance.concern": { label: "Attendance", tone: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200" },
+  "attendance.concern_resolved": { label: "Attendance", tone: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200" },
   "alert.escalation": { label: "Escalation", tone: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200" },
 }
 

@@ -2,6 +2,8 @@
 
 For the teammates who take the project from here. Read [README.md](../README.md) first, then this.
 
+Workspace separation: `/pm/*` is Project Manager-only. Admins keep project creation, archive/restore and manager assignment in All projects; the Project operations shortcuts and Admin oversight mode were removed. This frontend boundary does not change existing database administrative privileges. See `audits/2026-10-29-admin-workspace-separation.md`.
+
 ## 1. How the pieces connect
 
 One piece of work travels through the whole system. Follow a pin and you have seen most of it.
@@ -32,6 +34,7 @@ Everything the screens show is read from these tables, so numbers always agree: 
 
 - Roles and status live in `profiles`; the browser is never trusted. Writes go through checked SQL functions (RPC); most tables are read-only to the API.
 - Admins and Super Admins need TOTP (aal2) for every admin action.
+- Project Managers (`project_managers`, assigned only by Admins) reach their assigned projects only; they write only on projects that are not archived and never do QA sign-off or company administration (`docs/audits/2026-10-29-project-manager-role.md`).
 - Row Level Security decides who sees which project. Read policies use `viewable_project_ids()` (fast); copy that pattern for new tables.
 - Evidence lock (0033): submitted or verified work and its photos cannot be deleted.
 - Photo markup (client reports, site issues, inspection / NCR evidence) is a separate JSON overlay checked by `valid_issue_markup`; the stored photo is always the untouched original.

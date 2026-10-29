@@ -29,17 +29,17 @@ export function readPinSection(search: string, role: PanelRole): PinSection {
 }
 
 // The page that holds the blueprint for each role, with project, sheet, pin and panel section.
-export function pinPlanPath(role: PanelRole, link: { projectId: string; pinId: string; sheetId?: string | null; section?: PinSection }): string {
+export function pinPlanPath(role: PanelRole | "project_manager", link: { projectId: string; pinId: string; sheetId?: string | null; section?: PinSection }): string {
   const params = new URLSearchParams()
   params.set("project", link.projectId)
   if (link.sheetId) params.set("sheet", link.sheetId)
   params.set("pin", link.pinId)
   if (link.section && link.section !== "details") params.set("pintab", link.section)
-  const base = role === "engineer" ? "/engineer/annotation" : role === "foreman" ? "/foreman/daily-work" : role === "client" ? "/client/blueprint" : `/admin/projects/${encodeURIComponent(link.projectId)}/blueprints`
+  const base = role === "engineer" ? "/engineer/annotation" : role === "foreman" ? "/foreman/daily-work" : role === "client" ? "/client/blueprint" : role === "project_manager" ? "/pm/blueprints" : `/admin/projects/${encodeURIComponent(link.projectId)}/blueprints`
   return `${base}?${params.toString()}`
 }
 export const panelRole = (role: string | null | undefined): PanelRole | null =>
-  role === "engineer" || role === "foreman" || role === "client" ? role : role === "admin" || role === "super_admin" ? "admin" : null
+  role === "engineer" || role === "foreman" || role === "client" ? role : role === "admin" || role === "super_admin" || role === "project_manager" ? "admin" : null
 
 export type DefectLink = { id: string; number: number; status: DefectStatus; title: string; pin_id: string | null; inspection_id: string | null; checklist_item_id?: string | null; checklist_name?: string | null; assigned_to: string | null; due_date: string | null }
 export type InspectionLink = { id: string; number: number; status: InspectionStatus; title: string; pin_id: string | null; requested_at: string; requested_by: string | null; inspector_id: string | null; work_item_ids?: string[] | null }

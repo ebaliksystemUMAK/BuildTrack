@@ -10,6 +10,7 @@ const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 const viewNames: Record<CalendarView, string> = { month: "Month", week: "Week", day: "Day", schedule: "Schedule" }
 const roleNotes: Record<CalendarRole, string> = {
   admin: "Project milestones and work deadlines for management. No inspection or NCR approval actions.",
+  project_manager: "Work deadlines, inspection targets, reinspections, NCR deadlines and project milestones. Read-only: Engineers inspect and sign off.",
   engineer: "Project work, inspection targets, reinspections and NCR deadlines.",
   foreman: "Your assigned work and NCRs, inspections you requested or linked to your work, and project milestones.",
   client: "Planned work deadlines and project milestones. Internal QA, NCRs and private staff information are not included.",

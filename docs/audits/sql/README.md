@@ -4,6 +4,7 @@ One document per SQL file in `supabase/`. Same sections every time so changes ar
 
 | Doc | SQL file | Status |
 |---|---|---|
+| [20261029100000_project_manager_workspace](20261029100000_project_manager_workspace.md) | `supabase/migrations/20261029095839_project_manager_role.sql`, `supabase/migrations/20261029100000_project_manager_workspace.sql` | Both applied and tracked 2026-10-29; 531 SQL cases, 10 PM tests and load test pass; all 30 function bodies and live RLS/grants/triggers verified; Edge Function/frontend deployment outstanding |
 | [20261028150000_project_checklists](20261028150000_project_checklists.md) | `supabase/migrations/20261028150000_project_checklists.sql` | Applied and tracked 2026-10-28; 515 SQL cases, 5 function bodies and live rollback smoke verified; owner-approved cleanup backed up in audit_log 520 |
 | [20261028130000_blueprint_type_access](20261028130000_blueprint_type_access.md) | `supabase/migrations/20261028130000_blueprint_type_access.sql` | Already applied by owner; 29 functions verified and missing history reconciled 2026-10-28 without rerunning DDL or backfill |
 | [20261028092154_resume_cancelled_inspections](20261028092154_resume_cancelled_inspections.md) | `supabase/migrations/20261028092154_resume_cancelled_inspections.sql` | Applied and verified; confirmed Engineer continuation, snapshot/newer-work guards, exact NCR restoration; 493 SQL cases |

@@ -33,7 +33,9 @@ const levelTone: Record<AccessLevel, string> = {
   assigned: "border-brand/40 bg-brand-soft font-semibold text-brand-text",
 }
 const shortLabel: Record<AccessLevel, string> = { none: "No access", view: "View only", assigned: "Assigned work" }
-const displayName = (person: Profile | undefined) => person?.full_name || person?.email || "Unknown user"
+// Admins pass full profiles; the Project Manager workspace passes the names, emails and roles from get_assignable_people.
+type Person = Pick<Profile, "id" | "full_name" | "email" | "role">
+const displayName = (person: Person | undefined) => person?.full_name || person?.email || "Unknown user"
 
 type Tab = "team" | "access"
 
@@ -42,7 +44,7 @@ type Tab = "team" | "access"
 // confirmation that lists them (and warns about anything taken away). The database re-checks all of it (set_blueprint_access).
 export default function ProjectAccessDialog({ project, people, members, onMembersChanged, onClose }: {
   project: Project
-  people: Profile[]
+  people: Person[]
   members: ProjectMember[]
   onMembersChanged: () => Promise<void>
   onClose: () => void
@@ -81,12 +83,12 @@ export default function ProjectAccessDialog({ project, people, members, onMember
   const pending = accessChanges(access.grants, draft, project.id).filter((c) => field.some((m) => m.user_id === c.userId))
   const shownField = field.filter((member) => `${displayName(peopleById.get(member.user_id))} ${peopleById.get(member.user_id)?.email ?? ""}`.toLowerCase().includes(filter.trim().toLowerCase()))
 
-  const addMember = async (person: Profile) => {
+  const addMember = async (person: Person) => {
     setBusy(true)
     setFailure("")
     const { error } = await supabase.from("project_members").insert({ project_id: project.id, user_id: person.id })
     setBusy(false)
-    if (error) return setFailure(error.code === "42501" ? "You need the Projects permission (with MFA) to change the team." : error.message)
+    if (error) return setFailure(error.code === "42501" ? "You cannot change this team: Admins need the Projects permission (with MFA), and Project Managers can change only their own projects that are not archived." : error.message)
     setQuery("")
     await onMembersChanged()
     if (person.role === "engineer" || person.role === "foreman") {

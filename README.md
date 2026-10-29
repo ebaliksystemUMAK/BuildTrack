@@ -8,11 +8,14 @@ Construction site progress and quality assurance for **Valencia Construction Ser
 
 | Role | Workspace | Main jobs |
 |---|---|---|
-| Admin / Super Admin | Control center | Projects, users and access, invitations, approvals, ID checks, audit log, settings, backups |
+| Admin / Super Admin | Control center | Company administration: all projects (create, archive, assign Project Managers), users and access, invitations, approvals, ID checks, biometrics, audit log, QA template library, settings, full backups |
+| Project Manager | Project office | Assigned projects only: dashboard, details, team and blueprint access, work assignment, plans and revisions, schedule, QA monitoring (read-only), attendance concerns, reports and project export, project audit log |
 | Engineer | Engineering office | Plans and pins, assignments, review inbox (inspect, decide NCR corrections, accept work items), QA register, progress and S-curve, reports |
 | Foreman | Field operations | My work, report progress with photos, daily reports, QA requests, corrections in one form (progress works offline) |
 | Client | Client portal | Honest progress (only verified work), plans, site logs, report a problem, ask the team |
 | Basic user | My account | Profile, ID verification, ask for a role |
+
+The Project office is exclusive to Project Manager accounts. Admins use the Control center to create/archive projects and assign their managers; direct Project office links return Admins to their dashboard.
 
 Core ideas: **reported vs verified progress**, **evidence that cannot be deleted** once work is submitted, **role-based access enforced in the database**, **data privacy** (RA 10173) built in. Details and the reasoning are in `docs/`.
 

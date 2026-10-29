@@ -25,6 +25,8 @@ export type Project = {
   site_lat: number | null
   site_lng: number | null
   site_radius_m: number
+  archived_at?: string | null
+  archived_by?: string | null
   created_at: string
 }
 
@@ -103,11 +105,12 @@ export function getSelectedProjectId(): string | null {
   }
 }
 
-export type ProjectRole = "engineer" | "foreman" | "client" | "admin"
+export type ProjectRole = "engineer" | "foreman" | "client" | "admin" | "project_manager"
 
-// Where each role lands after picking a project card (Engineer / Foreman: that project's own dashboard).
+// Where each role lands after picking a project card (Engineer / Foreman / Project Manager: that project's own dashboard).
 const workspacePath: Record<ProjectRole, string> = {
   admin: "/admin/project-overview",
+  project_manager: "/pm/dashboard",
   engineer: "/engineer/dashboard",
   foreman: "/foreman/dashboard",
   client: "/client/blueprint",

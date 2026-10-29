@@ -96,7 +96,7 @@ export default function UserManagement({ onNavigate }: AdminPageProps) {
   const [whitelist, setWhitelist] = useState<WhitelistRow[]>([])
   const [addWhitelist, setAddWhitelist] = useState(false)
 
-  const assignable: AppRole[] = isSuper ? ["user", "engineer", "foreman", "client", "admin", "super_admin"] : ["user", "engineer", "foreman", "client"]
+  const assignable: AppRole[] = isSuper ? ["user", "engineer", "foreman", "client", "project_manager", "admin", "super_admin"] : ["user", "engineer", "foreman", "client", "project_manager"]
 
   // A viewer may inspect the people and past requests, but the review queue is an action surface.
   // Do not advertise it to an Admin who lacks users.approve; the Edge Function still checks this
@@ -707,7 +707,7 @@ function CreateUserModal({ assignable, onClose, onSave }: { assignable: AppRole[
 
 function WhitelistModal({ isSuper, onClose, onSave }: { isSuper: boolean; onClose: () => void; onSave: (body: Record<string, unknown>) => Promise<void> }) {
   const [text, setText] = useState("")
-  const [role, setRole] = useState<"engineer" | "foreman" | "client" | "admin">("engineer")
+  const [role, setRole] = useState<"engineer" | "foreman" | "client" | "project_manager" | "admin">("engineer")
   const [discipline, setDiscipline] = useState<Discipline | "">("")
   const [note, setNote] = useState("")
   const [busy, setBusy] = useState(false)
@@ -747,7 +747,7 @@ function WhitelistModal({ isSuper, onClose, onSave }: { isSuper: boolean; onClos
         <div className="grid grid-cols-2 gap-3">
           <label className="block text-sm font-semibold">Role
             <select className={field} value={role} onChange={(e) => setRole(e.target.value as typeof role)}>
-              {(["engineer", "foreman", "client"] as const).map((r) => <option key={r} value={r}>{roleLabel[r]}</option>)}
+              {(["engineer", "foreman", "client", "project_manager"] as const).map((r) => <option key={r} value={r}>{roleLabel[r]}</option>)}
               {isSuper ? <option value="admin">{roleLabel.admin}</option> : null}
             </select>
           </label>

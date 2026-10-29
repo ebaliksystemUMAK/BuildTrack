@@ -1,6 +1,7 @@
 import { audit, can, type Caller, corsHeaders, HttpError, json, requireCaller } from "../_shared/guard.ts"
 
-const ROLES = ["super_admin", "admin", "engineer", "foreman", "client", "user"]
+// project_manager (20261029095839): any Admin with the matching users.* permission may give it; Admins assign their projects.
+const ROLES = ["super_admin", "admin", "project_manager", "engineer", "foreman", "client", "user"]
 const REQUESTABLE_ROLES = ["engineer", "foreman", "client"]
 const PERMISSIONS = [
   "users.view", "users.create", "users.edit", "users.approve", "users.disable",
@@ -176,7 +177,7 @@ Deno.serve(async (req) => {
     if (action === "whitelist_add") {
       if (!can(caller, "users.approve")) throw new HttpError(403, "Missing permission: users.approve")
       const role = String(body.role ?? "")
-      if (!["engineer", "foreman", "client", "admin"].includes(role)) throw new HttpError(400, "Choose Engineer, Foreman, Client or Admin")
+      if (!["engineer", "foreman", "client", "project_manager", "admin"].includes(role)) throw new HttpError(400, "Choose Engineer, Foreman, Client, Project Manager or Admin")
       if (role === "admin" && caller.role !== "super_admin") throw new HttpError(403, "Only a Super Admin can pre-approve an Admin")
       const raw: unknown[] = Array.isArray(body.emails) ? body.emails : []
       const emails = [...new Set(raw.map((e) => String(e).trim().toLowerCase()).filter(Boolean))]
