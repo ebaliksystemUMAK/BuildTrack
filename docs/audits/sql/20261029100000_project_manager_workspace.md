@@ -44,5 +44,5 @@ Separate company administration (Admins) from project operations (Project Manage
 ## Rollout
 
 1. DONE: part 2 applied through the BuildTrack connector; read-only function/table/policy/trigger/grant/history checks and security advisors completed.
-2. OUTSTANDING: deploy the `admin-users` Edge Function so Admins can give the role from User Management and the whitelist. This migration-only task did not deploy Edge Functions.
-3. OUTSTANDING: deploy the frontend. Then: give someone the Project Manager role, assign them in All projects > Managers, sign in as them and check My projects, details, team, blueprints, QA (read-only) and the audit log. No real account role or project assignment was changed during migration rollout.
+2. DONE in a follow-up task: `admin-users` deployed as ACTIVE v7 with Project Manager role/whitelist support and `verify_jwt=true`; deployed sources match the repository, unauthorized probes return 401, and CORS preflight returns 200. See `../2026-10-29-admin-users-deployment.md`.
+3. UNVERIFIED: frontend deployment on Vercel (code pushed to GitHub as `8a711fe`). Then: give someone the Project Manager role, assign them in All projects > Managers, sign in as them and check My projects, details, team, blueprints, QA (read-only) and the audit log. No real account role or project assignment was changed during migration rollout or Edge Function deployment.
