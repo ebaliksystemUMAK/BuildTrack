@@ -85,7 +85,7 @@ async function send(item: QueueItem): Promise<Failure> {
     if (item.kind === "pin_photo") {
       const upload = await supabase.storage.from("pin-photos").upload(p.path, p.blob as Blob, { contentType: "image/jpeg", upsert: false })
       if (upload.error && !/already exists|duplicate/i.test(upload.error.message)) return { message: upload.error.message }
-        const { error } = await supabase.from("pin_photos").insert({ pin_id: p.pinId, project_id: p.projectId, path: p.path, ...(p.itemId ? { checklist_item_id: p.itemId } : {}), ...(p.attemptId ? { qa_attempt_id: p.attemptId } : {}), ...(p.caption ? { caption: p.caption } : {}), ...(Array.isArray(p.annotations) && p.annotations.length ? { annotations: p.annotations } : {}), ...stampFields(p.stamp) })
+        const { error } = await supabase.from("pin_photos").insert({ pin_id: p.pinId, project_id: p.projectId, path: p.path, ...(p.source ? { capture_source: p.source } : {}), ...(p.itemId ? { checklist_item_id: p.itemId } : {}), ...(p.attemptId ? { qa_attempt_id: p.attemptId } : {}), ...(p.caption ? { caption: p.caption } : {}), ...(Array.isArray(p.annotations) && p.annotations.length ? { annotations: p.annotations } : {}), ...stampFields(p.stamp) })
       if (error) {
         if (error.code !== "23505") await supabase.storage.from("pin-photos").remove([p.path])
         return { message: error.message, code: error.code }

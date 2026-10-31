@@ -52,7 +52,7 @@ export default function NewInspectionModal({
 
   const submit = async () => {
     if (pending.current || blocked) return
-    if (!chosen) return toast.error("Choose a checklist")
+    if (!chosen) return toast.error("Choose a QC checklist")
     const text = title.trim() || chosen.name
     if (text.length < 3) return toast.error("Give the request a title")
     pending.current = true
@@ -72,7 +72,7 @@ export default function NewInspectionModal({
   return (
     <Modal
       title="Request a stage / hold-point inspection"
-      description="Use this for a stage or hold point. Submit checklist items from their work checklist for QA and Engineer completion. The same checklist item cannot have duplicate pending requests."
+      description="Use this for a stage or hold point. Submit tasks for QA Review from Tasks & QC. The same task cannot have duplicate pending requests."
       size="lg"
       onClose={onClose}
       footer={
@@ -85,8 +85,8 @@ export default function NewInspectionModal({
       <div className="space-y-4">
         {blocked ? <p role="status" className="rounded-lg bg-amber-100 p-3 text-sm text-amber-950">{blockReason}</p> : null}
         <div>
-          <label className={label} htmlFor="qa-template">Checklist</label>
-          {usable.length === 0 ? <p role="status" className="mb-2 rounded-lg border border-dashed border-line p-3 text-sm text-fg-muted">No checklist has been added to this project yet. The project Engineer adds them in Checklist configuration.</p> : null}
+          <label className={label} htmlFor="qa-template">QC Checklist</label>
+          {usable.length === 0 ? <p role="status" className="mb-2 rounded-lg border border-dashed border-line p-3 text-sm text-fg-muted">No QC checklist has been added to this project yet. The project Engineer adds them under QC Checklists.</p> : null}
           <select id="qa-template" className={inputClass} value={templateId} disabled={usable.length === 0} onChange={(event) => setTemplateId(event.target.value)}>
             {groups.map((group) => (
               <optgroup key={group.name} label={group.name}>

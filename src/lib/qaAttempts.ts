@@ -18,8 +18,8 @@ export function useQaSubmissionIndex(projectId:string|null) {
       const result=await fetchAll<SubmissionIndex>((from,to)=>supabase.from("pin_qa_submissions").select("id,inspection_id,pin_id,item_ids,checklist_snapshot,submitted_at").eq("project_id",projectId).order("submitted_at").order("id").range(from,to))
       if(run!==sequence.current) return
       setRows(result.error ? [] : result.data)
-      setError(result.error ? "Could not load checklist report names. Refresh to retry." : "")
-    } catch {if(run===sequence.current) {setRows([]);setError("Could not load checklist report names. Refresh to retry.")}}
+      setError(result.error ? "Could not load task report names. Refresh to retry." : "")
+    } catch {if(run===sequence.current) {setRows([]);setError("Could not load task report names. Refresh to retry.")}}
     finally {if(run===sequence.current) setLoading(false)}
   },[projectId])
   useEffect(()=>{setRows([]);setError("");setLoading(Boolean(projectId));void reload();return()=>{sequence.current++}},[reload,projectId])

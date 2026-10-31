@@ -62,11 +62,11 @@ export default function PmDashboard({ onNavigate }: PmPageProps) {
 
       {loading ? <SkeletonCardGrid count={4} label="Loading project figures" /> : (
         <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <StatCard label="Verified progress" value={`${summary.totals.percentVerified}%`} note={`${summary.totals.verified} of ${summary.totals.total} work items accepted by the Engineer`} tone="green" />
+          <StatCard label="Verified progress" value={`${summary.totals.percentVerified}%`} note={`${summary.totals.approvedTasks} of ${summary.totals.totalTasks} tasks approved by the Engineer`} tone="green" />
           <StatCard label="Schedule elapsed" value={elapsed === null ? "—" : `${elapsed}%`} note={project.end_date ? `Target completion ${dateText(project.end_date)}` : "Set the dates in Project details"} tone="sky" onClick={() => onNavigate("calendar")} />
-          <StatCard label="Waiting for review" value={summary.reviewsWaiting} note={`${summary.pendingReviews} work items • ${summary.openInspections} inspections • ${summary.ncrForVerification} NCR fixes`} tone="amber" onClick={() => onNavigate("quality")} />
+          <StatCard label="Waiting for review" value={summary.reviewsWaiting} note={`${summary.pendingReviews} work pins • ${summary.openInspections} inspections • ${summary.ncrForVerification} NCR fixes`} tone="amber" onClick={() => onNavigate("quality")} />
           <StatCard label="Open quality issues" value={summary.openNcrs} note={summary.overdueNcrs ? `${summary.overdueNcrs} past the deadline` : "None past the deadline"} tone={summary.overdueNcrs ? "red" : "brand"} onClick={() => onNavigate("quality", "tab=defects")} />
-          <StatCard label="Late work" value={summary.totals.overdue} note={summary.totals.issue ? `${summary.totals.issue} work items with issues` : "No work items with issues"} tone={summary.totals.overdue ? "red" : "gray"} />
+          <StatCard label="Late work" value={summary.totals.overdue} note={summary.totals.issue ? `${summary.totals.issue} work pins with issues` : "No work pins with issues"} tone={summary.totals.overdue ? "red" : "gray"} />
         </div>
       )}
 
@@ -75,7 +75,7 @@ export default function PmDashboard({ onNavigate }: PmPageProps) {
           {loading ? <SkeletonList rows={3} /> : summary.totals.total ? <>
             <Meter value={summary.totals.percentVerified} label="Verified progress" />
             <div className="mt-4"><SCurveChart pins={work.pins} start={project.start_date} end={project.end_date} today={work.today} /></div>
-          </> : <EmptyState title="No work items yet">Engineers place work pins on the plans; progress appears here once they exist.</EmptyState>}
+          </> : <EmptyState title="No work pins yet">Engineers place work pins on the plans; progress appears here once they exist.</EmptyState>}
         </Panel>
         <Panel title="Deadlines (late and next 14 days)">
           {loading ? <SkeletonList rows={4} /> : summary.deadlines.length === 0 ? <p className="text-sm text-fg-muted">Nothing is due in the next 14 days and nothing is late.</p> : (

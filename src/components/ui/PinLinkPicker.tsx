@@ -55,13 +55,13 @@ export default function PinLinkPicker({ projectId, sheets, pins, value, onChange
         </span>
       </label>
       {showItem ? (
-        <label className={`${label} sm:col-span-2`} htmlFor={`${id}-item`}>Checklist item
+        <label className={`${label} sm:col-span-2`} htmlFor={`${id}-item`}>Task
           <select id={`${id}-item`} className={field} value={value.itemId} disabled={!value.pinId || checklist?.loading || Boolean(checklist?.error)} onChange={(event) => change("itemId", event.target.value)}>
             <option value="">{value.pinId ? "Whole work pin (no specific item)" : "Choose a pin first"}</option>
             {pinItems.map((item) => <option key={item.id} value={item.id}>{item.text}</option>)}
           </select>
           {checklist?.error && value.pinId ? <span role="alert" className="mt-1 block text-[11px] normal-case tracking-normal text-danger-fg">{checklist.error} {checklist.reload ? <button type="button" className="font-bold underline" onClick={() => void checklist.reload?.()}>Retry</button> : null}</span>
-            : value.pinId && !checklist?.loading && !pinItems.length ? <span className="mt-1 block text-[11px] font-semibold normal-case tracking-normal text-fg-muted">This pin has no checklist items yet.</span> : null}
+            : value.pinId && !checklist?.loading && !pinItems.length ? <span className="mt-1 block text-[11px] font-semibold normal-case tracking-normal text-fg-muted">This pin has no tasks yet.</span> : null}
         </label>
       ) : null}
     </fieldset>

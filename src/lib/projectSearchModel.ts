@@ -5,7 +5,7 @@ export type SearchRole = "engineer" | "foreman" | "client"
 export type HitKind = "pin" | "defect" | "inspection" | "log"
 export type SearchHit = { key: string; kind: HitKind; id: string; title: string; sub: string; path: string }
 
-export const hitGroups: Record<HitKind, string> = { pin: "Work items", defect: "Defect reports", inspection: "Inspections", log: "Site logs" }
+export const hitGroups: Record<HitKind, string> = { pin: "Work pins", defect: "Defect reports", inspection: "Inspections", log: "Site logs" }
 
 // LIKE wildcards in what the person typed are matched literally.
 export function searchPattern(text: string): string {

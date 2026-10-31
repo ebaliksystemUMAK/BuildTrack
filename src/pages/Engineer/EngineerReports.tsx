@@ -76,10 +76,10 @@ export default function EngineerReports({ onNavigate }: EngineerPageProps) {
     const html = reportHtml({
       title: "Progress report",
       subtitle: `${work.project.name} (${work.project.code})${work.project.location ? " - " + work.project.location : ""}`,
-      meta: [["As of", reportDateLong(work.today)], ["Verified", `${totals.percentVerified}%`], ["Work pins", String(totals.total)], ["Overdue / issues", `${totals.overdue} / ${totals.issue}`]],
+      meta: [["As of", reportDateLong(work.today)], ["Approved task progress", `${totals.percentVerified}%`], ["Tasks approved / total", `${totals.approvedTasks} / ${totals.totalTasks}`], ["Work pins", String(totals.total)], ["Overdue / issues", `${totals.overdue} / ${totals.issue}`]],
       sections: [
         { heading: "Status summary", rows: (["verified", "for_review", "in_progress", "not_started", "issue"] as const).map((status) => [statusLabels[status], String(totals[status])] as [string, string]) },
-        { heading: "Progress by sheet", table: { head: ["Sheet", "Level", "Pins", "Verified", "To review", "Issues", "Overdue", "% verified"], rows: zones.map((zone) => [zone.title, zone.level ?? "-", String(zone.totals.total), String(zone.totals.verified), String(zone.totals.for_review), String(zone.totals.issue), String(zone.totals.overdue), `${zone.totals.percentVerified}%`]) } },
+        { heading: "Progress by sheet", table: { head: ["Sheet", "Level", "Pins", "Completed pins", "To review", "Issues", "Overdue", "Tasks approved / total", "% approved tasks"], rows: zones.map((zone) => [zone.title, zone.level ?? "-", String(zone.totals.total), String(zone.totals.verified), String(zone.totals.for_review), String(zone.totals.issue), String(zone.totals.overdue), `${zone.totals.approvedTasks} / ${zone.totals.totalTasks}`, `${zone.totals.percentVerified}%`]) } },
         { heading: "Open issues", table: open.length ? { head: ["Issue", "Sheet", "Severity", "Assigned to"], rows: open.map((pin) => [pin.title, work.sheetOf(pin.blueprint_id), severityLabels[pin.severity], work.nameOf(pin.assigned_to)]) } : undefined, body: open.length ? undefined : "No open issues." },
         { heading: "Late work", table: late.length ? { head: ["Pin", "Sheet", "Due", "Days late", "Assigned to"], rows: late.map((pin) => [pin.title, work.sheetOf(pin.blueprint_id), pin.due_date ?? "", String(daysBetween(pin.due_date as string, work.today)), work.nameOf(pin.assigned_to)]) } : undefined, body: late.length ? undefined : "Nothing is past its deadline." },
       ],
@@ -119,7 +119,7 @@ export default function EngineerReports({ onNavigate }: EngineerPageProps) {
               </div>
               <AttendanceImport projectId={projectId} />
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Date, Foreman, work or checklist..." aria-label="Search the logs" className={`${inputClass} !w-64`} />
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Date, Foreman, work pin or task..." aria-label="Search the logs" className={`${inputClass} !w-64`} />
                 <label className="text-xs font-bold">Review status<select className={inputClass} aria-label="Filter report review" value={reviewFilter} onChange={event => setReviewFilter(event.target.value as SiteReportState)}><option value="all">All reports</option><option value="pending">Awaiting review</option><option value="reviewed">Reviewed</option><option value="returned">Returned</option></select></label>
                 <label className="text-xs font-bold">From<input type="date" className={inputClass} value={from} onChange={event => setFrom(event.target.value)} /></label>
                 <label className="text-xs font-bold">To<input type="date" className={inputClass} value={to} onChange={event => setTo(event.target.value)} /></label>
@@ -132,7 +132,7 @@ export default function EngineerReports({ onNavigate }: EngineerPageProps) {
               {reportsLoading ? (
                 <SkeletonList rows={4} label="Loading reports" />
               ) : submitted.length === 0 ? (
-                <EmptyState title={logs.length ? "No reports match these filters" : "No submitted reports"}>{logs.length ? "Clear the filters to view all site logs." : "The Foreman must submit a Daily progress report. Saving a draft or submitting checklist QA alone does not create a site log."}</EmptyState>
+                <EmptyState title={logs.length ? "No reports match these filters" : "No submitted reports"}>{logs.length ? "Clear the filters to view all site logs." : "The Foreman must submit a Daily progress report. Saving a draft or submitting a task for QA Review alone does not create a site log."}</EmptyState>
               ) : (
                 <ul className="space-y-2">
                   {submitted.map((report) => {
@@ -156,7 +156,7 @@ export default function EngineerReports({ onNavigate }: EngineerPageProps) {
                             {([["Work done", report.work_done], ["Issues and problems", report.issues], ["Delays", report.delays], ["Safety", report.safety]] as const).map(([label, value]) => (
                               <div key={label}><p className="text-xs font-extrabold uppercase tracking-wider text-fg-muted">{label}</p><p className="whitespace-pre-wrap">{value || "-"}</p></div>
                             ))}
-                            {!(report.linked_work ?? []).length ? <p className="text-xs text-fg-muted">This report has no linked work pins or checklist items. The Foreman can link them when preparing a new report or a returned revision.</p> : null}
+                            {!(report.linked_work ?? []).length ? <p className="text-xs text-fg-muted">This report has no linked work pins or tasks. The Foreman can link them when preparing a new report or a returned revision.</p> : null}
                             <DailyReportPhotos projectId={report.project_id} reportId={report.id} />
                             <ReportReviewPanel report={report} pins={work.pins} nameOf={work.nameOf} onChanged={reloadReports} />
                             <div className="flex flex-wrap justify-end gap-2 pt-1">

@@ -5,7 +5,7 @@ const ROLES = ["super_admin", "admin", "project_manager", "engineer", "foreman",
 const REQUESTABLE_ROLES = ["engineer", "foreman", "client"]
 const PERMISSIONS = [
   "users.view", "users.create", "users.edit", "users.approve", "users.disable",
-  "users.impersonate", "biometrics.manage", "projects.manage", "blueprints.manage",
+  "users.impersonate", "biometrics.manage", "projects.manage", "blueprints.manage", "photos.manage",
 ]
 const DISCIPLINES = ["civil_structural", "architectural", "mep"]
 const isPrivileged = (role: string) => role === "super_admin" || role === "admin"

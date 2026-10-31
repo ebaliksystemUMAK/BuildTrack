@@ -25,17 +25,21 @@ export default function BlueprintProgressTracking(_: AdminPageProps) {
       <div className="mb-4"><AdminProjectSelect projects={projects} value={projectId} onChange={choose} /></div>
       {loading ? (
         <SkeletonCardGrid count={3} label="Loading progress" />
+      ) : work.error ? (
+        <p role="alert" className="rounded-lg bg-danger-soft p-4 text-sm text-danger-fg">{work.error} <button type="button" className="underline" onClick={() => void work.reload()}>Retry</button></p>
       ) : totals.total === 0 ? (
         <EmptyState title="No work pins yet">Pins placed on the sheets appear here as soon as they exist. Notes do not count as work.</EmptyState>
       ) : (
         <>
           <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Verified" value={`${totals.percentVerified}%`} tone="green" note={`${totals.verified} of ${totals.total} work pins`} />
+            <StatCard label="Verified" value={`${totals.percentVerified}%`} tone="green" note={`${totals.approvedTasks} of ${totals.totalTasks} tasks approved`} />
             <StatCard label="Time used" value={elapsed === null ? "n/a" : `${elapsed}%`} tone="sky" note={elapsed === null ? "Set the project dates" : "of the planned duration"} />
             <StatCard label="Waiting for the engineer" value={totals.for_review} tone="amber" />
             <StatCard label="Late or problem" value={totals.overdue + totals.issue} tone={totals.overdue + totals.issue ? "red" : "green"} note={`${totals.overdue} overdue, ${totals.issue} issue${totals.issue === 1 ? "" : "s"}`} />
           </div>
           <Panel title="Whole project">
+            <Meter value={totals.percentVerified} tone="green" label="Approved task progress" />
+            <p className="mb-1 mt-3 text-xs font-bold text-fg-muted">Pin statuses</p>
             <StackedBar totals={totals} />
             <div className="mt-3"><StatusLegend /></div>
             {elapsed !== null ? (
@@ -63,7 +67,7 @@ export default function BlueprintProgressTracking(_: AdminPageProps) {
                       <td>{zone.totals.for_review}</td>
                       <td>{zone.totals.issue}</td>
                       <td>{zone.totals.overdue}</td>
-                      <td><StackedBar totals={zone.totals} /><span className="mt-1 block text-xs text-fg-muted">{zone.totals.percentVerified}%</span></td>
+                      <td><Meter value={zone.totals.percentVerified} tone="green" label={`${zone.title} approved tasks`} /><span className="mt-1 block text-xs text-fg-muted">{zone.totals.percentVerified}% · {zone.totals.approvedTasks}/{zone.totals.totalTasks} tasks approved</span></td>
                     </tr>
                   ))}
                 </tbody>

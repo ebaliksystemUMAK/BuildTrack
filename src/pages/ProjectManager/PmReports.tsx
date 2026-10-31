@@ -62,10 +62,10 @@ export default function PmReports(_: PmPageProps) {
     const html = reportHtml({
       title: "Progress report",
       subtitle: `${work.project.name} (${work.project.code})${work.project.location ? " - " + work.project.location : ""}`,
-      meta: [["As of", reportDateLong(work.today)], ["Verified", `${totals.percentVerified}%`], ["Work pins", String(totals.total)], ["Overdue / issues", `${totals.overdue} / ${totals.issue}`]],
+      meta: [["As of", reportDateLong(work.today)], ["Approved task progress", `${totals.percentVerified}%`], ["Tasks approved / total", `${totals.approvedTasks} / ${totals.totalTasks}`], ["Work pins", String(totals.total)], ["Overdue / issues", `${totals.overdue} / ${totals.issue}`]],
       sections: [
         { heading: "Status summary", rows: (["verified", "for_review", "in_progress", "not_started", "issue"] as const).map((status) => [statusLabels[status], String(totals[status])] as [string, string]) },
-        { heading: "Progress by sheet", table: { head: ["Sheet", "Level", "Pins", "Verified", "To review", "Issues", "Overdue", "% verified"], rows: zones.map((zone) => [zone.title, zone.level ?? "-", String(zone.totals.total), String(zone.totals.verified), String(zone.totals.for_review), String(zone.totals.issue), String(zone.totals.overdue), `${zone.totals.percentVerified}%`]) } },
+        { heading: "Progress by sheet", table: { head: ["Sheet", "Level", "Pins", "Completed pins", "To review", "Issues", "Overdue", "Tasks approved / total", "% approved tasks"], rows: zones.map((zone) => [zone.title, zone.level ?? "-", String(zone.totals.total), String(zone.totals.verified), String(zone.totals.for_review), String(zone.totals.issue), String(zone.totals.overdue), `${zone.totals.approvedTasks} / ${zone.totals.totalTasks}`, `${zone.totals.percentVerified}%`]) } },
         { heading: "Open issues", table: open.length ? { head: ["Issue", "Sheet", "Severity", "Assigned to"], rows: open.map((pin) => [pin.title, work.sheetOf(pin.blueprint_id), severityLabels[pin.severity], work.nameOf(pin.assigned_to)]) } : undefined, body: open.length ? undefined : "No open issues." },
         { heading: "Late work", table: late.length ? { head: ["Pin", "Sheet", "Due", "Days late", "Assigned to"], rows: late.map((pin) => [pin.title, work.sheetOf(pin.blueprint_id), pin.due_date ?? "", String(daysBetween(pin.due_date as string, work.today)), work.nameOf(pin.assigned_to)]) } : undefined, body: late.length ? undefined : "Nothing is past its deadline." },
       ],
@@ -120,7 +120,7 @@ export default function PmReports(_: PmPageProps) {
           <button type="button" className={buttonSecondary} disabled={!summary || !dataReady} onClick={printQa}>Print QA summary</button>
         </Panel>
         <Panel title="Attendance">
-          <p className="mb-3 text-sm text-fg-muted">Daily, weekly or monthly attendance from the site scanners, printable or as CSV.</p>
+          <p className="mb-3 text-sm text-fg-muted">Daily time records or per-worker attendance totals for a week, month or date range, as PDF or CSV.</p>
           <AttendanceReportButton projectId={projectId} anchorDay={attendanceDay()} />
         </Panel>
         <Panel title="Project export">

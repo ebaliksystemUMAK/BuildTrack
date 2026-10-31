@@ -11,8 +11,9 @@ export type UploadOutcome = "uploaded" | "queued"
 // them up with the shared picker / editor (text, lines, arrows, shapes, drawing, rotation, one photo at a time as a slideshow),
 // then add them one by one through `onUpload`. A photo that fails stays here with the reason to retry or remove; photos saved
 // on the device for later (offline) count as done. Cancel asks first only when something was marked up or captioned.
-export default function MarkupUploadDialog({ files, title, limit = 10, captionLimit = 200, prepare, onUpload, onDone, onClose, editorTitle = "Mark up photo" }: {
-  files: File[]; title: string; limit?: number; captionLimit?: number; editorTitle?: string
+// allowFiles=false: the photo came from the in-app camera, so no more files can be added here (they would not be camera photos).
+export default function MarkupUploadDialog({ files, title, limit = 10, captionLimit = 200, prepare, onUpload, onDone, onClose, editorTitle = "Mark up photo", allowFiles = true }: {
+  files: File[]; title: string; limit?: number; captionLimit?: number; editorTitle?: string; allowFiles?: boolean
   prepare: (file: File) => Promise<File>
   onUpload: (draft: IssuePhotoDraft) => Promise<UploadOutcome>
   onDone: (result: { uploaded: number; queued: number }) => void | Promise<void>
@@ -102,8 +103,8 @@ export default function MarkupUploadDialog({ files, title, limit = 10, captionLi
       }
     >
       {preparing ? <p role="status" className="text-sm text-fg-muted">Preparing the photos…</p> : (
-        <IssuePhotoPicker photos={drafts} onChange={setDrafts} limit={limit} disabled={busy} prepare={prepare} onPreparing={setAdding} captionLimit={captionLimit} nameCaptions={false} editorTitle={editorTitle}
-          hint={`Up to ${limit} photos at a time. Use Mark up photos (or Edit / annotate) to mark them up and add a caption; the original photo is kept.`} />
+        <IssuePhotoPicker photos={drafts} onChange={setDrafts} limit={limit} disabled={busy} prepare={prepare} onPreparing={setAdding} captionLimit={captionLimit} nameCaptions={false} editorTitle={editorTitle} allowFiles={allowFiles}
+          hint={allowFiles ? `Up to ${limit} photos at a time. Use Mark up photos (or Edit / annotate) to mark them up and add a caption; the original photo is kept.` : "Use Mark up photo (or Edit / annotate) to mark it up and add a caption; the original photo is kept. Take another photo after adding this one."} />
       )}
       {problem ? <p role="alert" className="mt-3 text-sm text-danger-fg">{problem}</p> : null}
     </Modal>

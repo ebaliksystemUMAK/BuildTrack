@@ -14,13 +14,14 @@ const permissions: Array<{ key: AdminPermission; label: string; short: string; n
   { key: "users.disable", label: "Suspend / enable users", short: "Suspend", note: "Suspend or re-enable accounts" },
   { key: "users.impersonate", label: "Log in as a user", short: "Log in as", note: "See the app as another person (audited)" },
   { key: "biometrics.manage", label: "Biometric registration", short: "Biometrics", note: "Admin-only worker profiles, sensor enrollment IDs and device management" },
-  { key: "projects.manage", label: "Project management", short: "Projects", note: "Create projects, teams, backups" },
+  { key: "projects.manage", label: "Project management", short: "Projects", note: "Create projects, assign Project Managers, view teams and export backups" },
   { key: "blueprints.manage", label: "Blueprint management", short: "Blueprints", note: "Upload and edit plans and QA" },
+  { key: "photos.manage", label: "Site photo rules", short: "Photos", note: "Manage photo rules for Foreman and Engineer accounts (System settings > Site photos)" },
 ]
 
 type Grants = Record<string, Set<AdminPermission>>
 
-// One screen for who can do what: admins down the side, the nine permissions across the top. Changes are staged, shown as a list of
+// One screen for who can do what: admins down the side, the permissions across the top. Changes are staged, shown as a list of
 // exactly what will change, and saved together (Super Admin only; the database and the Edge Function check this again).
 export default function PermissionMatrix({ admins, onSaved }: { admins: Profile[]; onSaved: () => void | Promise<void> }) {
   const toast = useToast()

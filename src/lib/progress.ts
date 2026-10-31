@@ -1,4 +1,5 @@
 import type { Blueprint, Pin, PinSeverity, PinStatus } from "./blueprints"
+import { progressPercent, scheduledTasks, taskApproved } from "./taskProgress.ts"
 
 // Pure helpers behind the engineer dashboards (no network): counts, overdue checks, per-sheet roll-ups and CSV.
 
@@ -22,17 +23,20 @@ export const isOverdue = (pin: Pick<Pin, "status" | "due_date" | "category">, to
 export const isDueSoon = (pin: Pick<Pin, "status" | "due_date" | "category">, today: string, days = 3) =>
   isOpen(pin) && Boolean(pin.due_date) && (pin.due_date as string) >= today && daysBetween(today, pin.due_date as string) <= days
 
-export type Totals = Record<PinStatus, number> & { total: number; percentVerified: number; overdue: number }
+export type Totals = Record<PinStatus, number> & { total: number; totalTasks: number; approvedTasks: number; percentVerified: number; overdue: number }
 
 // Notes (category "note") are comments on the plan, not work, so they are left out of progress figures.
-export function summarize(pins: Pick<Pin, "status" | "due_date" | "category">[], today: string): Totals {
+export function summarize(pins: Pick<Pin, "status" | "due_date" | "category" | "tasks">[], today: string): Totals {
   const work = pins.filter((pin) => pin.category !== "note")
-  const totals = { not_started: 0, in_progress: 0, for_review: 0, issue: 0, verified: 0, total: work.length, percentVerified: 0, overdue: 0 } as Totals
+  const totals: Totals = { not_started: 0, in_progress: 0, for_review: 0, issue: 0, verified: 0, total: work.length, totalTasks: 0, approvedTasks: 0, percentVerified: 0, overdue: 0 }
   for (const pin of work) {
     totals[pin.status] += 1
     if (isOverdue(pin, today)) totals.overdue += 1
   }
-  totals.percentVerified = totals.total ? Math.round((totals.verified / totals.total) * 100) : 0
+  const tasks = scheduledTasks(work)
+  totals.totalTasks = tasks.length
+  totals.approvedTasks = tasks.filter(taskApproved).length
+  totals.percentVerified = progressPercent(totals.approvedTasks, totals.totalTasks)
   return totals
 }
 
@@ -100,8 +104,8 @@ export function downloadCsv(filename: string, csv: string) {
 }
 
 // ---------- S-curve (planned vs verified, cumulative) ----------
-// Planned: share of the work items whose due date has passed by each date, i.e. the plan the engineer set on the pins.
-// Verified: share verified by then (items verified now, dated by their verification; un-verifying removes an item).
+// Planned: share of tasks due by each date, inheriting the due date on their pin.
+// Verified: share of approved tasks, dated by each task's Engineer approval.
 // Notes are not work. Items without a due date count in the total but never as planned; `undated` lets the screen say so.
 export type SCurvePoint = { date: string; planned: number; verified: number | null }
 export type SCurveData = { points: SCurvePoint[]; total: number; undated: number; todayIndex: number }
@@ -116,16 +120,16 @@ const countUpTo = (sorted: string[], date: string) => {
 }
 
 export function sCurve(
-  pins: Pick<Pin, "category" | "status" | "due_date" | "verified_at">[],
+  pins: Pick<Pin, "category" | "status" | "due_date" | "verified_at" | "tasks">[],
   start: string | null,
   end: string | null,
   today: string,
   maxPoints = 40,
 ): SCurveData | null {
-  const work = pins.filter((pin) => pin.category !== "note")
+  const work = scheduledTasks(pins)
   if (!work.length) return null
   const due = work.map((pin) => pin.due_date?.slice(0, 10)).filter((value): value is string => Boolean(value)).sort()
-  const done = work.filter((pin) => pin.status === "verified" && pin.verified_at).map((pin) => manilaToday(new Date(pin.verified_at as string))).sort()
+  const done = work.filter((task) => taskApproved(task) && task.verified_at).map((task) => manilaToday(new Date(task.verified_at as string))).sort()
   const from = [start, due[0], done[0], today].filter((value): value is string => Boolean(value)).sort()[0]
   let to = [end, due[due.length - 1], today].filter((value): value is string => Boolean(value)).sort().reverse()[0]
   if (to <= from) to = addDays(from, 1)

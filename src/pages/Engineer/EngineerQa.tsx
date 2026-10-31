@@ -69,22 +69,22 @@ export default function EngineerQa({ onNavigate }: EngineerPageProps) {
     <div className="engineer-page">
       <ProjectContextBar listPath="/engineer/projects" listLabel="My projects" />
       <PageHead eyebrow="Quality assurance" title="QA register"
-        description="Manage inspections, verify NCR corrections, complete passed checklists and view completed work."
+        description="Manage inspections, verify NCR corrections, complete passed tasks and view completed work."
         actions={<button type="button" className={buttonSecondary} onClick={() => onNavigate("annotation")}>Open the plan</button>} />
       {projectId ? <QaView key={projectId} ws={{ ...ws, reloadAll: reload }} mode="engineer"
         tabs={["inspections", "defects", "complete", "completed", "snags"]} dateFilter
         workTabs={{
           complete: { count: ready.length + legacy.length, content: <WorkItemBoard key={projectId + ":complete"} showGroupFilters={false}
-            groups={[{ key: "complete", short: "Complete checklist", title: "Ready to complete", rows: ready,
-              hint: "Inspection passed and linked NCRs are closed. Open a checklist to complete it." }]}
+            groups={[{ key: "complete", short: "Complete task", title: "Ready to complete", rows: ready,
+              hint: "Inspection passed and linked NCRs are closed. Open a task to complete it." }]}
             extras={legacy.length ? [{ key: "legacy", short: "Whole-work submissions", title: "Whole-work submissions", count: legacy.length, content: pinList(legacy) }] : []}
             loading={items.loading || ws.loading} error={items.error || ws.error} nameOf={ws.nameOf} sheetOf={work.sheetOf} onOpen={setItemId}
-            emptyTitle="No checklists ready to complete" emptyText="Checklists appear here after their inspection passes and all linked NCRs are closed." /> },
+            emptyTitle="No tasks ready to complete" emptyText="Tasks appear here after their inspection passes and all linked NCRs are closed." /> },
           completed: { count: completed.length + completedPins.length, content: <WorkItemBoard key={projectId + ":completed"} showGroupFilters={false}
-            groups={[{ key: "completed", short: "Completed checklists", title: "Completed checklists", rows: completed }]}
+            groups={[{ key: "completed", short: "Completed tasks", title: "Completed tasks", rows: completed }]}
             extras={completedPins.length ? [{ key: "completed-work", short: "Completed work", title: "Completed work", count: completedPins.length, content: pinList(completedPins) }] : []}
             loading={items.loading || ws.loading} error={items.error || ws.error} nameOf={ws.nameOf} sheetOf={work.sheetOf} onOpen={setItemId}
-            emptyTitle="No completed work yet" emptyText="Completed checklists and whole-work records will appear here." /> },
+            emptyTitle="No completed work yet" emptyText="Completed tasks and whole-work records will appear here." /> },
         }} /> : null}
       {selected ? <ReviewPanel key={selected.id} pin={selected} sheet={work.sheetOf(selected.blueprint_id)} foreman={work.nameOf(selected.assigned_to)} onClose={closeReview} onDecided={reload} /> : null}
       {itemId ? <WorkItemWorkspace key={itemId} itemId={itemId} onClose={() => setItemId(null)} onChanged={reload} /> : null}
@@ -109,14 +109,14 @@ function ReviewPanel({ pin, sheet, foreman, onDecided, onClose }: { pin: Pin; sh
   // Same gate as the database (guard_pin_verification): the Foreman completed the checklist and QA is clear.
   const missing = checklist.total - checklist.done
   const blocker = qa.error || (!qa.state ? "Checking inspection requirements…" : qa.state.problem) || (missing > 0
-    ? `The foreman has not completed the checklist yet (${missing} of ${checklist.total} items open). Send it back or wait for the foreman.`
+    ? `Tasks still await Engineer approval (${missing} of ${checklist.total} tasks unapproved). Open Tasks & QC to review them.`
     : qualityWarning ? `${qualityWarning} Resolve it in Quality before verifying.` : "")
 
   const approve = async () => {
     if (blocker || !quality) return
     const ok = await confirm({
       title: `Complete "${pin.title}"?`,
-      message: "The checklist is complete and QA is clear. This marks step 4 Completed and notifies the Foreman and the client.",
+      message: "All tasks are approved and QA is clear. This completes the work pin and notifies the Foreman and the client.",
       confirmLabel: "Complete work",
     })
     if (!ok) return
@@ -149,11 +149,11 @@ function ReviewPanel({ pin, sheet, foreman, onDecided, onClose }: { pin: Pin; sh
 
       {pin.status !== "verified" && blocker ? <div role="status" className="mt-4 rounded-xl border border-line bg-surface-muted p-3 text-sm text-fg-muted"><strong>Before completing work: </strong>{blocker}{quality?.defects.some(row => row.status !== "closed") ? <button type="button" className="ml-2 font-bold text-brand-text underline" onClick={() => setTab("quality")}>Review open NCRs</button> : null}</div> : null}
       <div className="mt-5 flex flex-wrap gap-1 border-b border-line pb-2" role="tablist" aria-label="Work review sections">
-        {([ ["checklist", "Checklist"], ["quality", "QA & NCRs"], ["photos", "Photos"], ["timeline", "Timeline"] ] as const).map(([key, label]) => <button key={key} id={`review-tab-${key}`} type="button" role="tab" aria-selected={tab === key} aria-controls={`review-section-${key}`} onClick={() => setTab(key)} className={`rounded-lg px-4 py-2 text-sm font-bold ${tab === key ? "bg-brand text-white" : "text-fg-muted hover:bg-surface-muted"}`}>{label}</button>)}
+        {([ ["checklist", "Tasks & QC"], ["quality", "QA & NCRs"], ["photos", "Photos"], ["timeline", "Timeline"] ] as const).map(([key, label]) => <button key={key} id={`review-tab-${key}`} type="button" role="tab" aria-selected={tab === key} aria-controls={`review-section-${key}`} onClick={() => setTab(key)} className={`rounded-lg px-4 py-2 text-sm font-bold ${tab === key ? "bg-brand text-white" : "text-fg-muted hover:bg-surface-muted"}`}>{label}</button>)}
       </div>
 
       <section hidden={tab !== "checklist"} id="review-section-checklist" role="tabpanel" aria-labelledby="review-tab-checklist" className="mt-5">
-        <h3 className="mb-2 text-xs font-extrabold uppercase tracking-wider text-fg-muted">Checklist</h3>
+        <h3 className="mb-2 text-xs font-extrabold uppercase tracking-wider text-fg-muted">Tasks &amp; QC</h3>
         <PinChecklist pin={pin} canEdit={false} canTick={false} onChange={onChecklist} onPinChanged={onDecided} />
       </section>
       {tab === "photos" ? <section id="review-section-photos" role="tabpanel" aria-labelledby="review-tab-photos" className="mt-5">

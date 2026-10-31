@@ -8,7 +8,7 @@ export type PanelRole = "engineer" | "foreman" | "client" | "admin"
 export type PinSection = "details" | "checklist" | "issues" | "actions" | "reports" | "photos" | "activity" | "communication"
 
 export const pinSectionLabels: Record<PinSection, string> = {
-  details: "Details", checklist: "Checklist & QA", issues: "Issues & NCRs", actions: "Next actions", reports: "Daily reports", photos: "Photos", activity: "Activity", communication: "Communication",
+  details: "Details", checklist: "Tasks & QC", issues: "Issues & NCRs", actions: "Next actions", reports: "Daily reports", photos: "Photos", activity: "Activity", communication: "Communication",
 }
 // Clients never see QA records, staff photos or the timeline; Admins read but never act (no inspection or NCR rights).
 const sections: Record<PanelRole, PinSection[]> = {
@@ -54,7 +54,7 @@ export function defectChecklist(defect: DefectLink, submissions: SubmissionLink[
   const current = new Map(items.map((item) => [item.id, item.text]))
   if (defect.checklist_item_id || defect.checklist_name) {
     const id = defect.checklist_item_id ?? ""
-    return [{ id, text: (id && current.get(id)) || defect.checklist_name || "Checklist item" }]
+    return [{ id, text: (id && current.get(id)) || defect.checklist_name || "Task" }]
   }
   if (!defect.inspection_id) return []
   const submission = submissions.find((row) => row.inspection_id === defect.inspection_id && row.pin_id === defect.pin_id)

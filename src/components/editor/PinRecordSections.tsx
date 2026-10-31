@@ -134,9 +134,9 @@ function RecordFilterBar({ role, filter, onChange, facts, items, wide }: { role:
           </select>
         </label>
         {role !== "client" ? (
-          <label className="min-w-0 text-[11px] font-bold uppercase tracking-wider text-fg-muted">Checklist item
+          <label className="min-w-0 text-[11px] font-bold uppercase tracking-wider text-fg-muted">Task
             <select className={filterField} value={filter.item} onChange={(event) => set({ item: event.target.value })}>
-              <option value="">All checklist items</option>
+              <option value="">All tasks</option>
               <option value={WHOLE_PIN_ITEM}>Whole work pin (no item)</option>
               {items.map((item) => <option key={item.id} value={item.id}>{item.text}</option>)}
             </select>
@@ -207,7 +207,7 @@ export function PinIssuesSection({ pin, role, meId, team, canEdit, canWork, data
     }
   })
   const issueRows: Row[] = issues.map((row) => {
-    const itemName = row.checklist_item_id ? (items.find((item) => item.id === row.checklist_item_id)?.text ?? row.checklist_name ?? "Checklist item") : row.checklist_name ? `${row.checklist_name} (historical)` : "Whole work pin"
+    const itemName = row.checklist_item_id ? (items.find((item) => item.id === row.checklist_item_id)?.text ?? row.checklist_name ?? "Task") : row.checklist_name ? `${row.checklist_name} (historical)` : "Whole work pin"
     return {
       key: row.id, openLabel: "Open issue record", onOpen: () => open("issue", row.id),
       cells: [day(row.created_at), <span key="d" className="whitespace-pre-wrap break-words">{row.description}</span>, itemName, severityLabels[row.severity as PinSeverity] ?? row.severity, nameOf(row.raised_by)],
@@ -259,9 +259,9 @@ export function PinIssuesSection({ pin, role, meId, team, canEdit, canWork, data
             <RecordList title="My problem reports on this pin" wide={wide} columns={["Report", "Problem", "Status", "Progress", "Reported"]} rows={shown(snagRows)} empty={empty("You have not reported a problem on this pin.", "report")} />
           ) : (
             <>
-              {visible("ncr") ? <RecordList title="NCRs (non-conformances)" wide={wide} columns={["NCR", "Problem", "Checklist item", "Status", "Responsible", "Due", "Source"]} rows={shown(defectRows)} empty={empty("No NCR is linked to this pin.", "NCR")} /> : null}
-              {visible("inspection") ? <RecordList title="Inspections and QA requests" wide={wide} columns={["Inspection", "Title", "Checklist item", "Status", "Requested", "Inspector"]} rows={shown(inspectionRows)} empty={empty("No inspection has been requested for this pin.", "inspection")} /> : null}
-              {visible("issue") ? <RecordList title="Site issues" wide={wide} columns={["Logged", "Description", "Checklist item", "Severity", "Logged by"]} rows={shown(issueRows)} empty={empty("No site issue is logged on this pin.", "site issue")} /> : null}
+              {visible("ncr") ? <RecordList title="NCRs (non-conformances)" wide={wide} columns={["NCR", "Problem", "Task", "Status", "Responsible", "Due", "Source"]} rows={shown(defectRows)} empty={empty("No NCR is linked to this pin.", "NCR")} /> : null}
+              {visible("inspection") ? <RecordList title="Inspections and QA requests" wide={wide} columns={["Inspection", "Title", "Task", "Status", "Requested", "Inspector"]} rows={shown(inspectionRows)} empty={empty("No inspection has been requested for this pin.", "inspection")} /> : null}
+              {visible("issue") ? <RecordList title="Site issues" wide={wide} columns={["Logged", "Description", "Task", "Severity", "Logged by"]} rows={shown(issueRows)} empty={empty("No site issue is logged on this pin.", "site issue")} /> : null}
               {visible("client") ? <RecordList title="Client problem reports" wide={wide} columns={["Report", "Problem", "Status", "NCR", "Reported"]} rows={shown(snagRows)} empty={empty("No client report is linked to this pin.", "client report")} /> : null}
             </>
           )}</>}
@@ -320,7 +320,7 @@ function FieldProblemDialog({ pin, items, onClose, onSent }: { pin: Pin; items: 
     <Modal title="Report a field problem" description={`On ${pin.title}. The Engineer decides whether to log a site issue or raise an NCR.`} onClose={onClose}
       footer={<><button type="button" className={buttonSecondary} disabled={busy} onClick={onClose}>Cancel</button><button type="button" className={buttonPrimary} disabled={busy || note.trim().length < 5} onClick={() => void send()}>{busy ? "Sending…" : "Send to the Engineer"}</button></>}>
       <div className="space-y-4">
-        <label className="block text-sm font-bold" htmlFor="field-problem-item">Checklist item
+        <label className="block text-sm font-bold" htmlFor="field-problem-item">Task
           <select id="field-problem-item" className={`${inputClass} mt-1`} value={itemId} disabled={busy} onChange={(event) => setItemId(event.target.value)}>
             <option value="">Whole work pin (no specific item)</option>
             {items.map((item) => <option key={item.id} value={item.id}>{item.text}</option>)}
@@ -329,7 +329,7 @@ function FieldProblemDialog({ pin, items, onClose, onSent }: { pin: Pin; items: 
         <label className="block text-sm font-bold" htmlFor="field-problem-note">What is the problem? *
           <textarea id="field-problem-note" className={`${inputClass} mt-1`} rows={4} maxLength={1000} value={note} disabled={busy} onChange={(event) => setNote(event.target.value)} placeholder="What you found, where exactly, and what it stops" />
         </label>
-        <p className="text-xs text-fg-muted">At least 5 characters. Corrections to an existing NCR or issue are sent from that NCR or the work item, not here.</p>
+        <p className="text-xs text-fg-muted">At least 5 characters. Corrections to an existing NCR or issue are sent from that NCR or the task, not here.</p>
       </div>
     </Modal>
   )

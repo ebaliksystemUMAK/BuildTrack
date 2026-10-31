@@ -140,7 +140,7 @@ const panelProps = { role: "client", selectedPin: pin, selectedAnnotation: null,
 const panel = () => { render(Inspector, panelProps); const node = find(row => row.type?.name === "PinPanel"); cursor = 0; tree = node.type(node.props); const jobs = pending; pending = []; jobs.forEach(fn => fn()); return tree }
 panel(); assert.match(text(tree), /In progress/); assert.doesNotMatch(text(tree), /For review/, "For review stays a checklist state, never the pin status")
 const tabs = find(node => node.type?.name === "Tabs")
-assert.deepEqual(tabs.props.tabs.map(tab => tab.label), ["Details", "Checklist & QA", "My reports", "Next actions", "Daily reports", "Communication"], "Clients never get staff photos or the timeline")
+assert.deepEqual(tabs.props.tabs.map(tab => tab.label), ["Details", "Tasks & QC", "My reports", "Next actions", "Daily reports", "Communication"], "Clients never get staff photos or the timeline")
 assert.equal(tabs.props.tabs.find(tab => tab.key === "issues").count, 1)
 tree = tabs.type(tabs.props)
 find(node => node.props?.role === "tab" && /^Daily reports/.test(text(node))).props.onClick()

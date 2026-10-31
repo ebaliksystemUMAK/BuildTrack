@@ -48,7 +48,7 @@ export function reportError(error: { code?: string; message: string }): string {
 
 export function linkedWorkLabel(work: ReportWork, pinTitle: (id: string) => string | undefined, itemText: (id: string) => string | undefined) {
   const pin = pinTitle(work.pin_id) ?? "Work pin"
-  return work.item_id ? `${pin} → ${itemText(work.item_id) ?? "Checklist item"}` : pin
+  return work.item_id ? `${pin} → ${itemText(work.item_id) ?? "Task"}` : pin
 }
 
 export function dailyReportHtml(report: DailyReport, project: { code: string; name: string; location: string | null }, authorName: string, workLabel: (work: ReportWork) => string = (work) => work.pin_id): string {
@@ -67,7 +67,7 @@ export function dailyReportHtml(report: DailyReport, project: { code: string; na
       ...(report.issues ? [{ heading: "Issues and problems", body: report.issues }] : []),
       ...(report.delays ? [{ heading: "Delays", body: report.delays }] : []),
       ...(report.safety ? [{ heading: "Safety", body: report.safety }] : []),
-      ...((report.linked_work ?? []).length ? [{ heading: "Linked work", table: { head: ["Work pin and checklist item"], rows: (report.linked_work ?? []).map(row => [workLabel(row)]) } }] : []),
+      ...((report.linked_work ?? []).length ? [{ heading: "Linked work", table: { head: ["Work pin and task"], rows: (report.linked_work ?? []).map(row => [workLabel(row)]) } }] : []),
       { heading: "Engineer review", rows: [["Review", report.review_state ?? "pending"], ["Revision", String(report.revision ?? 0)], ["Feedback", report.review_note || "Awaiting review"], ["Reviewed at", report.reviewed_at ? new Date(report.reviewed_at).toLocaleString("en-PH", { timeZone: "Asia/Manila" }) : "-"]] },
       { heading: "Status", rows: [["Report status", report.status === "submitted" ? "Submitted" : "Draft"], ["Submitted at", report.submitted_at ? new Date(report.submitted_at).toLocaleString("en-PH", { timeZone: "Asia/Manila" }) : "-"]] },
     ],

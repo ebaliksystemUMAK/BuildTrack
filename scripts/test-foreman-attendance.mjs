@@ -107,7 +107,7 @@ const { default: ReportButton } = await import(reportButton)
 const { exports: UI, module: uiModule } = await compile("../src/components/attendance/ForemanWorkerAttendance.tsx", { react: hooks, "../../lib/attendanceModel": model, "../../lib/foremanAttendanceModel": helper, "../../lib/attendanceStatusModel": new URL("../src/lib/attendanceStatusModel.ts", import.meta.url).href, "../../lib/attendanceScheduleModel": new URL("../src/lib/attendanceScheduleModel.ts", import.meta.url).href, "../../lib/foremanAttendance": mockData, "../Modal": modal, "./WorkerPortrait": url("export default function Portrait(){return null}"), "./AttendanceReportButton": reportButton })
 const originalWindow = globalThis.window
 globalThis.window = { setInterval: () => 1, clearInterval() {} }
-const all = node => Array.isArray(node) ? node.flatMap(all) : node && typeof node === "object" ? [node, ...all(node.props?.children)] : []
+const all = node => Array.isArray(node) ? node.flatMap(all) : node && typeof node === "object" ? [node, ...all(node.props?.children), ...all(node.props?.action)] : []
 const text = node => Array.isArray(node) ? node.map(text).join("") : node?.props ? text(node.props.children) : typeof node === "string" || typeof node === "number" ? String(node) : ""
 // Schedule column: the database's flag, never computed in the browser.
 const flagged = UI.AttendanceRecordsTable({ events: [{ ...scans[0], schedule_flag: "late", minutes_off: 80 }, { ...scans[1], schedule_flag: "early_out", minutes_off: 30 }, { ...scans[2], schedule_flag: null, minutes_off: null }] })

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import type { AppRole } from "./auth"
 import { supabase } from "./supabase"
+import { auditActionLabel } from "./auditLogModel"
 
 export type ActivityRow = {
   id: number
@@ -63,7 +64,7 @@ const actionLabels: Record<string, string> = {
   "privacy.erase_files": "Deleted a person's files",
 }
 
-export const activityLabel = (action: string) => actionLabels[action] ?? action
+export const activityLabel = (action: string) => actionLabels[action] ?? auditActionLabel(action)
 
 export const roleLabel: Record<AppRole, string> = {
   super_admin: "Super Admin",

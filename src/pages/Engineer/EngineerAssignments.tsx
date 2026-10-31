@@ -121,7 +121,7 @@ export function AssignmentBoard({ variant, readOnly = false }: { variant: "engin
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 id="pm-assignments" className="border-l-4 border-accent pl-3 text-lg font-extrabold text-brand-strong">Work assignments</h2>
-          <p className="mt-1 pl-4 text-sm text-fg-muted">Move work items between Foremen. The Foreman needs Assigned work access to the plan's type. Locked work, work awaiting the Engineer's review and completed work keep their Foreman.</p>
+          <p className="mt-1 pl-4 text-sm text-fg-muted">Move work pins between Foremen. The Foreman needs Assigned work access to the plan's type. Locked work, work awaiting the Engineer's review and completed work keep their Foreman.</p>
         </div>
         {filters}
       </div>

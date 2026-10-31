@@ -10,43 +10,50 @@ export const escapeHtml = (value: unknown): string =>
     .replace(/'/g, "&#39;")
 
 // `html` is trusted markup built by our own code (for example a chart); every value in it must already be escaped.
-export type PrintSection = { heading: string; body?: string; rows?: Array<[string, string]>; table?: { head: string[]; rows: string[][] }; html?: string }
+export type PrintSection = { heading: string; body?: string; rows?: Array<[string, string]>; table?: { head: string[]; rows: string[][]; widths?: number[] }; html?: string }
 
-export function reportHtml(input: { title: string; subtitle: string; meta: Array<[string, string]>; sections: PrintSection[] }): string {
+export function reportHtml(input: { title: string; subtitle: string; meta: Array<[string, string]>; sections: PrintSection[]; orientation?: "portrait" | "landscape"; generatedAt?: string; generatedBy?: string }): string {
+  const orientation = input.orientation ?? (input.sections.some(section => (section.table?.head.length ?? 0) > 6) ? "landscape" : "portrait")
+  const generatedAt = input.generatedAt ? new Date(input.generatedAt) : new Date()
   const meta = input.meta.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")
   const sections = input.sections
     .map((section) => {
       const body = section.body ? `<p>${escapeHtml(section.body).replace(/\n/g, "<br>")}</p>` : ""
       const rows = section.rows ? `<dl>${section.rows.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join("")}</dl>` : ""
       const table = section.table
-        ? `<table><thead><tr>${section.table.head.map((cell) => `<th>${escapeHtml(cell)}</th>`).join("")}</tr></thead><tbody>${section.table.rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table>`
+        ? `<table>${section.table.widths?.length === section.table.head.length ? `<colgroup>${section.table.widths.map(width => `<col style="width:${Number(width)}%">`).join("")}</colgroup>` : ""}<thead><tr>${section.table.head.map((cell) => `<th scope="col">${escapeHtml(cell)}</th>`).join("")}</tr></thead><tbody>${section.table.rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table>`
         : ""
       return `<section><h2>${escapeHtml(section.heading)}</h2>${body}${rows}${table}${section.html ?? ""}</section>`
     })
     .join("")
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(input.title)}</title><style>
-@page { margin: 16mm; }
+@page { size: A4 ${orientation}; margin: 14mm; }
 * { box-sizing: border-box; }
-body { font-family: "Segoe UI", Arial, sans-serif; color: #1d1d1d; font-size: 12px; line-height: 1.5; margin: 0; }
+body { font-family: "Segoe UI", Arial, sans-serif; color: #1d1d1d; background: #fff; font-size: 12px; line-height: 1.5; margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 header { border-bottom: 4px solid #9e1f93; padding-bottom: 10px; margin-bottom: 14px; }
 header small { color: #9e1f93; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-h1 { margin: 2px 0 0; font-size: 22px; }
+h1 { margin: 2px 0 0; font-size: 22px; line-height: 1.25; overflow-wrap: anywhere; }
 header p { margin: 2px 0 0; color: #555; }
-.meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
-.meta div { border: 1px solid #ddd; border-radius: 6px; padding: 6px 8px; }
+.meta { display: grid; grid-template-columns: repeat(${Math.max(1, Math.min(input.meta.length, 5))}, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; break-inside: avoid; }
+.meta div { min-width: 0; border: 1px solid #ddd; border-radius: 6px; padding: 6px 8px; overflow-wrap: anywhere; }
 .meta span { display: block; color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
-section { margin-bottom: 14px; break-inside: avoid; }
-h2 { font-size: 13px; margin: 0 0 6px; padding-left: 8px; border-left: 4px solid #f18b00; }
-dl { display: grid; grid-template-columns: 160px 1fr; gap: 3px 10px; margin: 0; }
+section { margin-bottom: 14px; }
+h2 { font-size: 13px; margin: 0 0 6px; break-after: avoid; page-break-after: avoid; }
+p { orphans: 3; widows: 3; overflow-wrap: anywhere; }
+dl { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 3px 10px; margin: 0; break-inside: avoid; overflow-wrap: anywhere; }
 dt { color: #666; } dd { margin: 0; font-weight: 600; }
-table { width: 100%; border-collapse: collapse; }
-th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; vertical-align: top; }
-th { background: #f3eaf2; }
-footer { margin-top: 18px; color: #777; font-size: 10px; border-top: 1px solid #ddd; padding-top: 6px; }
+table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 11px; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; page-break-inside: avoid; }
+th, td { border: 0 solid #ccc; border-right-width: 1px; border-bottom-width: 1px; padding: 5px 7px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+th { border-top-width: 1px; }
+th:first-child, td:first-child { border-left-width: 1px; }
+th { background: #f4f4f4; font-weight: 700; }
+footer { margin-top: 18px; color: #777; font-size: 10px; border-top: 1px solid #ddd; padding-top: 6px; break-inside: avoid; }
 </style></head><body>
 <header><small>Valencia Construction Services - BuildTrack</small><h1>${escapeHtml(input.title)}</h1><p>${escapeHtml(input.subtitle)}</p></header>
 <div class="meta">${meta}</div>${sections}
-<footer>Generated by BuildTrack on ${escapeHtml(new Date().toLocaleString("en-PH", { timeZone: "Asia/Manila" }))} PHT</footer>
+<footer>Generated by ${escapeHtml(input.generatedBy || "BuildTrack")} on ${escapeHtml(generatedAt.toLocaleString("en-PH", { timeZone: "Asia/Manila" }))} PHT</footer>
 </body></html>`
 }
 

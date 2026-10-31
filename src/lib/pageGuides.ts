@@ -1,0 +1,509 @@
+import type { AdminPageKey } from "../pages/Admin/types"
+import type { ClientPageKey } from "../pages/Client/types"
+import type { EngineerPageKey } from "../pages/Engineer/types"
+import type { ForemanPageKey } from "../pages/Foreman/types"
+import type { PmPageKey } from "../pages/ProjectManager/types"
+import type { UserPageKey } from "../pages/User/types"
+
+// The "Page guide" shown from the top bar of every signed-in page (AppShell) and from the plan editor's View menu.
+// Pure data: one short guide per page of each workspace. The Record types make TypeScript ask for a guide whenever a page key is
+// added. Describe only what the page really does (no invented features); keep steps short and in the order people use them.
+export type PageGuide = { title: string; purpose: string; steps: string[]; tips?: string[] }
+export type GuidePersona = "admin" | "manager" | "engineer" | "foreman" | "client" | "user"
+
+const calendar = (who: "staff" | "client"): PageGuide => ({
+  title: "Project calendar",
+  purpose: who === "client"
+    ? "Work deadlines and project milestones of this project on one calendar."
+    : "Work deadlines, QA inspections, reinspections, NCR deadlines and project milestones of this project on one calendar.",
+  steps: [
+    "Switch between Month, Week, Day and Schedule views, and move with the arrows or the small month picker.",
+    "Turn the event types on or off and use \"Search this calendar\" to narrow the list.",
+    "Open an event to see its details, then follow its link to the record or to its pin on the plan.",
+  ],
+  tips: ["The calendar only shows dates that already exist in the project's records; nothing is added by hand here."],
+})
+
+const fieldProjects = (role: "Engineer" | "Foreman"): PageGuide => ({
+  title: "My projects",
+  purpose: `The projects you are assigned to as ${role}, with what is waiting for you in each.`,
+  steps: [
+    "Open a project card. The sidebar then shows only that project's pages.",
+    "Use \"All projects\" at the top of the sidebar to come back here and switch projects.",
+  ],
+  tips: ["A project you are not assigned to does not appear. Ask an Admin or the Project Manager if one is missing."],
+})
+
+const admin: Record<AdminPageKey, PageGuide> = {
+  dashboard: {
+    title: "Admin dashboard",
+    purpose: "Live numbers for projects, people and quality across the company, and what is waiting for your decision.",
+    steps: [
+      "Start with the \"Needs your decision\" band: registrations, ID checks, access requests and data requests that wait. Click one to open it.",
+      "Read the cards for projects, people and quality; click a card to open its page.",
+      "Use the activity feed and its filter chips to see recent changes.",
+      "While the \"Set up BuildTrack\" card is shown, follow its steps; they tick themselves from real data.",
+    ],
+  },
+  "project-management": {
+    title: "All projects",
+    purpose: "Create and archive projects, appoint their Project Managers and view their teams. Project Managers run the day-to-day work in their own workspace.",
+    steps: [
+      "Create a project with its code, name and details.",
+      "Set the project's site location (centre and radius). Photo location checks need it.",
+      "View team shows the project team and its blueprint access. Project Managers add members and manage their access.",
+      "Assign a primary and an optional backup Project Manager.",
+      "Archive a project when the work is finished.",
+    ],
+    tips: ["Membership alone opens no plans: each person needs access to the blueprint types they work on."],
+  },
+  "user-management": {
+    title: "User management",
+    purpose: "Everyone's accounts, the review queue, access requests, the whitelist and (Super Admin) Admin permissions. What you can do depends on your permissions.",
+    steps: [
+      "All users: search and filter people, then edit, suspend, re-enable or create accounts.",
+      "Review queue: click a registration or ID check to open its details. For a registration, choose the role in Approve as (Engineer, Foreman, Client or Project Manager) and approve it, or reject it with a reason. In the details, Previous / Next (keys J / K) move through the list and A / R approve or reject an ID check. Data erasure requests are decided here too.",
+      "Access requests: approve or decline basic accounts asking for the Engineer, Foreman or Client role.",
+      "Whitelist: pre-approve emails with a role (or import a CSV / TXT file); the role is given when the email is confirmed.",
+      "Permissions (Super Admin): tick what each Admin may do, check the list of changes, then save.",
+    ],
+    tips: ["Critical actions ask you to confirm and are written to the audit log.", "You cannot change your own account or permissions here."],
+  },
+  invites: {
+    title: "Invitations",
+    purpose: "Invitation codes that give a field role, or the Project Manager role, to a basic account.",
+    steps: [
+      "Create a code: pick the role it gives and how long it stays valid.",
+      "Share the code privately with the person.",
+      "They redeem it on their My account page; you can see which codes were used.",
+    ],
+    tips: ["A Project Manager still needs an Admin to assign their projects."],
+  },
+  "access-review": {
+    title: "Access review",
+    purpose: "Active accounts that have not signed in for a while, so you can switch off the ones no longer needed.",
+    steps: [
+      "Check each listed account and its last sign-in.",
+      "Disable the accounts that are no longer needed.",
+    ],
+    tips: ["The number of days is set in System settings > Access review.", "Administrators are never listed here."],
+  },
+  "audit-log": {
+    title: "Audit log",
+    purpose: "Every sensitive change: approvals, role changes, permissions, impersonation, invitation codes, settings and project edits.",
+    steps: [
+      "Search or filter to find a change.",
+      "Open an entry to see who did it, when, and what changed.",
+    ],
+    tips: ["Entries cannot be edited or deleted."],
+  },
+  biometrics: {
+    title: "Worker biometric registration",
+    purpose: "Admin only: register workers, capture their portraits and enroll fingerprints through the connected sensor, and manage the devices.",
+    steps: [
+      "Add a worker to a project with their details and portrait.",
+      "Enroll the worker's fingerprint with the connected sensor, following the on-screen instructions.",
+      "Manage the scanner devices and the project's attendance schedule.",
+    ],
+    tips: ["Foremen and Project Managers only view attendance; registration stays with Admins."],
+  },
+  "qa-checklists": {
+    title: "QC checklist library",
+    purpose: "The company library of QC checklists every project can use.",
+    steps: [
+      "Open a checklist to see its items, hold points and the standards it cites, with their official documents where documented.",
+      "Super Admin: create or edit company checklists. Built-in checklists are read-only.",
+      "Engineers copy a checklist into their project and adapt it to that project's specification.",
+    ],
+    tips: ["The pass mark, item weights and the standards catalog are in System settings."],
+  },
+  settings: {
+    title: "System settings",
+    purpose: "Settings the whole product shares, grouped in tabs. Everyone can read them.",
+    steps: [
+      "Pick a tab: Quality scoring, Working hours, Standards and codes, Access review or Site photos.",
+      "Change the values and press Save on that card; a dot on a tab marks unsaved changes.",
+      "Site photos: turn device photo uploads on or off for the company, and give single Foremen or Engineers their own rule.",
+    ],
+    tips: ["Only the Super Admin changes settings. Site photos can also be changed by an Admin with the Site photo rules permission.", "Every change is written to the audit log."],
+  },
+  backup: {
+    title: "Full backup and export",
+    purpose: "Download everything about one project in a single file.",
+    steps: [
+      "Pick the project.",
+      "Start the export and wait until the file is ready: plans and revisions, pins with timelines and tasks, QC checklists and QA records, drawings, daily reports and photos.",
+      "Store the file somewhere safe and private.",
+    ],
+    tips: ["Each export is recorded in the audit log."],
+  },
+  "project-overview": {
+    title: "Project overview",
+    purpose: "One project at a glance: who takes care of it and its team.",
+    steps: ["Pick the project.", "Check its Project Managers, team members and details."],
+  },
+  "blueprint-upload": {
+    title: "Blueprint management",
+    purpose: "Upload plans by blueprint type and add revisions.",
+    steps: [
+      "Pick the project and the blueprint type.",
+      "Upload a PDF or image sheet, or add a new revision to an existing sheet.",
+    ],
+    tips: ["CAD files (DWG / DXF) are not uploaded: export them to PDF or PNG first.", "Engineers and Foremen only see the types they are given in Team & access."],
+  },
+  "blueprint-mapping": {
+    title: "Blueprint mapping",
+    purpose: "Every sheet of a project with the pins and drawings placed on it, and how that work stands.",
+    steps: ["Pick the project.", "Open a sheet to see its pins and their status."],
+  },
+  "blueprint-progress": {
+    title: "Progress tracking",
+    purpose: "Verified work per sheet and zone, against the planned schedule.",
+    steps: ["Pick the project.", "Compare verified work with the plan per sheet and zone, and on the S-curve."],
+  },
+  "blueprint-version": {
+    title: "Version control",
+    purpose: "The history of every sheet. Each revision is kept as uploaded; a new one never overwrites an old one.",
+    steps: ["Pick the project.", "Open a sheet to see its revisions and who uploaded them."],
+  },
+  calendar: calendar("staff"),
+}
+
+const manager: Record<PmPageKey, PageGuide> = {
+  projects: {
+    title: "My projects",
+    purpose: "The projects an Admin assigned to you, as primary or backup Project Manager.",
+    steps: ["Open a project. The sidebar then shows only that project's pages.", "Use \"All projects\" at the top of the sidebar to switch projects."],
+  },
+  dashboard: {
+    title: "Project dashboard",
+    purpose: "How the project is going: progress against the plan, deadlines, what waits for the Engineer's review and the quality issues still open.",
+    steps: [
+      "Check progress against the plan and the deadlines coming up.",
+      "See what is waiting for the Engineer's review and which NCRs are still open.",
+      "Open a card or a row to go to its page.",
+    ],
+  },
+  details: {
+    title: "Project details",
+    purpose: "Dates, location, client details, status and the Engineer and Foreman in charge.",
+    steps: ["Edit the fields you need.", "Save. Everyone on the project sees the change at once."],
+    tips: ["Archiving a project and assigning Project Managers stay with Admins."],
+  },
+  team: {
+    title: "Team & work access",
+    purpose: "Who works on this project and what they may open or work on.",
+    steps: [
+      "Add or remove approved Engineers, Foremen and Clients.",
+      "For each Engineer and Foreman, choose per blueprint type: No access, View only or Assigned work.",
+      "Move work from one Foreman to another when needed.",
+    ],
+    tips: ["Changes ask for confirmation and are recorded in the project audit log."],
+  },
+  blueprints: {
+    title: "Blueprints",
+    purpose: "The project's plan sheets by blueprint type: uploads, revisions, the work mapped on each sheet and verified progress.",
+    steps: [
+      "Open a blueprint type, then a plan.",
+      "Upload a new sheet or revision, or move a sheet to another type.",
+      "Open a plan to view it. Plans open read-only for you: Engineers place and edit the work.",
+    ],
+    tips: ["Deleting a sheet stays with Admins."],
+  },
+  calendar: calendar("staff"),
+  quality: {
+    title: "Quality & QA",
+    purpose: "Follow inspections, the project's QC checklists, NCRs and corrective work. Read-only.",
+    steps: ["Check open inspections and NCRs and how late they are.", "Open a record to see its history and evidence."],
+    tips: ["Engineers inspect, verify and close; Foremen correct."],
+  },
+  attendance: {
+    title: "Project attendance",
+    purpose: "Daily time records from the site scanners and the registered workers of this project.",
+    steps: [
+      "Pick a day to see each worker's Time in, Time out and status.",
+      "Generate an attendance report for a day, week, month or date range.",
+      "Flag anything that needs an Admin's attention.",
+    ],
+    tips: ["Worker registration, fingerprints and devices are managed by Admins."],
+  },
+  reports: {
+    title: "Reports & export",
+    purpose: "Daily site reports, progress, quality and attendance reports, and an export of this project only.",
+    steps: ["Pick the report you need and its period.", "Print it or download the project export."],
+  },
+  audit: {
+    title: "Project audit log",
+    purpose: "Who changed what on this project and when, newest first. Read-only.",
+    steps: ["Search for a person, record or action.", "Open an entry to see what changed."],
+  },
+}
+
+const engineer: Record<EngineerPageKey, PageGuide> = {
+  projects: fieldProjects("Engineer"),
+  dashboard: {
+    title: "Project dashboard",
+    purpose: "What needs your decision on this project, and how it is going.",
+    steps: [
+      "Read the cards at the top: approved task progress, work to review, open issues, overdue work and QA to action. Click a card to open its page.",
+      "Work through \"Needs your attention\": the most urgent items come first (repairs to verify, inspection requests, work waiting for review, issues, late work).",
+      "Click an item to open it where you can act on it.",
+    ],
+  },
+  calendar: calendar("staff"),
+  "project-blueprint": {
+    title: "Blueprints",
+    purpose: "The project's plans, grouped by blueprint type.",
+    steps: [
+      "Open a blueprint type card (only types with plans are shown), then a plan.",
+      "Use \"Upload plan\" to add a sheet; you pick its type.",
+      "Open the editor to place and manage the work on the plan.",
+    ],
+    tips: ["You only see the types you have access to; Assigned work lets you edit, View only does not."],
+  },
+  annotation: {
+    title: "Plan editor",
+    purpose: "Place and manage the project's work on the plan sheets.",
+    steps: ["Open the editor, then use View > Page guide inside it for the editor's own instructions."],
+  },
+  verification: {
+    title: "QA register",
+    purpose: "Manage inspections, verify NCR corrections, complete passed tasks and view completed work.",
+    steps: ["Use the tabs: Overview, Inspections, NCR register and Client reports.", "Open an item to inspect, verify or send it back."],
+  },
+  qa: {
+    title: "QA register",
+    purpose: "Manage inspections, verify NCR corrections, complete passed tasks and view completed work.",
+    steps: [
+      "Overview: what waits for you and the defect trends.",
+      "Inspections: open a requested inspection, record each item (pass / fail with reason, measurements, photos) and complete it. Each failed item raises an NCR for the Foreman.",
+      "NCR register: verify submitted corrections and close the NCR, or send it back with a reason.",
+      "Client reports: accept a client's report (it becomes an NCR) or decline it with a reason.",
+      "When a task's inspection passed and its NCRs are closed, accept the task; the pin completes when every task is accepted.",
+    ],
+    tips: ["Hold points and critical items always fail the inspection when they fail.", "\"View only\" records belong to plan types where you have no Assigned work."],
+  },
+  checklists: {
+    title: "QC checklists",
+    purpose: "The QC checklists this project uses, with the standards they cite.",
+    steps: [
+      "Use \"Add from library\" to copy a company checklist into the project, then adapt it.",
+      "Or create your own checklist with its items, hold points and cited standards.",
+      "Open View to read a checklist's documentation and official sources.",
+    ],
+    tips: ["Only these checklists are offered when you set a task's criteria on the plan or request an inspection."],
+  },
+  "report-issue": {
+    title: "Issue register",
+    purpose: "Every problem found on site, how serious it is and how long it has been open.",
+    steps: [
+      "Filter the list and open an issue.",
+      "Assign it, send it back to the Foreman with a note, or close it when it is fixed.",
+      "Use Export CSV to share the list.",
+    ],
+  },
+  progress: {
+    title: "Progress by zone",
+    purpose: "Approved tasks divided by all tasks, per zone and discipline, against the schedule.",
+    steps: [
+      "Choose a period (Today, This week, This month, Last month or your own dates) to see the progress made in it: tasks approved on those dates, progress at the end of the period and the change.",
+      "Check each zone's progress, the tasks approved and the late work.",
+      "Compare planned and verified progress on the S-curve, or export the figures as CSV.",
+    ],
+    tips: ["Progress made counts every work pin, with or without a due date.", "A pin completes after all its tasks are approved and its NCRs and inspections are clear."],
+  },
+  assignments: {
+    title: "Assignment board",
+    purpose: "All work pins of the project and the Foreman doing each one.",
+    steps: ["Drag a work pin onto a Foreman to assign it, or back to Unassigned.", "Open a pin to see it on the plan."],
+    tips: ["Only Foremen with Assigned work access to that plan type can take it.", "Unassigned work does not appear in any Foreman's task list."],
+  },
+  reports: {
+    title: "Site logs and reports",
+    purpose: "Daily reports from the Foreman, client questions and site visit requests, and printable progress reports.",
+    steps: [
+      "Read the Foreman's daily reports; reopen one if it needs changes.",
+      "Answer client questions and confirm or decline site visit requests.",
+      "Use Weekly report or the progress report to print a summary.",
+    ],
+  },
+}
+
+const foreman: Record<ForemanPageKey, PageGuide> = {
+  projects: fieldProjects("Foreman"),
+  dashboard: {
+    title: "Dashboard",
+    purpose: "Your work for today on this project.",
+    steps: [
+      "See your tasks, what was sent back and what waits for QA.",
+      "Open a task to report it, add photos and submit it for QA Review.",
+    ],
+  },
+  calendar: calendar("staff"),
+  "daily-work": {
+    title: "My work",
+    purpose: "Your assigned work and its tasks (FLOOR, WALL…).",
+    steps: [
+      "Open a work item, then a task.",
+      "Add photos as evidence for each task (Upload photos or Take photo).",
+      "Submit the ready tasks for QA Review.",
+    ],
+    tips: [
+      "If photo uploads are turned off, only Take photo works: take it at the project site with location turned on.",
+      "Without signal, photos wait on the phone and are sent when you are back online.",
+    ],
+  },
+  "daily-report": {
+    title: "Daily progress report",
+    purpose: "Record the work done on a date, link the tasks and add photos.",
+    steps: [
+      "Pick the date and describe the work completed.",
+      "Link the tasks you worked on.",
+      "Take photos (or upload them, if allowed), annotate them or add a caption, and save each one to the report.",
+      "Submit the report. It is read-only afterwards unless the Engineer reopens it.",
+    ],
+    tips: ["The worker headcount comes from the project's biometric Time in records."],
+  },
+  "photo-documentation": {
+    title: "Photo documentation",
+    purpose: "Daily report and task photos of this project.",
+    steps: ["Filter by date, sheet, pin or task.", "Open a photo to see its details, its time and place stamp and the linked work."],
+  },
+  "quality-control": {
+    title: "QA requests",
+    purpose: "Send tasks and stage / hold-point inspections to the Engineer for QA Review.",
+    steps: [
+      "Open an item and add photos.",
+      "Submit it for QA Review. The Engineer records the inspection.",
+      "Follow each request until the Engineer completes the task.",
+    ],
+    tips: ["QA requests need a connection; they are not queued offline."],
+  },
+  issues: {
+    title: "Corrections",
+    purpose: "Tasks sent back, corrections in review and completed tasks in one place.",
+    steps: [
+      "Open a returned task to see the reason and its NCRs.",
+      "Fix the work, add new photos and remarks.",
+      "Submit one correction package; the Engineer reinspects the full QC checklist.",
+    ],
+    tips: ["Only the Engineer closes an NCR and completes the task."],
+  },
+  "qa-workflow": {
+    title: "QC checklist reference",
+    purpose: "The QC checklists (measurements, material checks, workmanship) the Engineer inspects your tasks against.",
+    steps: ["Open a checklist and use it to check your work before you submit it."],
+    tips: ["This page is read-only; tasks are submitted from My work or QA requests."],
+  },
+  attendance: {
+    title: "Workforce management",
+    purpose: "Your crew's attendance for the day: Time in, Time out and status from the site scanners.",
+    steps: [
+      "Pick a day to see each worker's records.",
+      "Open a worker to see their details and attendance.",
+      "Generate an attendance report for a day, week, month or date range.",
+    ],
+    tips: ["Worker registration and fingerprints are handled by Admins."],
+  },
+}
+
+const client: Record<ClientPageKey, PageGuide> = {
+  overview: {
+    title: "Overview & progress",
+    purpose: "How your project is going. Only work the engineer has checked and approved counts as done.",
+    steps: [
+      "Check the progress and the planned-versus-done chart.",
+      "Open Weekly summary for a plain-language summary you can print.",
+    ],
+  },
+  calendar: calendar("client"),
+  blueprint: {
+    title: "Blueprint & issues",
+    purpose: "The project's plans with the work and issues placed on them. Read-only.",
+    steps: ["Open a plan.", "Click a pin to see what it is and how it stands."],
+  },
+  ticket: {
+    title: "Report a problem",
+    purpose: "Tell the team about something that needs attention.",
+    steps: [
+      "Describe the problem in your own words and, if you can, link it to a place on the plan.",
+      "Add up to four photos.",
+      "Check your report and send it. The project engineer reviews it, and you can follow the repair here.",
+    ],
+    tips: ["You can send up to 10 reports a day, with at most 5 waiting for a decision."],
+  },
+  "site-logs": {
+    title: "Site logs & media",
+    purpose: "What happened on site each day, with the photos taken that day.",
+    steps: ["Pick a day.", "Open a photo to see it full size."],
+  },
+  communication: {
+    title: "Communication",
+    purpose: "Ask the project engineers a question or request a site visit.",
+    steps: ["Write your question, or request a site visit with its purpose, preferred date and time and number of visitors.", "Answers and confirmations appear here."],
+  },
+}
+
+const user: Record<UserPageKey, PageGuide> = {
+  home: {
+    title: "My account",
+    purpose: "Your account, and how to get access to project work.",
+    steps: [
+      "Verify your identity first, if you are asked to.",
+      "Request elevated access: pick Engineer, Foreman or Client. An administrator approves or declines it.",
+      "Or redeem an invitation code you received.",
+      "Complete your profile and add a profile photo.",
+    ],
+  },
+}
+
+export const pageGuides: Record<GuidePersona, Record<string, PageGuide>> = { admin, manager, engineer, foreman, client, user }
+
+const fallback: PageGuide = {
+  title: "Page guide",
+  purpose: "This page is part of your BuildTrack workspace.",
+  steps: ["Use the sidebar to move between pages.", "Press Ctrl K to search or jump to any page."],
+}
+
+export function guideFor(persona: GuidePersona, page: string): PageGuide {
+  return pageGuides[persona][page] ?? fallback
+}
+
+// The plan editor, which opens over the page; what it allows depends on the role (the database enforces it as well).
+export function editorGuide(role: "engineer" | "foreman" | "client" | "admin", canEdit: boolean): PageGuide {
+  if (role === "engineer" && canEdit) {
+    return {
+      title: "Plan editor",
+      purpose: "Place and manage the work on this plan sheet.",
+      steps: [
+        "Choose a tool in the second row: Select, Add pin, Add note, Draw shape, Tape (sheet scale), Upload image or More.",
+        "Click the sheet to place a pin, then set its details, tasks and QC checklist, and assign a Foreman.",
+        "Select a pin to change its status, lock it, open its details or delete it; select a drawing to move, resize, rotate or restyle it.",
+        "Switch sheets with the sheet switcher or the pages bar; use Layers to order, hide or lock items.",
+        "Undo with Ctrl+Z and redo with Ctrl+Shift+Z; export PNG / PDF from the top bar and compare revisions from View.",
+      ],
+      tips: ["Press ? for all keyboard shortcuts and Ctrl K for every command.", "Locked items can be selected but never move."],
+    }
+  }
+  if (role === "foreman") {
+    return {
+      title: "Plan editor",
+      purpose: "See the plan and the work assigned to you, and report on it.",
+      steps: [
+        "Click a pin assigned to you to open its details.",
+        "Report progress, add photos to its tasks and submit them for QA Review.",
+        "Use the sheet switcher or the pages bar to change sheets.",
+      ],
+      tips: ["Only the Engineer places or edits work on the plan.", "Press ? for keyboard shortcuts."],
+    }
+  }
+  return {
+    title: "Plan viewer",
+    purpose: role === "client" ? "The plan with the work placed on it. Read-only." : "The plan with the work placed on it. Read-only for you: Engineers place and edit the work.",
+    steps: [
+      "Zoom and move around the sheet; use the sheet switcher or the pages bar to change sheets.",
+      "Click a pin to see its details and status.",
+    ],
+    tips: role === "admin" ? ["Admins with the Blueprints permission can upload or delete sheets."] : ["Press ? for keyboard shortcuts."],
+  }
+}

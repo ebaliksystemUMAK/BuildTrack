@@ -62,6 +62,8 @@ import { useUndoStack } from "../../lib/undoStack"
 import { fitImageBox, itemBox, withGroupMembers, type AlignMode } from "../../lib/arrange"
 import { IMAGE_ACCEPT, imageFilesFrom, prepareImage, uploadSheetImage } from "../../lib/sheetImages"
 import { clientPinStatus } from "../../lib/clientPortalModel"
+import { editorGuide } from "../../lib/pageGuides"
+import { PageGuideModal } from "../shell/PageGuide"
 
 const allStatuses = (Object.keys(statusLabels) as PinStatus[]).filter(status => status !== "for_review")
 const secondary = "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-semibold text-fg shadow-sm hover:border-brand/50 hover:text-brand-text disabled:opacity-60"
@@ -138,6 +140,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
   const [comparing, setComparing] = useState(false)
   const [commands, setCommands] = useState(false)
   const [shortcuts, setShortcuts] = useState(false)
+  const [guideOpen, setGuideOpen] = useState(false) // View > Page guide: how to use the editor for this role
   const [leftOpen, setLeftOpen] = useState(false)
   const [rightOpen, setRightOpen] = useState(false)
   const [sheetTab, setSheetTab] = useState<SheetTab>("pins")
@@ -275,7 +278,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
     const target = pins.find((item) => item.id === id)
     if (!target) {
       pendingPin.current = null
-      toast.info("That work item is not available", "It may be on a blueprint type you do not have access to.")
+      toast.info("That task is not available", "It may be on a blueprint type you do not have access to.")
       return
     }
     // A link to a pin on another type's plan switches the type shown (only types you may see are loaded at all).
@@ -369,7 +372,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
     setDraftPin(null)
     setTool("select")
     select({ pin: created.id, ann: [] })
-    toast.success("Pin added", "Add details, a deadline and a checklist in the panel.")
+    toast.success("Pin added", "Add details, a deadline and a task in the panel.")
     if (issueAfter.current) {
       issueAfter.current = false
       void setStatus(created, "issue")
@@ -402,7 +405,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
 
   const deletePin = async (pin: Pin) => {
     if (pin.locked) return toast.error("This pin is locked", "Unlock it first, then delete it.")
-    if (!(await confirm({ title: `Delete "${pin.title}"?`, message: "Its checklist, comments and photos are deleted too. This cannot be undone.", confirmLabel: "Delete pin", tone: "danger" }))) return
+    if (!(await confirm({ title: `Delete "${pin.title}"?`, message: "Its tasks, comments and photos are deleted too. This cannot be undone.", confirmLabel: "Delete pin", tone: "danger" }))) return
     const { data, error: deleteError } = await supabase.from("pins").delete().eq("id", pin.id).select("id")
     if (deleteError) return toast.error("Could not delete the pin", dbMessage(deleteError))
     if (!data?.length) return toast.error("Could not delete the pin", pin.status === "verified" ? "Verified work is evidence and cannot be deleted." : "You are not allowed to delete this pin.")
@@ -631,7 +634,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
     const revisionCount = blueprint.blueprint_revisions.length
     // Evidence lock (0033): work that was sent for review or verified keeps its record, so its sheet stays too.
     const evidence = sheetPins.filter((pin) => pin.status === "for_review" || pin.status === "verified" || pin.verified_at).length
-    if (evidence) return toast.error("This sheet holds evidence", `${evidence} work item${evidence === 1 ? " was" : "s were"} sent for review or verified. That record stays, so the sheet cannot be deleted. Upload a new revision instead.`)
+    if (evidence) return toast.error("This sheet holds evidence", `${evidence} work pin${evidence === 1 ? " was" : "s were"} sent for review or verified. That record stays, so the sheet cannot be deleted. Upload a new revision instead.`)
     if (!(await confirm({
       title: `Delete the sheet "${name}"?`,
       message: `Its ${revisionCount} revision${revisionCount === 1 ? "" : "s"}, ${sheetPins.length} pin${sheetPins.length === 1 ? "" : "s"} (with their photos and comments) and ${annotations.length} drawn item${annotations.length === 1 ? "" : "s"} are removed for everyone. This cannot be undone.`,
@@ -1161,6 +1164,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
     { id: "box-select", label: prefs.boxSelect ? "Turn Box select off" : "Turn Box select on", group: "View", run: () => setPrefs({ boxSelect: !prefs.boxSelect }) },
     { id: "reset-layout", label: "Reset the layout", group: "View", run: resetPrefs },
     { id: "shortcuts", label: "Keyboard shortcuts", group: "Help", hint: "?", run: () => setShortcuts(true) },
+    { id: "guide", label: "Page guide", group: "Help", run: () => setGuideOpen(true) },
   ]
 
   const showToolbar = !focus && !present
@@ -1206,7 +1210,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
             onShare={() => void shareLink()}
             dark={themeResolved === "dark"}
             onToggleTheme={() => setThemeMode(themeResolved === "dark" ? "light" : "dark")}
-            view={{ prefs, onPrefs: setPrefs, onFocus: toggleFocus, onPresent: startPresent, onCompare: () => setComparing(true), canCompare: revisions.length > 1, onFit: fit, onCommands: () => setCommands(true), onShortcuts: () => setShortcuts(true), onResetLayout: resetPrefs }}
+            view={{ prefs, onPrefs: setPrefs, onFocus: toggleFocus, onPresent: startPresent, onCompare: () => setComparing(true), canCompare: revisions.length > 1, onFit: fit, onCommands: () => setCommands(true), onShortcuts: () => setShortcuts(true), onGuide: () => setGuideOpen(true), onResetLayout: resetPrefs }}
             sheetsShown={prefs.sheets}
             filmstripShown={prefs.filmstrip}
             onPanelFilmstrip={() => setPrefs({ filmstrip: !prefs.filmstrip })}
@@ -1458,6 +1462,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
       {comparing && blueprint ? <CompareModal revisions={revisions} initialNewer={revision?.id ?? null} onClose={() => setComparing(false)} /> : null}
       {commands ? <CommandPalette commands={commandList} onClose={() => setCommands(false)} /> : null}
       {shortcuts ? <ShortcutsModal onClose={() => setShortcuts(false)} /> : null}
+      {guideOpen ? <PageGuideModal guide={editorGuide(role, canEdit)} note="Press ? for all keyboard shortcuts and Ctrl K for every editor command." onClose={() => setGuideOpen(false)} /> : null}
       {labelFor ? (() => {
         const target = annotations.find((a) => a.id === labelFor)
         return target ? <LabelDialog annotation={target} onClose={() => setLabelFor(null)} onSave={(text) => { setLabelFor(null); void ops.patchEach([{ id: target.id, patch: { text: text || null } }], "Could not save the text", "Edit text") }} /> : null
@@ -1501,7 +1506,7 @@ function NewPinDialog({ onClose, onCreate }: { onClose: () => void; onCreate: (t
     if (failure) setError(failure)
   }
   return (
-    <Modal title="New pin" description="Say what is tracked here. You can add details, a deadline and a checklist next." size="sm" onClose={busy ? () => undefined : onClose} footer={<><button type="button" className={secondary} onClick={onClose} disabled={busy}>Cancel</button><button type="submit" form="new-pin-form" className={primary} disabled={busy}>{busy ? "Adding..." : "Add pin"}</button></>}>
+    <Modal title="New pin" description="Say what is tracked here. You can add details, a deadline and a task next." size="sm" onClose={busy ? () => undefined : onClose} footer={<><button type="button" className={secondary} onClick={onClose} disabled={busy}>Cancel</button><button type="submit" form="new-pin-form" className={primary} disabled={busy}>{busy ? "Adding..." : "Add pin"}</button></>}>
       <form id="new-pin-form" className="space-y-3" noValidate onSubmit={(event) => void submit(event)}>
         {error ? <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-fg">{error}</p> : null}
         <label className="block text-sm font-semibold">What is here? *<input className={field} maxLength={120} placeholder="e.g. Column C4 rebar" value={title} onChange={(e) => setTitle(e.target.value)} /></label>

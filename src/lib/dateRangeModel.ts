@@ -12,7 +12,7 @@ export const rangePresetLabels: Record<RangePreset, string> = {
 }
 // Records that already happened (requested, raised, reported) and work that is scheduled (due dates).
 export const pastPresets: RangePreset[] = ["all", "today", "last7", "thisWeek", "thisMonth", "lastMonth", "last30"]
-export const schedulePresets: RangePreset[] = ["all", "thisWeek", "thisMonth", "lastMonth", "next30", "last30"]
+export const schedulePresets: RangePreset[] = ["all", "today", "thisWeek", "thisMonth", "lastMonth"]
 
 // Weeks run Monday to Sunday, like the defect trends.
 const weekday = (day: string) => (new Date(`${day}T00:00:00Z`).getUTCDay() + 6) % 7

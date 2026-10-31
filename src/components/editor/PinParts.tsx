@@ -5,8 +5,11 @@ import { Skeleton, SkeletonList } from "../ui/Skeleton"
 import BeforeAfter from "../BeforeAfter"
 import StampChip from "../StampChip"
 import WorkChecklistEditor from "../qa/WorkChecklistEditor"
+import { progressPercent, taskProgress } from "../../lib/taskProgress"
 import { usePinQa } from "../../lib/pinQa"
-import { captureStamp, stampFields, stampSummary, photoEligible, photoPreviewBlocked, type PhotoStamp } from "../../lib/photoStamp"
+import { captureStamp, stampFields, stampSummary, photoEligible, photoPreviewBlocked, type CaptureSource, type PhotoStamp } from "../../lib/photoStamp"
+import { usePhotoPolicy } from "../../lib/photoPolicy"
+import CameraCapture from "../CameraCapture"
 import MarkupUploadDialog, { type UploadOutcome } from "../issues/MarkupUploadDialog"
 import { MarkupLayer } from "../issues/MarkupLayer"
 import { markupProblem } from "../../lib/issueMarkup"
@@ -50,7 +53,7 @@ export const field = "mt-1 w-full rounded-lg border border-line bg-surface px-3 
 
 export function dbMessage(error: { code?: string; message: string }): string {
   if (error.code === "42501" || /row-level security/i.test(error.message)) return "You are not allowed to do that."
-  if (/Only an Engineer can change/i.test(error.message)) return "Only an Engineer can change the checklist items; you can tick them off."
+  if (/Only an Engineer can change/i.test(error.message)) return "Only an Engineer can change the tasks; you can tick them off."
   if (/network|fetch/i.test(error.message)) return "Network problem. Check your connection and try again."
   return error.message
 }
@@ -99,13 +102,13 @@ export function ProgressTracker({ status }: { status: PinStatus }) {
 
 // ---------- Checklist ----------
 export function ChecklistProgress({ done, total }: { done: number; total: number }) {
-  const percent = total ? Math.round((done / total) * 100) : 0
+  const percent = progressPercent(done, total)
   return (
-    <div className="flex items-center gap-2" aria-label={`${done} of ${total} done`}>
+    <div className="flex items-center gap-2" aria-label={`${percent}% progress: ${done} of ${total} tasks approved`}>
       <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-muted">
         <span className="block h-full rounded-full bg-[#1ca875] transition-all" style={{ width: `${percent}%` }} />
       </span>
-      <span className="text-xs font-semibold text-fg-muted">{done}/{total}</span>
+      <span className="text-xs font-semibold text-fg-muted">{percent}% · {done}/{total}</span>
     </div>
   )
 }
@@ -122,10 +125,10 @@ export function PinChecklist({ pin, canEdit, canTick, notice = "", onChange, onP
   const toast = useToast()
   const { profile } = useAuth()
   const engineer = profile?.role === "engineer"
-  const editBlock = !editViewAllowed ? "This sheet view is read-only. Open the latest sheet revision and exit presentation mode to add checklist items."
-    : qa.error ? `Could not check QA status: ${qa.error}. Retry the QA check below.`
-    : !qa.state ? "Checking QA status before adding checklist items…"
-    : qa.state.status === "verified" ? "This work is Completed. Reopen it from Details before adding checklist items."
+  const editBlock = !editViewAllowed ? "This sheet view is read-only. Open the latest sheet revision and exit presentation mode to add tasks."
+    : qa.error ? `Could not check QC status: ${qa.error}. Retry the QC check below.`
+    : !qa.state ? "Checking QC status before adding tasks…"
+    : qa.state.status === "verified" ? "This work is Completed. Reopen it from Details before adding tasks."
     : ""
   // QA records are staff-only: clients see the items and whether each is completed, never the QA workspace.
   const staff = profile?.role !== "client" && profile?.role !== "user"
@@ -135,7 +138,7 @@ export function PinChecklist({ pin, canEdit, canTick, notice = "", onChange, onP
   const defects = usePinDefects(pinId)
   const [editing, setEditing] = useState<ChecklistItem | "new" | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
-  const done = items.filter((item) => item.done).length
+  const { approved: done } = taskProgress(items)
   const stages = useMemo(() => new Map(items.map((item) => [item.id, stageOf({
     item, pin, pinItems: items, submissions: history.submissions as unknown as SubmissionRef[], inspections: history.inspections, defects,
     draft: history.attempts.find((row) => row.item_id === item.id && !row.submitted_inspection_id) ?? null, photos,
@@ -160,20 +163,20 @@ export function PinChecklist({ pin, canEdit, canTick, notice = "", onChange, onP
 
   return (
     <div className="space-y-3">
-      {engineer ? <section aria-label="Checklist actions" className="space-y-2 rounded-xl border border-line bg-surface-muted p-3">
+      {engineer ? <section aria-label="Task actions" className="space-y-2 rounded-xl border border-line bg-surface-muted p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-extrabold">Checklist items</h3>
-          <button type="button" disabled={Boolean(editBlock) || loading} aria-describedby={editBlock ? `checklist-add-reason-${pin.id}` : undefined} className="rounded-lg bg-brand px-3 py-2 text-sm font-bold text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60" onClick={() => setEditing("new")}>Add item &amp; criteria</button>
+          <h3 className="text-sm font-extrabold">Tasks</h3>
+          <button type="button" disabled={Boolean(editBlock) || loading} aria-describedby={editBlock ? `checklist-add-reason-${pin.id}` : undefined} className="rounded-lg bg-brand px-3 py-2 text-sm font-bold text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60" onClick={() => setEditing("new")}>Add task &amp; QC criteria</button>
         </div>
-        {editBlock ? <p id={`checklist-add-reason-${pin.id}`} role="status" className="text-xs text-fg-muted">{editBlock}</p> : <p className="text-xs text-fg-muted">Add a work item and its inspection criteria together.</p>}
-        {qa.error ? <button type="button" onClick={() => void qa.reload()} className="text-xs font-bold text-brand-text underline">Retry QA check</button> : null}
+        {editBlock ? <p id={`checklist-add-reason-${pin.id}`} role="status" className="text-xs text-fg-muted">{editBlock}</p> : <p className="text-xs text-fg-muted">Add a task and its QC criteria together.</p>}
+        {qa.error ? <button type="button" onClick={() => void qa.reload()} className="text-xs font-bold text-brand-text underline">Retry QC check</button> : null}
       </section> : null}
       {checklistError ? <p role="alert" className="rounded-lg bg-danger-soft p-3 text-sm text-danger-fg">{checklistError}</p> : null}
       {notice && !canTick ? <p role="status" className="rounded-lg bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-950 dark:bg-amber-900/40 dark:text-amber-100">{notice}</p> : null}
-      {loading ? <SkeletonList rows={3} label="Loading the work items" /> : (
+      {loading ? <SkeletonList rows={3} label="Loading the tasks" /> : (
         <>
-          {items.length ? <ChecklistProgress done={items.filter((item) => item.review_status === "verified").length} total={items.length} /> : <p className="text-sm text-fg-muted">{canEdit ? "No work items yet. Add the parts of this work the Foreman prepares and the Engineer completes one by one (e.g. FLOOR, WALL, CEILING)." : "No work items for this pin."}</p>}
-          {items.length ? <p className="text-xs text-fg-muted">Completed by the Engineer: {items.filter((item) => item.review_status === "verified").length}/{items.length}</p> : null}
+          {items.length ? <ChecklistProgress done={done} total={items.length} /> : <p className="text-sm text-fg-muted">{canEdit ? "No tasks yet. Add the parts of this work the Foreman prepares and the Engineer completes one by one (e.g. FLOOR, WALL, CEILING)." : "No tasks for this pin."}</p>}
+          {items.length ? <p className="text-xs text-fg-muted">Approved by the Engineer: {done}/{items.length} tasks</p> : null}
           <ul className="space-y-1">
             {items.map((item) => {
               const stage = stages.get(item.id)
@@ -214,7 +217,7 @@ const describe = (entry: TimelineEntry) => {
   if (entry.kind === "edited") return "edited the details"
   if (entry.kind === "photo") return `added a photo${entry.note ? `: ${entry.note}` : ""}`
   if (entry.kind === "photo_removed") return `removed a photo${entry.note && entry.note !== "Photo removed" ? `: ${entry.note}` : ""}`
-  if (entry.kind === "checklist") return entry.note ?? "updated the checklist"
+  if (entry.kind === "checklist") return entry.note ?? "updated the tasks"
   if (entry.kind === "assigned") return entry.to_name ? (entry.from_name ? `reassigned the work from ${entry.from_name} to ${entry.to_name}` : `assigned the work to ${entry.to_name}`) : `removed the assignment${entry.from_name ? ` from ${entry.from_name}` : ""}`
   return "commented"
 }
@@ -287,7 +290,7 @@ function Thumb({ photo, onRemove }: { photo: PinPhoto; onRemove?: () => void }) 
       {photo.caption ? <figcaption className="truncate text-[11px] text-fg-muted">{photo.caption}</figcaption> : null}
       <div className="mt-0.5"><StampChip photo={photo} /></div>
       {onRemove ? <button type="button" aria-label="Remove photo" onClick={onRemove} className="absolute right-1 top-1 rounded bg-black/60 px-1.5 text-xs text-white hover:bg-black/80">&times;</button> : null}
-    </figure>{viewing ? <PhotoViewer photo={{...photo,label:photo.checklist_item_id ? "Checklist evidence" : "Work photo"}} bucket="pin-photos" onClose={()=>setViewing(false)} /> : null}</>
+    </figure>{viewing ? <PhotoViewer photo={{...photo,label:photo.checklist_item_id ? "Task evidence" : "Work photo"}} bucket="pin-photos" onClose={()=>setViewing(false)} /> : null}</>
   )
 }
 
@@ -303,7 +306,7 @@ export async function preparePinPhoto(file: File): Promise<File> {
 function usePinPhotoUpload(pin: Pin, checklistItemId: string | undefined, attemptId?: string | null) {
   const { profile } = useAuth()
   const itemLink = { ...(checklistItemId ? { checklist_item_id: checklistItemId } : {}), ...(attemptId ? { qa_attempt_id: attemptId } : {}) }
-  return async (draft: IssuePhotoDraft, stamp: PhotoStamp | null): Promise<UploadOutcome> => {
+  return async (draft: IssuePhotoDraft, stamp: PhotoStamp | null, source: CaptureSource): Promise<UploadOutcome> => {
     const problem = markupProblem(draft.annotations)
     if (problem) throw new Error(problem)
     const path = `${pin.project_id}/${pin.id}/${crypto.randomUUID()}.jpg`
@@ -311,14 +314,14 @@ function usePinPhotoUpload(pin: Pin, checklistItemId: string | undefined, attemp
     const extra = { ...(caption ? { caption } : {}), ...(draft.annotations.length ? { annotations: draft.annotations } : {}) }
     const keepOffline = async (): Promise<UploadOutcome> => {
       if (!profile) throw new Error("You are signed out.")
-      await enqueue({ userId: profile.id, kind: "pin_photo", label: pin.title, payload: { projectId: pin.project_id, pinId: pin.id, itemId: checklistItemId ?? null, attemptId: attemptId ?? null, path, blob: draft.file, stamp, ...extra } })
+      await enqueue({ userId: profile.id, kind: "pin_photo", label: pin.title, payload: { projectId: pin.project_id, pinId: pin.id, itemId: checklistItemId ?? null, attemptId: attemptId ?? null, path, blob: draft.file, stamp, source, ...extra } })
       return "queued"
     }
     if (!navigator.onLine) return keepOffline()
     const upload = await supabase.storage.from("pin-photos").upload(path, draft.file, { contentType: "image/jpeg", upsert: false })
     if (upload.error && isNetworkProblem(upload.error)) return keepOffline()
     if (upload.error) throw new Error(upload.error.message)
-    const { error } = await supabase.from("pin_photos").insert({ pin_id: pin.id, project_id: pin.project_id, path, ...itemLink, ...stampFields(stamp), ...extra })
+    const { error } = await supabase.from("pin_photos").insert({ pin_id: pin.id, project_id: pin.project_id, path, capture_source: source, ...itemLink, ...stampFields(stamp), ...extra })
     if (error) {
       await supabase.storage.from("pin-photos").remove([path])
       throw new Error(dbMessage(error))
@@ -327,49 +330,58 @@ function usePinPhotoUpload(pin: Pin, checklistItemId: string | undefined, attemp
   }
 }
 
-// Chosen photos open the markup dialog; the phone's time and position are taken when they are chosen (checked by the database).
+// Chosen photos open the markup dialog; the phone's time and position are taken when they are chosen, or at the shutter of the
+// in-app camera (checked by the database). While the Super Admin has turned photo uploads off, only the camera is offered and a
+// photo away from the project site is refused here first (usePhotoPolicy) and again by the database.
 function usePinPhotoDialog(pin: Pin, checklistItemId: string | undefined, label: string, onAdded: () => Promise<void> | void, attemptId?: string | null) {
   const toast = useToast()
   const upload = usePinPhotoUpload(pin, checklistItemId, attemptId)
-  const [chosen, setChosen] = useState<File[] | null>(null)
-  const stamp = useRef<Promise<PhotoStamp> | null>(null)
+  const policy = usePhotoPolicy(pin.project_id)
+  const [chosen, setChosen] = useState<{ files: File[]; source: CaptureSource; stamp: Promise<PhotoStamp> } | null>(null)
+  const [cameraOpen, setCameraOpen] = useState(false)
   const choose = (files: FileList | null) => {
     const list = Array.from(files ?? [])
-    if (!list.length) return
-    stamp.current = captureStamp()
-    setChosen(list)
+    if (!list.length || policy.allowUpload !== true) return
+    setChosen({ files: list, source: "upload", stamp: captureStamp() })
   }
-  const dialog = chosen ? (
-    <MarkupUploadDialog files={chosen} title={`Add photos: ${label}`} prepare={preparePinPhoto} editorTitle="Mark up work photo"
-      onUpload={async (draft) => upload(draft, await (stamp.current ?? captureStamp()))}
-      onDone={async ({ uploaded, queued }) => {
-        if (uploaded) toast.success(`${uploaded} photo${uploaded === 1 ? "" : "s"} added`)
-        if (queued) toast.info(`${queued} photo${queued === 1 ? "" : "s"} saved on this device`, "They will be uploaded when you are back online.")
-        await onAdded()
-      }}
-      onClose={() => { setChosen(null); stamp.current = null }} />
-  ) : null
-  return { choose, busy: Boolean(chosen), dialog }
+  const captured = (file: File, stamp: PhotoStamp) => {
+    setCameraOpen(false)
+    const problem = policy.problem(stamp)
+    if (problem) return toast.error("Photo not accepted", problem)
+    setChosen({ files: [file], source: "camera", stamp: Promise.resolve(stamp) })
+  }
+  const dialog = (
+    <>
+      {cameraOpen ? <CameraCapture title={`Take a photo: ${label}`} description={policy.cameraOnly ? "Photo uploads are turned off: take the photo here at the project site with location turned on. You can mark it up before adding it." : "Capture the work with this device’s camera. You can mark it up before adding it."} fileName="work-photo" onClose={() => setCameraOpen(false)} onCapture={captured} /> : null}
+      {chosen ? (
+        <MarkupUploadDialog files={chosen.files} title={`Add photos: ${label}`} prepare={preparePinPhoto} editorTitle="Mark up work photo" allowFiles={chosen.source === "upload"}
+          onUpload={async (draft) => upload(draft, await chosen.stamp, chosen.source)}
+          onDone={async ({ uploaded, queued }) => {
+            if (uploaded) toast.success(`${uploaded} photo${uploaded === 1 ? "" : "s"} added`)
+            if (queued) toast.info(`${queued} photo${queued === 1 ? "" : "s"} saved on this device`, "They will be uploaded when you are back online.")
+            await onAdded()
+          }}
+          onClose={() => setChosen(null)} />
+      ) : null}
+    </>
+  )
+  return { choose, openCamera: () => setCameraOpen(true), allowUpload: policy.allowUpload === true, busy: Boolean(chosen) || cameraOpen, dialog }
 }
 
-// The upload button on a checklist item: opens the camera / gallery and links the photos to that item.
+// The photo buttons on a checklist item: upload from the device (only while allowed) or take one with the in-app camera; the
+// photos are linked to that item.
 export function ChecklistUploadButton({ pin, itemId, label, onAdded, attemptId }: { pin: Pin; itemId: string; label: string; onAdded: () => void; attemptId?: string }) {
   const fileInput = useRef<HTMLInputElement>(null)
-  const cameraInput = useRef<HTMLInputElement>(null)
-  const { choose, busy, dialog } = usePinPhotoDialog(pin, itemId, label, onAdded, attemptId)
-  const pick = (files: FileList | null) => {
-    choose(files)
-    if (fileInput.current) fileInput.current.value = ""
-    if (cameraInput.current) cameraInput.current.value = ""
-  }
+  const { choose, openCamera, allowUpload, busy, dialog } = usePinPhotoDialog(pin, itemId, label, onAdded, attemptId)
   return (
     <>
-      <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={(e) => pick(e.target.files)} />
-      <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => pick(e.target.files)} />
-      <button type="button" disabled={busy} onClick={() => fileInput.current?.click()} aria-label={`Upload photos for: ${label}`} className="min-h-6 text-[11px] font-bold text-brand-text underline underline-offset-2 hover:no-underline disabled:opacity-60">
-        {busy ? "Marking up..." : "Upload photos"}
-      </button>
-      <button type="button" disabled={busy} onClick={() => cameraInput.current?.click()} aria-label={`Take a photo for: ${label}`} className="min-h-6 text-[11px] font-semibold text-brand-text underline underline-offset-2 hover:no-underline disabled:opacity-60">Take photo</button>
+      {allowUpload ? <>
+        <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={(e) => { choose(e.target.files); e.target.value = "" }} />
+        <button type="button" disabled={busy} onClick={() => fileInput.current?.click()} aria-label={`Upload photos for: ${label}`} className="min-h-6 text-[11px] font-bold text-brand-text underline underline-offset-2 hover:no-underline disabled:opacity-60">
+          {busy ? "Marking up..." : "Upload photos"}
+        </button>
+      </> : null}
+      <button type="button" disabled={busy} onClick={openCamera} aria-label={`Take a photo for: ${label}`} className="min-h-6 text-[11px] font-semibold text-brand-text underline underline-offset-2 hover:no-underline disabled:opacity-60">{busy && !allowUpload ? "Marking up..." : "Take photo"}</button>
       {dialog}
     </>
   )
@@ -386,7 +398,7 @@ export function PinPhotos({ pin, checklistItemId, canAdd, canRemoveAny, meId, on
   const evidence = usePinEvidence(pin.id, pin.status)
   const fileInput = useRef<HTMLInputElement>(null)
 
-  const { choose, busy, dialog } = usePinPhotoDialog(pin, checklistItemId, pin.title, async () => {
+  const { choose, openCamera, allowUpload, busy, dialog } = usePinPhotoDialog(pin, checklistItemId, pin.title, async () => {
     await reload()
     onChanged?.()
   }, attemptId)
@@ -406,10 +418,10 @@ export function PinPhotos({ pin, checklistItemId, canAdd, canRemoveAny, meId, on
     <div className="space-y-2">
       {canAdd ? (
         <div>
-          <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={(e) => { choose(e.target.files); e.target.value = "" }} />
-          <button type="button" disabled={busy} onClick={() => fileInput.current?.click()} className="rounded-lg border border-line px-3 py-1.5 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">{busy ? "Marking up..." : "Add photos"}</button>
+          {allowUpload ? <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={(e) => { choose(e.target.files); e.target.value = "" }} /> : null}
+          <button type="button" disabled={busy} onClick={() => (allowUpload ? fileInput.current?.click() : openCamera())} className="rounded-lg border border-line px-3 py-1.5 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">{busy ? "Marking up..." : allowUpload ? "Add photos" : "Take photo"}</button>
           {dialog}
-          {checklistItemId ? <p className="mt-1 text-xs text-fg-muted">Select multiple photos or add more later. Every photo stays linked to this checklist item.</p> : null}
+          {checklistItemId ? <p className="mt-1 text-xs text-fg-muted">Select multiple photos or add more later. Every photo stays linked to this task.</p> : null}
         </div>
       ) : null}
       {photos.length === 0 ? <p className="text-sm text-fg-muted">No photos yet.</p> : (

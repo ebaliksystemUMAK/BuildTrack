@@ -9,9 +9,10 @@ import { applyMarkupChanges } from "../../lib/photoEditorModel"
 
 // Chosen photos waiting to be sent, each with its own markup and caption. The editor opens on all of them as a slideshow. With `prepare` (QA evidence) every picture is shrunk
 // first, one at a time, so the markup sits on exactly the pixels that are stored; without it the file is kept as chosen (8 MB max).
-export default function IssuePhotoPicker({photos,onChange,disabled=false,limit=ISSUE_PHOTO_LIMIT,prepare,onPreparing,captionLimit=500,nameCaptions=true,hint,editorTitle}:{
+// allowFiles=false hides "Add photos" (camera-only photos while the Super Admin has turned photo uploads off).
+export default function IssuePhotoPicker({photos,onChange,disabled=false,limit=ISSUE_PHOTO_LIMIT,prepare,onPreparing,captionLimit=500,nameCaptions=true,hint,editorTitle,allowFiles=true}:{
   photos:IssuePhotoDraft[];onChange:(photos:IssuePhotoDraft[])=>void;disabled?:boolean;limit?:number
-  prepare?:(file:File)=>Promise<File>;onPreparing?:(busy:boolean)=>void;captionLimit?:number;nameCaptions?:boolean;hint?:string;editorTitle?:string
+  prepare?:(file:File)=>Promise<File>;onPreparing?:(busy:boolean)=>void;captionLimit?:number;nameCaptions?:boolean;hint?:string;editorTitle?:string;allowFiles?:boolean
 }) {
   const [editing,setEditing]=useState<number|null>(null)
   const confirm=useConfirm()
@@ -45,7 +46,7 @@ export default function IssuePhotoPicker({photos,onChange,disabled=false,limit=I
     URL.revokeObjectURL(photo.url);urls.current.delete(photo.url);onChange(photos.filter(p=>p.id!==photo.id))
   }
   return <section className="space-y-3 rounded-xl border border-line p-3" aria-label="Issue photos">
-    <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-bold">Photos ({photos.length}/{limit})</h3><span className="flex flex-wrap gap-2">{photos.length ? <button type="button" className={buttonSecondary} disabled={locked} onClick={()=>setEditing(0)}>{photos.length>1 ? `Mark up photos (${photos.length})` : "Mark up photo"}</button> : null}<label className={`${buttonSecondary} cursor-pointer ${locked ? "pointer-events-none opacity-50" : ""}`}>{preparing ? "Preparing photos..." : "Add photos"}<input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={locked} className="sr-only" onChange={e=>{void add(e.currentTarget.files);e.currentTarget.value=""}} /></label></span></div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-bold">Photos ({photos.length}/{limit})</h3><span className="flex flex-wrap gap-2">{photos.length ? <button type="button" className={buttonSecondary} disabled={locked} onClick={()=>setEditing(0)}>{photos.length>1 ? `Mark up photos (${photos.length})` : "Mark up photo"}</button> : null}{allowFiles ? <label className={`${buttonSecondary} cursor-pointer ${locked ? "pointer-events-none opacity-50" : ""}`}>{preparing ? "Preparing photos..." : "Add photos"}<input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={locked} className="sr-only" onChange={e=>{void add(e.currentTarget.files);e.currentTarget.value=""}} /></label> : null}</span></div>
     <p className="text-xs text-fg-muted">{hint ?? "JPEG, PNG or WebP, up to 8 MB each. Select several at once. Annotate each photo before submitting; originals are preserved."}</p>
     {error ? <p role="alert" className="text-xs text-danger-fg">{error}</p> : null}
     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">{photos.map((photo,index)=><li key={photo.id} className="min-w-0 rounded-lg border border-line p-2">

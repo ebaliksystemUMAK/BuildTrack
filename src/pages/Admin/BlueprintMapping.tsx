@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import AdminProjectSelect, { useAdminProject } from "../../components/AdminProjectSelect"
-import { EmptyState } from "../../components/ui/PageParts"
+import { EmptyState, Meter } from "../../components/ui/PageParts"
 import { SkeletonRows } from "../../components/ui/Skeleton"
 import { disciplineLabels } from "../../lib/projects"
 import { useProjectWork } from "../../lib/projectWork"
@@ -70,8 +70,9 @@ export default function BlueprintMapping({ onNavigate }: AdminPageProps) {
                     <td>{notes}</td>
                     <td>{drawings[sheet.id] ?? 0}</td>
                     <td>
-                      <StackedBar totals={totals} />
-                      <span className="mt-1 block text-xs text-fg-muted">{totals.percentVerified}% verified{totals.issue ? ` • ${totals.issue} issue${totals.issue === 1 ? "" : "s"}` : ""}{totals.overdue ? ` • ${totals.overdue} overdue` : ""}</span>
+                      <Meter value={totals.percentVerified} tone="green" label={`${sheet.title} approved task progress`} />
+                      <span className="mt-1 block text-xs text-fg-muted">{totals.percentVerified}% · {totals.approvedTasks}/{totals.totalTasks} tasks approved</span>
+                      <div className="mt-2"><StackedBar totals={totals} /></div>
                     </td>
                   </tr>
                 ))

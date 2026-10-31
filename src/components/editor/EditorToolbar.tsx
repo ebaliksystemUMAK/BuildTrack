@@ -298,6 +298,7 @@ export type ViewActions = {
   onFit: () => void
   onCommands: () => void
   onShortcuts: () => void
+  onGuide: () => void
   onResetLayout: () => void
 }
 
@@ -404,6 +405,7 @@ export default function EditorToolbar({
     { separator: true },
     { label: "Command palette", hint: "Ctrl K", icon: <Icon name="search" size={14} />, onClick: view.onCommands },
     { label: "Keyboard shortcuts", hint: "?", icon: <Icon name="keyboard" size={14} />, onClick: view.onShortcuts },
+    { label: "Page guide", onClick: view.onGuide },
     { label: "Reset layout", onClick: view.onResetLayout },
   ]
   const sheetItems: MenuItem[] = blueprints.map((sheet) => ({ label: `${sheet.title}${sheet.level ? ` (${sheet.level})` : ""}`, checked: sheet.id === blueprint?.id, onClick: () => onSheet(sheet.id) }))

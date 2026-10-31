@@ -7,7 +7,7 @@ import { supabase } from "./supabase"
 
 export type PhotoTab = "daily" | "checklist"
 // Daily report photos and work item (checklist) evidence. Separate "progress" pin photos were removed (2026-10-19).
-export const photoTabs = [["daily", "Daily report"], ["checklist", "Work items"]] as const
+export const photoTabs = [["daily", "Daily report"], ["checklist", "Tasks"]] as const
 export const readPhotoTab = (): PhotoTab => {
   const value = new URLSearchParams(window.location.search).get("tab")
   return value === "checklist" ? value : "daily"
@@ -48,7 +48,7 @@ export function useEvidencePhotos(projectId: string | null, tab: PhotoTab, repor
     setPhotos(((result.data ?? []) as unknown as PhotoRow[]).map((photo) => ({ ...photo,
       checklist: photo.pin_checklist_items, work: photo.pins, report: photo.daily_reports, label: daily
       ? reportDateLong(photo.daily_reports?.report_date ?? "")
-      : [photo.pins?.title ?? "Work item", tab === "checklist" ? photo.pin_checklist_items?.text : null].filter(Boolean).join(" — ") })))
+      : [photo.pins?.title ?? "Task", tab === "checklist" ? photo.pin_checklist_items?.text : null].filter(Boolean).join(" — ") })))
     setLoading(false)
   }, [projectId, tab, reportId, from, to, sheet, pin, item])
   useEffect(() => {

@@ -8,6 +8,8 @@ import Icon from "../../components/Icons"
 import { useAuth } from "../../lib/auth"
 import { invokeFunction } from "../../lib/functions"
 import { setLoginSuccessNotice, setOAuthIntent } from "../../lib/oauthIntent"
+import { passwordChecks, passwordIssue } from "../../lib/passwordPolicy"
+import { PHONE_DIGITS, phoneDigits, phoneIssue } from "../../lib/phoneNumber"
 import { PRIVACY_VERSION } from "../../lib/privacy"
 import { supabase } from "../../lib/supabase"
 import { useToast } from "../../lib/toast"
@@ -28,15 +30,9 @@ const intelligence = [
   [
     "shield",
     "Quality Assurance",
-    "Automated quality checklists mapped directly to local regulations.",
+    "Automated QC checklists mapped directly to local regulations.",
   ],
 ] as const
-
-const passwordIssue = (value: string) => {
-  if (value.length < 10) return "Password must be at least 10 characters."
-  if (!/[A-Za-z]/.test(value) || !/\d/.test(value)) return "Use letters and numbers in your password."
-  return ""
-}
 
 // Google gave us a verified email and name; the person now adds the details an administrator needs. The account stays pending until
 // an administrator approves it (or it is pre-approved on the whitelist, which never reaches this form).
@@ -58,7 +54,8 @@ function CompleteGoogleRegistration({ navigate }: RegisterPageProps) {
     event.preventDefault()
     setError("")
     if (name.trim().length < 2) return setError("Enter your full name.")
-    if (!/^[0-9+()./ -]{7,40}$/.test(phone.trim())) return setError("Enter a valid phone number, for example +63 912 345 6789.")
+    const phoneProblem = phoneIssue(phone)
+    if (phoneProblem) return setError(phoneProblem)
     if (!role) return setError("Choose the kind of access you need.")
     if (role === "engineer" && !discipline) return setError("Engineers choose a discipline.")
     if (!agree) return setError("Please accept the terms to continue.")
@@ -98,7 +95,7 @@ function CompleteGoogleRegistration({ navigate }: RegisterPageProps) {
       <div className="register-grid">
         <label className="form-field"><span>Full name</span><span className="input-shell"><input name="name" value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" /></span></label>
         <label className="form-field"><span>Email (from Google)</span><span className="input-shell"><input name="email" value={profile?.email ?? ""} readOnly aria-readonly="true" /></span></label>
-        <label className="form-field"><span>Phone number</span><span className="input-shell"><input name="phone" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" placeholder="e.g. +63 912 345 6789" /></span></label>
+        <label className="form-field"><span>Phone number</span><span className="input-shell"><input name="phone" type="tel" inputMode="numeric" maxLength={PHONE_DIGITS} value={phone} onChange={(event) => setPhone(phoneDigits(event.target.value))} autoComplete="tel" placeholder="e.g. 09123456789" /></span></label>
         <label className="form-field"><span>Company / Organization</span><span className="input-shell"><input name="company" value={company} onChange={(event) => setCompany(event.target.value)} autoComplete="organization" placeholder="Valencia Construction Services" /></span></label>
         <label className="form-field"><span>Job title</span><span className="input-shell"><input name="position" value={position} onChange={(event) => setPosition(event.target.value)} placeholder="e.g. Site Engineer" /></span></label>
         <label className="form-field"><span>Access you need</span><span className="input-shell"><select name="role" value={role} onChange={(event) => setRole(event.target.value as typeof role)}><option value="">Choose...</option><option value="engineer">Engineer</option><option value="foreman">Foreman</option><option value="client">Client</option></select></span></label>
@@ -145,6 +142,9 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
   const set = (key: keyof typeof values) => (value: string) =>
     setValues((previous) => ({ ...previous, [key]: value }))
   const email = values.email.trim().toLowerCase()
+  const checks = passwordChecks(values.password)
+  const metCount = checks.filter((check) => check.met).length
+  const strength = Math.round((metCount / checks.length) * 100)
 
   const [confirming, setConfirming] = useState(false)
   const [reading, setReading] = useState(false)
@@ -154,6 +154,8 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
     setInfo("")
     if (values.name.trim().length < 2) return setError("Enter your full name.")
     if (!/^\S+@\S+\.\S+$/.test(email)) return setError("Enter a valid email address.")
+    const phoneProblem = phoneIssue(values.phone)
+    if (phoneProblem) return setError(phoneProblem)
     const issue = passwordIssue(values.password)
     if (issue) return setError(issue)
     if (values.password !== values.confirmPassword) return setError("Passwords do not match.")
@@ -290,10 +292,13 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
               <FormField
                 label="Phone Number"
                 name="phone"
-                onChange={set("phone")}
+                value={values.phone}
+                onChange={(value) => set("phone")(phoneDigits(value))}
                 type="tel"
+                inputMode="numeric"
+                maxLength={PHONE_DIGITS}
                 icon="phone"
-                placeholder="e.g. +63 912 345 6789"
+                placeholder="e.g. 09123456789"
               />
               <FormField
                 label="Company / Organization"
@@ -325,13 +330,21 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
                 icon="lock"
                 placeholder="Create password"
               />
-              <label className="form-field strength-field">
+              <div className="form-field strength-field">
                 <span>Password Strength</span>
                 <span className="strength-box">
-                  <i />
-                  <strong>{passwordIssue(values.password) || "Strong password secured"}</strong>
+                  <i style={{ background: `linear-gradient(90deg, var(--gold) ${strength}%, #4b4b4d ${strength}%)` }} />
+                  <strong aria-live="polite">{metCount === checks.length ? "Strong password secured" : `${metCount} of ${checks.length} requirements met`}</strong>
+                  <ul className="strength-rules">
+                    {checks.map((check) => (
+                      <li key={check.key} className={check.met ? "is-met" : undefined}>
+                        <span aria-hidden="true">{check.met ? "✓" : "•"}</span> {check.label}
+                        <span className="sr-only">{check.met ? " (done)" : " (missing)"}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </span>
-              </label>
+              </div>
             </div>
             <label className="checkbox terms">
               <input type="checkbox" required />

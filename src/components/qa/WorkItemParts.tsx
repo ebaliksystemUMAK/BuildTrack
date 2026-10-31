@@ -7,9 +7,9 @@ export function StageChip({ stage }: { stage: ItemStage }) {
 
 // Submission declares the work finished; no separate Ready tick.
 const rail: Array<{ key: string; label: string; help: string }> = [
-  { key: "submitted", label: "Submitted", help: "The Foreman submitted the evidence for QA" },
-  { key: "passed", label: "Passed", help: "The inspection criteria passed" },
-  { key: "completed", label: "Completed", help: "The Engineer completed this checklist after passed QA and closure of its linked NCRs" },
+  { key: "submitted", label: "Submitted", help: "The Foreman submitted the evidence for QA Review" },
+  { key: "passed", label: "Passed", help: "The QC checklist passed" },
+  { key: "completed", label: "Completed", help: "The Engineer completed this task after passed QA and closure of its linked NCRs" },
 ]
 const reached = (stage: ItemStage, completed: boolean): number =>
   completed || stage === "completed" ? 3 : stage === "passed" ? 2 : stage === "requested" || stage === "inspecting" || stage === "correction" ? 1 : 0
@@ -17,7 +17,7 @@ const reached = (stage: ItemStage, completed: boolean): number =>
 export function StageRail({ stage, completed }: { stage: ItemStage; completed: boolean }) {
   const done = reached(stage, completed)
   return (
-    <ol className="grid grid-cols-3 gap-1" aria-label="Work item progress">
+    <ol className="grid grid-cols-3 gap-1" aria-label="Task progress">
       {rail.map((step, index) => (
         <li key={step.key} title={step.help} aria-current={index === done - 1 ? "step" : undefined} className={`rounded-lg border px-2 py-1.5 text-center text-xs font-bold ${index < done ? "border-green-600/50 bg-green-50 text-green-900 dark:bg-green-900/30 dark:text-green-100" : "border-line text-fg-muted"}`}>
           {index < done ? "✓ " : ""}{step.label}

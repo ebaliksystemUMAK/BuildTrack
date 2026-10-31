@@ -95,8 +95,8 @@ export function downgradeWarning(role: "engineer" | "foreman", type: BlueprintTy
   if (from !== "assigned" || to === "assigned") return to === "none" && from === "view" ? `${blueprintTypeLabels[type]} plans and their records are hidden from them.` : null
   const label = blueprintTypeLabels[type]
   const lost = role === "foreman"
-    ? `They can no longer report progress, add evidence or submit corrections on ${label} work. Their open ${label} work items are unassigned so the Engineer can reassign them; completed work keeps their name.`
-    : `They can no longer edit ${label} plans, manage checklists, inspect or verify ${label} work. Records they signed stay attributed to them.`
+    ? `They can no longer report progress, add evidence or submit corrections on ${label} work. Their open ${label} work pins are unassigned so the Engineer can reassign them; completed work keeps their name.`
+    : `They can no longer edit ${label} plans, manage tasks and QC checklists, inspect or verify ${label} work. Records they signed stay attributed to them.`
   return to === "none" ? `${lost} ${label} plans are hidden from them.` : lost
 }
 

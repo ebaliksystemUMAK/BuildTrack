@@ -23,6 +23,7 @@ import { followLink } from "../../lib/notifications"
 import OpenOnBlueprint from "../OpenOnBlueprint"
 import LimitedTimeline from "../ui/LimitedTimeline"
 import { usePinQa } from "../../lib/pinQa"
+import { useChecklist } from "../../lib/blueprints"
 import { useReinspectionContext } from "../../lib/qaReinspection"
 import ReinspectionScope from "./ReinspectionScope"
 
@@ -37,7 +38,7 @@ const resultChip: Record<ItemResult, string> = {
 }
 const resultWord: Record<ItemResult, string> = { pending: "Pending", pass: "Pass", fail: "Fail", na: "N/A" }
 type InspectionTab = "checklist" | "evidence" | "previous" | "details" | "ncrs" | "history"
-const inspectionTabNames: Record<InspectionTab, string> = { checklist: "Checklist", evidence: "Submitted evidence", previous: "Previous results", details: "Details & schedule", ncrs: "NCRs", history: "History" }
+const inspectionTabNames: Record<InspectionTab, string> = { checklist: "QC Checklist", evidence: "Submitted evidence", previous: "Previous results", details: "Details & schedule", ncrs: "NCRs", history: "History" }
 
 type SaveItem = (input: { itemId: string; result: ItemResult; measured: number | null; remarks: string }) => Promise<string>
 
@@ -264,6 +265,7 @@ export default function InspectionDetail({
   const isInspector = inspection.status === "in_progress" && inspection.inspector_id === profile?.id && canInspect
   // Before the engineer starts, the project's Foremen upload a photo on each checklist item (the database allows exactly this, 0040).
   const workSubmission = useWorkSubmission(inspection.id)
+  const currentTasks = useChecklist(!canInspect && canRequest && workSubmission.submission ? inspection.pin_id : null)
   const pinQa = usePinQa(inspection.pin_id ?? "")
   const retryBlocked=Boolean(inspection.pin_id && (!pinQa.state || pinQa.error || pinQa.state.submissionProblem))
   const timeline = useInspectionTimeline(inspection.id)
@@ -276,10 +278,18 @@ export default function InspectionDetail({
   const ref = refNumber("ir", inspection.number)
   // A work item request (submitted from a work item) or a stage / hold-point inspection: they are never interchangeable.
   const workItems = workSubmission.submission ? submittedChecklistItems(workSubmission.submission) : []
+  // The snapshot remains failed after resubmission. Offer corrections only for a task still returned on this request.
+  const correctionTask = !currentTasks.loading && !currentTasks.error ? workItems.find(submitted => currentTasks.items.some(task =>
+    task.id === submitted.id && task.pin_id === inspection.pin_id && task.review_status === "returned" && task.review_inspection_id === inspection.id)) : undefined
+  const workActionItem = canInspect ? workItems[0] : correctionTask
   const role = canInspect || profile?.role === "engineer" ? "engineer" : "foreman"
   const canCancel = (inspection.status === "requested" || inspection.status === "in_progress") && canRequest
     && !workSubmission.loading && !workSubmission.error && (!workSubmission.submission || canInspect)
-  const openItem = (id: string) => followLink(workItemPath(role, inspection.project_id, id, !canInspect && (inspection.status === "failed" || inspection.status === "conditional") ? "issues" : undefined), inspection.project_id)
+  const openItem = (id: string) => {
+    const correction = inspection.status === "failed" || inspection.status === "conditional"
+    onClose()
+    followLink(workItemPath(role, inspection.project_id, id, !canInspect && correction ? "issues" : undefined, correction ? "corrections" : undefined), inspection.project_id)
+  }
 
   const save: SaveItem = async ({ itemId, result, measured, remarks }) => {
     const outcome = await qaActions.saveItem({ itemId, result, measured, remarks })
@@ -297,7 +307,7 @@ export default function InspectionDetail({
     try {
       if (continuing && !await confirm({
         title: `Continue ${ref}?`,
-        message: "Continue this cancelled inspection with its recorded checklist results and original evidence. Linked correction NCRs will return to verification. The cancellation stays in History. A newer submission, correction draft or changed work prevents continuing this old request.",
+        message: "Continue this cancelled inspection with its recorded QC checklist results and original evidence. Linked correction NCRs will return to verification. The cancellation stays in History. A newer submission, correction draft or changed work prevents continuing this old request.",
         confirmLabel: "Continue inspection",
       })) return
       setBusy(true)
@@ -316,7 +326,7 @@ export default function InspectionDetail({
     const expected = preview.result === "passed" ? "PASSED" : preview.result === "conditional" ? "CONDITIONAL (items to fix, work may continue)" : "FAILED"
     const ok = await confirm({
       title: `Sign off ${ref}?`,
-      message: `Result: ${expected} with ${preview.score ?? 0}%. ${preview.failed ? `${preview.failed} failed check${preview.failed === 1 ? "" : "s"} will create new NCRs or update the same open findings. ` : ""}${reinspection ? "Linked correction NCRs whose own finding passes will close automatically. Failed or N/A findings stay open. Checklist completion remains separate. " : ""}Results cannot be changed after sign-off.`,
+      message: `Result: ${expected} with ${preview.score ?? 0}%. ${preview.failed ? `${preview.failed} failed check${preview.failed === 1 ? "" : "s"} will create new NCRs or update the same open findings. ` : ""}${reinspection ? "Linked correction NCRs whose own finding passes will close automatically. Failed or N/A findings stay open. Task completion remains separate. " : ""}Results cannot be changed after sign-off.`,
       confirmLabel: "Complete inspection",
     })
     if (!ok) return
@@ -360,7 +370,9 @@ export default function InspectionDetail({
   const footer = (
     <>
       {done || inspection.status === "cancelled" ? <button type="button" className={buttonSecondary} onClick={print}>Print / PDF</button> : null}
-      {(inspection.status === "failed" || inspection.status === "conditional") && canRequest ? workItems.length ? <button type="button" className={buttonPrimary} onClick={() => openItem(workItems[0].id)}>{canInspect ? "Open the work item" : "Open the correction form"}</button> : <button type="button" className={buttonSecondary} disabled={workSubmission.loading || Boolean(workSubmission.error)} onClick={() => setAsking("reinspect")}>Request re-inspection</button> : null}
+      {(inspection.status === "failed" || inspection.status === "conditional") && canRequest ? workItems.length ? (
+        workActionItem ? <button type="button" className={buttonPrimary} onClick={() => openItem(workActionItem.id)}>{canInspect ? "Open the task" : "Open the correction form"}</button> : null
+      ) : <button type="button" className={buttonSecondary} disabled={workSubmission.loading || Boolean(workSubmission.error)} onClick={() => setAsking("reinspect")}>Request re-inspection</button> : null}
       {inspection.pin_id && !workItems.length && !onPlan ? <OpenOnBlueprint projectId={inspection.project_id} pinId={inspection.pin_id} section="issues" /> : null}
       {canCancel ? <button type="button" className={buttonSecondary} disabled={busy} onClick={() => { if (!reasonPending.current) { setReason(""); setReasonProblem(""); setAsking("cancel") } }}>Cancel inspection</button> : null}
       {(inspection.status === "requested" || inspection.status === "cancelled") && canInspect ? <button type="button" className={buttonPrimary} disabled={busy || Boolean(inspection.full_checklist_reinspection && (scope.loading || scope.error))} onClick={() => void start()}>{busy ? "Starting..." : inspection.status === "cancelled" ? "Continue inspection" : "Start inspection"}</button> : null}
@@ -374,9 +386,10 @@ export default function InspectionDetail({
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <Chip tone={inspectionTone[inspection.status]}>{inspectionStatusLabels[inspection.status]}</Chip>
-          <Chip tone="bg-surface-muted text-fg">{workSubmission.loading ? "…" : workItems.length ? "Work item QA" : "Stage / hold point"}</Chip>
+          <Chip tone="bg-surface-muted text-fg">{workSubmission.loading ? "…" : workItems.length ? "Task QA" : "Stage / hold point"}</Chip>
           {inspection.reinspection_of ? <Chip tone="bg-fuchsia-100 text-fuchsia-900 dark:bg-fuchsia-900/40 dark:text-fuchsia-200">Re-inspection</Chip> : null}
         </div>
+        {!canInspect && canRequest && workItems.length > 0 && currentTasks.error ? <p role="alert" className="text-sm text-danger-fg">{currentTasks.error} <button type="button" className="font-bold underline" onClick={() => void currentTasks.reload()}>Retry task status</button></p> : null}
         <div className="sticky top-0 z-10 flex flex-wrap gap-1 border-b border-line bg-surface py-2" role="tablist" aria-label="Inspection sections">
           {tabs.map(key => <button key={key} type="button" role="tab" id={`${tabId}-tab-${key}`} aria-selected={tab === key} aria-controls={`${tabId}-panel-${key}`} tabIndex={tab === key ? 0 : -1}
             onClick={() => selectTab(key)} onKeyDown={event => {
@@ -409,11 +422,11 @@ export default function InspectionDetail({
         ) : null}
 
         {viewOnly ? <p role="status" className="rounded-lg border border-line bg-surface-muted px-3 py-2 text-sm text-fg"><strong>View only.</strong> You can read this inspection; an Engineer with Assigned work access to {viewOnlyType ? `${viewOnlyType} plans` : "a blueprint type of this project"} handles it.</p> : null}
-        {inspection.status === "requested" && !canInspect && !viewOnly ? <p className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:bg-sky-900/30 dark:text-sky-100">Waiting for the engineer. The checklist below is what will be inspected{prepBy ? ": upload a photo on each item to show the work is ready." : ", so the work can be made ready."}</p> : null}
+        {inspection.status === "requested" && !canInspect && !viewOnly ? <p className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:bg-sky-900/30 dark:text-sky-100">Waiting for the engineer. The QC checklist below is what will be inspected{prepBy ? ": upload a photo on each item to show the work is ready." : ", so the work can be made ready."}</p> : null}
         {inspection.status === "in_progress" && !isInspector && !viewOnly ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-900/30 dark:text-amber-100">{canInspect ? `${nameOf(inspection.inspector_id)} is inspecting. Only the inspector can record results.` : "The engineer is inspecting now."}</p> : null}
 
         {loading ? (
-          <SkeletonList rows={5} label="Loading the checklist" />
+          <SkeletonList rows={5} label="Loading the QC checklist" />
         ) : error ? (
           <p role="alert" className="rounded-lg bg-danger-soft px-4 py-2 text-sm text-danger-fg">{error}</p>
         ) : (
@@ -437,7 +450,7 @@ export default function InspectionDetail({
 
         <section hidden={tab !== "evidence"} role="tabpanel" id={`${tabId}-panel-evidence`} aria-labelledby={`${tabId}-tab-evidence`} tabIndex={0} className="space-y-4">
           <WorkSubmissionEvidence key={inspection.id} record={workSubmission} />
-          {!workSubmission.loading && !workSubmission.error && !workSubmission.submission ? <p className="text-sm text-fg-muted">No Foreman submission snapshot is attached to this request. Each check's inspection photos are available in Checklist.</p> : null}
+          {!workSubmission.loading && !workSubmission.error && !workSubmission.submission ? <p className="text-sm text-fg-muted">No Foreman submission snapshot is attached to this request. Each check's inspection photos are available in QC Checklist.</p> : null}
         </section>
 
         {reinspection ? <section hidden={tab !== "previous"} role="tabpanel" id={`${tabId}-panel-previous`} aria-labelledby={`${tabId}-tab-previous`} tabIndex={0} className="space-y-4">
@@ -453,7 +466,7 @@ export default function InspectionDetail({
           </dl>
           {inspection.standards.length ? <p className="text-sm"><strong>Standards:</strong> {inspection.standards.join(", ")}</p> : null}
           {inspection.request_note ? <p className="rounded-lg bg-surface-muted px-3 py-2 text-sm"><strong>Note from the requester:</strong> {inspection.request_note}</p> : null}
-          {workItems.length ? <p className="flex flex-wrap items-center gap-2 text-sm"><span className="font-bold">Work item{workItems.length === 1 ? "" : "s"} in this request:</span>{workItems.map(row => <button key={row.id} type="button" className={buttonSecondary + " !py-1 !text-xs"} onClick={() => openItem(row.id)}>{inspection.title} → {row.text}</button>)}<span className="text-xs text-fg-muted">Earlier attempts, corrections and NCRs are in the work item record.</span></p> : null}
+          {workItems.length ? <p className="flex flex-wrap items-center gap-2 text-sm"><span className="font-bold">Task{workItems.length === 1 ? "" : "s"} in this request:</span>{workItems.map(row => <button key={row.id} type="button" className={buttonSecondary + " !py-1 !text-xs"} onClick={() => openItem(row.id)}>{inspection.title} → {row.text}</button>)}<span className="text-xs text-fg-muted">Earlier attempts, corrections and NCRs are in the task record.</span></p> : null}
           <InspectionSchedule inspection={inspection} canEdit={canInspect} onChanged={onChanged} />
         </section>
 
@@ -473,7 +486,7 @@ export default function InspectionDetail({
               ))}
             </ul>
           </div>
-        ) : <p className="text-sm text-fg-muted">No NCRs were raised by this inspection. Earlier NCRs and corrections remain in the linked work item record.</p>}
+        ) : <p className="text-sm text-fg-muted">No NCRs were raised by this inspection. Earlier NCRs and corrections remain in the linked task record.</p>}
         </section>
 
         <section hidden={tab !== "history"} role="tabpanel" id={`${tabId}-panel-history`} aria-labelledby={`${tabId}-tab-history`} tabIndex={0} className="space-y-4">

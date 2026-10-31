@@ -53,7 +53,7 @@ export function pinLinkProblem(link: PinLink, input: { projectId: string; pins: 
   if (!pin || pin.project_id !== input.projectId || pin.category === "note") return "Choose a work pin from this project."
   if (link.sheetId && pin.blueprint_id !== link.sheetId) return "The chosen pin is not on the chosen sheet."
   if (!link.itemId && !input.waitForChecklist) return ""
-  if (input.itemsLoading) return "Loading this pin's checklist…"
-  if (input.itemsError) return "Could not load this pin's checklist. Retry before saving."
-  return !link.itemId || input.items.some((item) => item.id === link.itemId && item.pin_id === link.pinId) ? "" : "Choose a checklist item of this work pin."
+  if (input.itemsLoading) return "Loading this pin's tasks…"
+  if (input.itemsError) return "Could not load this pin's tasks. Retry before saving."
+  return !link.itemId || input.items.some((item) => item.id === link.itemId && item.pin_id === link.pinId) ? "" : "Choose a task of this work pin."
 }

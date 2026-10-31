@@ -8,7 +8,8 @@ import Modal from "../../components/Modal"
 import DataConfirmModal from "../../components/PrivacyNotice"
 import { Skeleton, SkeletonRows } from "../../components/ui/Skeleton"
 import { formatDate, formatTime, roleLabel } from "../../lib/admin"
-import { requestStatusChip, requestStatusLabel, type AccessRequest, type RequestedRole } from "../../lib/access"
+import { requestStatusChip, requestStatusLabel, type AccessRequest, type ApprovalRole, type RequestedRole } from "../../lib/access"
+import RegistrationApproval from "./RegistrationApproval"
 import { useAuth, type AdminPermission, type AppRole, type Discipline, type Profile, type UserStatus } from "../../lib/auth"
 import { useConfirm } from "../../lib/confirm"
 import { invokeFunction } from "../../lib/functions"
@@ -27,6 +28,7 @@ const permissionLabels: Record<AdminPermission, string> = {
   "biometrics.manage": "Biometric registration",
   "projects.manage": "Project management",
   "blueprints.manage": "Blueprint management",
+  "photos.manage": "Site photo rules",
 }
 const statusLabel: Record<UserStatus, string> = { active: "Active", pending: "Pending", rejected: "Rejected", disabled: "Disabled" }
 const statusChip: Record<UserStatus, string> = {
@@ -151,7 +153,7 @@ export default function UserManagement({ onNavigate }: AdminPageProps) {
   }
 
   // Approve or reject a registration (used by the details dialog and the review queue).
-  const decideRegistration = async (user: Profile, action: "approve" | "reject", role: RequestedRole, note = ""): Promise<void> => {
+  const decideRegistration = async (user: Profile, action: "approve" | "reject", role: ApprovalRole, note = ""): Promise<void> => {
     const who = user.full_name || user.email
     if (action === "reject" && note.trim().length < 5) {
       toast.error("A reason is required", "Give the person a helpful reason of at least 5 characters.")
@@ -468,7 +470,7 @@ function UserDetailsModal({
   onToggle: () => void
   onLoginAs: () => void
   onPermissions: () => void
-  onLegacyDecision: (action: "approve" | "reject", role: RequestedRole, note?: string) => Promise<void>
+  onLegacyDecision: (action: "approve" | "reject", role: ApprovalRole, note?: string) => Promise<void>
   onReopen: () => Promise<void>
 }) {
   const [busy, setBusy] = useState(false)
@@ -516,10 +518,10 @@ function UserDetailsModal({
           {user.registration_completed_at ? (
             <>
               <p className="mt-1 text-xs text-fg-muted">Admin approval required. {user.requested_role ? `They asked for ${roleLabel[user.requested_role]} access.` : "They did not say which access they need."} Approving gives that role at once and notifies them; rejecting ends their sessions.</p>
+              <div className="mt-3">
+                <RegistrationApproval userId={user.id} requested={user.requested_role ?? null} busy={busy} onApprove={async (role) => { setBusy(true); await onLegacyDecision("approve", role); setBusy(false) }} />
+              </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                {(["engineer", "foreman", "client"] as RequestedRole[]).sort((a, b) => Number(b === user.requested_role) - Number(a === user.requested_role)).map((role) => (
-                  <button key={role} type="button" disabled={busy} className={role === user.requested_role ? primary : secondary} onClick={async () => { setBusy(true); await onLegacyDecision("approve", role); setBusy(false) }}>Approve as {roleLabel[role]}</button>
-                ))}
                 <button type="button" disabled={busy || rejectionReason.trim().length < 5} className={secondary + " !text-danger-fg"} onClick={async () => { setBusy(true); await onLegacyDecision("reject", "client", rejectionReason); setBusy(false) }}>Reject</button>
               </div>
               <label className="mt-3 block text-xs font-bold uppercase tracking-wider text-fg-muted">Reason required to reject<textarea className={field + " min-h-20"} maxLength={500} value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} placeholder="Explain what needs to change or why this registration cannot be approved." /></label>

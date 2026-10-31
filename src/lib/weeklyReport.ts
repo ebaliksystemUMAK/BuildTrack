@@ -1,12 +1,13 @@
 import type { Pin } from "./blueprints.ts"
 import { addDays, manilaToday, sCurve, type SCurveData } from "./progress.ts"
 import { escapeHtml, reportHtml, type PrintSection } from "./printReport.ts"
+import { progressPercent, scheduledTasks, taskApproved } from "./taskProgress.ts"
 
 // The weekly progress report: what moved in a period, where the project stands against its plan, what needs attention next.
 // Everything is computed from the same rows the dashboards read (pins, NCRs, inspections, daily reports, client questions), so the
 // report can never disagree with the screens. Pure (no network), tested in `pnpm test:lib`.
 
-type PinRow = Pick<Pin, "id" | "title" | "blueprint_id" | "category" | "status" | "due_date" | "verified_at" | "assigned_to">
+type PinRow = Pick<Pin, "id" | "title" | "blueprint_id" | "category" | "status" | "due_date" | "verified_at" | "assigned_to" | "tasks">
 type DefectRow = { status: string; severity: string; due_date: string | null; raised_at: string; closed_at: string | null }
 type InspectionRow = { status: string; completed_at: string | null }
 type LogRow = { report_date: string; status: string; workers_count: number; work_done: string; delays: string | null; safety: string | null }
@@ -42,7 +43,7 @@ export type WeeklySummary = {
 }
 
 const day = (timestamp: string | null) => (timestamp ? manilaToday(new Date(timestamp)) : null)
-const pct = (count: number, total: number) => (total ? Math.round((count / total) * 1000) / 10 : 0)
+const pct = progressPercent
 const inPeriod = (date: string | null, from: string, to: string) => Boolean(date) && (date as string) >= from && (date as string) <= to
 const short = (text: string, length = 160) => (text.length > length ? text.slice(0, length - 1).trimEnd() + "…" : text)
 
@@ -61,19 +62,21 @@ export function buildWeekly(input: WeeklyInput): WeeklySummary {
   const { from, to, today } = input
   const asOf = to < today ? to : today
   const work = input.pins.filter((pin) => pin.category !== "note")
-  const total = work.length
-  const verifiedDates = work.filter((pin) => pin.status === "verified" && pin.verified_at).map((pin) => ({ pin, date: day(pin.verified_at) as string }))
+  const tasks = scheduledTasks(work)
+  const total = tasks.length
+  const parents = new Map(work.map(pin => [pin.id, pin]))
+  const verifiedDates = tasks.filter(task => taskApproved(task) && task.verified_at).map(task => ({ task, date: day(task.verified_at ?? null) as string }))
   const upTo = (date: string) => verifiedDates.filter((entry) => entry.date <= date).length
-  const dueUpTo = (date: string) => work.filter((pin) => pin.due_date && pin.due_date.slice(0, 10) <= date).length
+  const dueUpTo = (date: string) => tasks.filter((task) => task.due_date && task.due_date.slice(0, 10) <= date).length
 
   const atStart = pct(upTo(addDays(from, -1)), total)
   const now = pct(upTo(asOf), total)
   const planned = pct(dueUpTo(asOf), total)
 
   const verifiedThisPeriod = verifiedDates
-    .filter((entry) => inPeriod(entry.date, from, to))
+    .filter((entry) => inPeriod(entry.date, from, asOf))
     .sort((a, b) => a.date.localeCompare(b.date))
-    .map((entry) => ({ id: entry.pin.id, title: entry.pin.title, blueprintId: entry.pin.blueprint_id, date: entry.date }))
+    .map(({ task, date }) => ({ id: task.id, title: `${parents.get(task.pin_id)?.title ?? "Work pin"} → ${task.text}`, blueprintId: parents.get(task.pin_id)?.blueprint_id ?? "", date }))
 
   const open = work.filter((pin) => pin.status !== "verified")
   const dueNext = open
@@ -162,13 +165,13 @@ export function weeklyReportHtml(summary: WeeklySummary, names: Names, audience:
   const { progress } = summary
   const list = (rows: Array<{ date: string; text: string }>) => (rows.length ? rows.map((row) => `${shortDate(row.date)}: ${row.text}`).join("\n") : "")
   const sections: PrintSection[] = [
-    { heading: "Where we stand", body: headline(summary) },
+    { heading: "Where we stand", body: `${headline(summary)} Progress counts Engineer-approved tasks divided by all tasks; notes are excluded.` },
     ...(summary.curve ? [{ heading: "Plan against verified work", html: sCurveSvg(summary.curve) } satisfies PrintSection] : []),
-    { heading: audience === "client" ? "Finished and approved this period" : "Verified this period", ...(summary.verifiedThisPeriod.length ? { table: { head: ["Work item", "Sheet", "Approved on"], rows: summary.verifiedThisPeriod.map((row) => [row.title, names.sheetOf(row.blueprintId), shortDate(row.date)]) } } : { body: "Nothing was verified in this period." }) },
-    { heading: audience === "client" ? "Coming up in the next 7 days" : "Due in the next 7 days", ...(summary.dueNext.length ? { table: { head: audience === "client" ? ["Work item", "Sheet", "Planned for"] : ["Work item", "Sheet", "Due", "Assigned to"], rows: summary.dueNext.map((row) => (audience === "client" ? [row.title, names.sheetOf(row.blueprintId), shortDate(row.due)] : [row.title, names.sheetOf(row.blueprintId), shortDate(row.due), names.nameOf(row.assignedTo)])) } } : { body: "Nothing is due in the next 7 days." }) },
+    { heading: audience === "client" ? "Tasks approved this period" : "Tasks verified this period", ...(summary.verifiedThisPeriod.length ? { table: { head: ["Task", "Sheet", "Approved on"], rows: summary.verifiedThisPeriod.map((row) => [row.title, names.sheetOf(row.blueprintId), shortDate(row.date)]) } } : { body: "No tasks were approved in this period." }) },
+    { heading: audience === "client" ? "Coming up in the next 7 days" : "Due in the next 7 days", ...(summary.dueNext.length ? { table: { head: audience === "client" ? ["Work pin", "Sheet", "Planned for"] : ["Work pin", "Sheet", "Due", "Assigned to"], rows: summary.dueNext.map((row) => (audience === "client" ? [row.title, names.sheetOf(row.blueprintId), shortDate(row.due)] : [row.title, names.sheetOf(row.blueprintId), shortDate(row.due), names.nameOf(row.assignedTo)])) } } : { body: "Nothing is due in the next 7 days." }) },
     ...(audience === "team"
       ? [
-          { heading: "Needs attention", rows: [["Waiting for verification", String(summary.waitingReview)], ["Open issues", String(summary.issues)], ["Overdue work items", String(summary.overdue)]] as Array<[string, string]> },
+          { heading: "Needs attention", rows: [["Waiting for verification", String(summary.waitingReview)], ["Open issues", String(summary.issues)], ["Overdue work pins", String(summary.overdue)]] as Array<[string, string]> },
           ...(summary.qa
             ? [{ heading: "Quality", rows: [["Inspections completed", `${summary.qa.inspectionsDone} (${summary.qa.passed} passed, ${summary.qa.failed} failed)`], ["Defect reports raised / closed", `${summary.qa.ncrOpened} / ${summary.qa.ncrClosed}`], ["Defect reports still open", `${summary.qa.ncrOpen} (${summary.qa.ncrOverdue} overdue, ${summary.qa.ncrCritical} critical)`]] as Array<[string, string]> } satisfies PrintSection]
             : []),

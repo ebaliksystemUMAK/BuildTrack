@@ -12,7 +12,7 @@ export function submittedChecklistItems<T extends ChecklistRef>(row: ChecklistRe
 export function checklistGroups<T extends ChecklistRecord>(rows:T[],itemId?:string) {
   const groups=new Map<string,{key:string;name:string;rows:T[]}>()
   for(const row of rows) {
-    const names=new Map(submittedChecklistItems(row,itemId).map(item=>[checklistNameKey(item.text),item.text.trim() || "Unnamed checklist item"]))
+    const names=new Map(submittedChecklistItems(row,itemId).map(item=>[checklistNameKey(item.text),item.text.trim() || "Unnamed task"]))
     for(const [key,name] of names) {
       const group=groups.get(key) ?? {key,name,rows:[]}
       group.name=name;group.rows.push(row);groups.set(key,group)

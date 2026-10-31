@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { taskProgress } from "../../lib/taskProgress"
 import Modal from "../Modal"
 import { PinDetailsTab, PinSectionBody, Tabs, type InspectorProps } from "./Inspector"
 import { PinFields } from "./PinParts"
@@ -26,7 +27,7 @@ export default function PinDetailsModal({ pin, inspector, section = "details", o
     void data.reload()
   }
   const nameOf = (id: string | null) => (id ? inspector.team.find((member) => member.user_id === id)?.full_name ?? "Someone on the team" : "Not assigned yet")
-  const done = data.checklist.items.filter((item) => item.review_status === "verified").length
+  const { approved: done, percent: progress } = taskProgress(data.checklist.items)
   const status = clientPinStatus(pin.status)
   const openNcrs = data.records.defects.filter((row) => row.status !== "closed").length
   return (
@@ -49,7 +50,7 @@ export default function PinDetailsModal({ pin, inspector, section = "details", o
       <dl className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
         <Fact label="Assigned Foreman">{nameOf(pin.assigned_to)}</Fact>
         <Fact label="Deadline">{pin.due_date ? prettyDate(pin.due_date) : "Not set"}</Fact>
-        <Fact label="Checklist">{data.checklist.items.length ? `${done} of ${data.checklist.items.length} completed` : "No items yet"}</Fact>
+        <Fact label="Pin progress">{data.checklist.items.length ? `${progress}% · ${done}/${data.checklist.items.length} tasks approved` : "No tasks yet"}</Fact>
         <Fact label={inspector.role === "client" ? "Your open reports" : "Open NCRs"}>{inspector.role === "client" ? data.counts.issues ?? 0 : openNcrs}</Fact>
       </dl>
       <div className="sticky -top-5 z-10 -mx-6 mb-4 bg-surface">

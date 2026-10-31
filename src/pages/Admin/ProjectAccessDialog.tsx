@@ -42,12 +42,13 @@ type Tab = "team" | "access"
 // Manage access, in two separate steps: (1) who is on the project team, (2) what each Engineer / Foreman may do per
 // blueprint type. Team changes are saved at once; access changes are collected and saved with "Save changes" after a
 // confirmation that lists them (and warns about anything taken away). The database re-checks all of it (set_blueprint_access).
-export default function ProjectAccessDialog({ project, people, members, onMembersChanged, onClose }: {
+export default function ProjectAccessDialog({ project, people, members, onMembersChanged, onClose, readOnly = false }: {
   project: Project
   people: Person[]
   members: ProjectMember[]
   onMembersChanged: () => Promise<void>
   onClose: () => void
+  readOnly?: boolean
 }) {
   const toast = useToast()
   const confirm = useConfirm()
@@ -80,15 +81,16 @@ export default function ProjectAccessDialog({ project, people, members, onMember
     .filter((person) => !team.some((member) => member.user_id === person.id))
     .filter((person) => `${person.full_name ?? ""} ${person.email}`.toLowerCase().includes(query.trim().toLowerCase()))
     .slice(0, 6)
-  const pending = accessChanges(access.grants, draft, project.id).filter((c) => field.some((m) => m.user_id === c.userId))
+  const pending = readOnly ? [] : accessChanges(access.grants, draft, project.id).filter((c) => field.some((m) => m.user_id === c.userId))
   const shownField = field.filter((member) => `${displayName(peopleById.get(member.user_id))} ${peopleById.get(member.user_id)?.email ?? ""}`.toLowerCase().includes(filter.trim().toLowerCase()))
 
   const addMember = async (person: Person) => {
+    if (readOnly) return
     setBusy(true)
     setFailure("")
     const { error } = await supabase.from("project_members").insert({ project_id: project.id, user_id: person.id })
     setBusy(false)
-    if (error) return setFailure(error.code === "42501" ? "You cannot change this team: Admins need the Projects permission (with MFA), and Project Managers can change only their own projects that are not archived." : error.message)
+    if (error) return setFailure(error.code === "42501" ? "Only this project's Project Managers can change its team while it is not archived. Super Admin retains recovery access." : error.message)
     setQuery("")
     await onMembersChanged()
     if (person.role === "engineer" || person.role === "foreman") {
@@ -99,11 +101,12 @@ export default function ProjectAccessDialog({ project, people, members, onMember
   }
 
   const removeMember = async (member: ProjectMember) => {
+    if (readOnly) return
     const person = peopleById.get(member.user_id)
     const ok = await confirm({
       title: `Remove ${displayName(person)} from ${project.code}?`,
       message: member.member_role === "foreman"
-        ? "They lose this project and all its blueprint access straight away. Their open work items are unassigned; completed work and history keep their name."
+        ? "They lose this project and all its blueprint access straight away. Their open work pins are unassigned; completed work and history keep their name."
         : "They lose this project and all its blueprint access straight away. Records they made or signed keep their name.",
       confirmLabel: "Remove from project",
       tone: "danger",
@@ -120,7 +123,7 @@ export default function ProjectAccessDialog({ project, people, members, onMember
   const savedLevel = (userId: string, type: BlueprintType) => levelsFor(access.grants, userId, project.id)[type]
   const shownLevel = (userId: string, type: BlueprintType) => draft[userId]?.[type] ?? savedLevel(userId, type)
   const edit = (userId: string, type: BlueprintType, level: AccessLevel) =>
-    setDraft((current) => ({ ...current, [userId]: { ...current[userId], [type]: level } }))
+    !readOnly && setDraft((current) => ({ ...current, [userId]: { ...current[userId], [type]: level } }))
 
   // Leaving with unsaved access changes asks first (closing the dialog or Done).
   const leave = async () => {
@@ -130,6 +133,7 @@ export default function ProjectAccessDialog({ project, people, members, onMember
   }
 
   const saveAll = async () => {
+    if (readOnly) return
     if (!pending.length) return
     const roleOf = (userId: string) => (field.find((m) => m.user_id === userId)?.member_role ?? "engineer") as "engineer" | "foreman"
     const warnings = [...new Set(pending.map((c) => downgradeWarning(roleOf(c.userId), c.type, c.from, c.to)).filter(Boolean))] as string[]
@@ -186,7 +190,7 @@ export default function ProjectAccessDialog({ project, people, members, onMember
           <span className="truncate">{blueprintTypeLabels[type]}</span>
           {changed ? <span className="flex-none rounded-full bg-brand px-1.5 text-[11px] font-bold text-white">Changed</span> : null}
         </span>
-        <select
+        {readOnly ? <span className={`flex min-h-9 items-center rounded-lg border px-2 text-[13px] ${levelTone[level]}`}>{shortLabel[level]}</span> : <select
           value={level}
           disabled={busy || access.loading}
           onChange={(event) => edit(member.user_id, type, event.target.value as AccessLevel)}
@@ -194,7 +198,7 @@ export default function ProjectAccessDialog({ project, people, members, onMember
           className={`min-h-9 w-full rounded-lg border px-2 text-[13px] disabled:opacity-60 ${levelTone[level]} ${changed ? "ring-2 ring-brand/60 ring-offset-1 ring-offset-surface" : ""}`}
         >
           {ACCESS_LEVELS.map((value) => <option key={value} value={value}>{shortLabel[value]}</option>)}
-        </select>
+        </select>}
       </label>
     )
   }
@@ -213,14 +217,15 @@ export default function ProjectAccessDialog({ project, people, members, onMember
   }
 
   return (
-    <Modal title={`Manage access: ${project.code}`} size="xl" onClose={() => void leave()}>
+    <Modal title={`${readOnly ? "Team & access" : "Manage access"}: ${project.code}`} size="xl" onClose={() => void leave()}>
       <div className="space-y-4">
+        {readOnly ? <p className="rounded-lg bg-surface-muted px-3 py-2 text-sm text-fg-muted">Project Managers manage this project's team and blueprint access. Admins can view the team and assign its Project Managers.</p> : null}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="min-w-0 truncate text-sm text-fg-muted">{project.name}</p>
           <div className="grid w-full grid-cols-2 gap-0.5 rounded-xl border border-line bg-surface p-1 shadow-sm sm:inline-flex sm:w-auto" role="tablist" aria-label="Manage access">
             {(["team", "access"] as Tab[]).map((key) => (
               <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={`inline-flex min-h-8 items-center justify-center whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-bold transition ${tab === key ? "bg-brand text-white" : "text-fg-muted hover:bg-surface-muted hover:text-fg"}`}>
-                {key === "team" ? `1. Project team (${team.length})` : "2. Blueprint access"}
+                {key === "team" ? `${readOnly ? "" : "1. "}Project team (${team.length})` : `${readOnly ? "" : "2. "}Blueprint access`}
                 {key === "access" && pending.length ? <span className={`ml-1.5 rounded-full px-1.5 text-[11px] ${tab === key ? "bg-white/25" : "bg-brand text-white"}`} aria-label={`${pending.length} unsaved`}>{pending.length}</span> : null}
               </button>
             ))}
@@ -230,7 +235,7 @@ export default function ProjectAccessDialog({ project, people, members, onMember
 
         {tab === "team" ? (
           <section className="space-y-3" aria-label="Project team">
-            <div>
+            {!readOnly ? <div>
               <label className="block text-sm font-semibold text-fg" htmlFor="access-add">Add an active Engineer, Foreman or Client</label>
               <input id="access-add" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or email" className={`mt-1 min-h-10 ${inputClass}`} />
               {query.trim() ? (
@@ -249,9 +254,9 @@ export default function ProjectAccessDialog({ project, people, members, onMember
                 </ul>
               ) : null}
               <p className="mt-1 text-xs text-fg-muted">Joining the team gives no blueprint type: set it in step 2. Clients see every plan, read-only.</p>
-            </div>
+            </div> : null}
             {team.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-fg-muted">Nobody yet. Only administrators can see this project.</p>
+              <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-fg-muted">Nobody is on the team yet. The project's Project Manager can add Engineers, Foremen and Clients.</p>
             ) : (
               <ul className="divide-y divide-line rounded-xl border border-line">
                 {[...field, ...clients].map((member) => {
@@ -266,12 +271,12 @@ export default function ProjectAccessDialog({ project, people, members, onMember
                       <div className="flex flex-wrap gap-2 sm:justify-end">
                         {member.member_role !== "client" ? (
                           <button type="button" className="inline-flex min-h-8 min-w-[6.5rem] items-center justify-center rounded-lg border border-line bg-surface px-3 text-xs font-bold text-fg hover:border-brand/50 hover:text-brand-text" onClick={() => { setFilter(displayName(peopleById.get(member.user_id))); setTab("access") }}>
-                            {missing ? "Set access" : "Edit access"}
+                            {readOnly ? "View access" : missing ? "Set access" : "Edit access"}
                           </button>
                         ) : null}
-                        <button type="button" disabled={busy} onClick={() => void removeMember(member)} className="min-h-8 rounded-lg px-3 text-xs font-bold text-danger-fg hover:bg-danger-soft disabled:opacity-60" aria-label={`Remove ${displayName(peopleById.get(member.user_id))}`}>
+                        {!readOnly ? <button type="button" disabled={busy} onClick={() => void removeMember(member)} className="min-h-8 rounded-lg px-3 text-xs font-bold text-danger-fg hover:bg-danger-soft disabled:opacity-60" aria-label={`Remove ${displayName(peopleById.get(member.user_id))}`}>
                           Remove
-                        </button>
+                        </button> : null}
                       </div>
                     </li>
                   )
@@ -282,13 +287,13 @@ export default function ProjectAccessDialog({ project, people, members, onMember
         ) : (
           <section className="space-y-3" aria-label="Blueprint access by type">
             <p className="text-sm text-fg-muted">
-              <strong className="text-fg">No access</strong> hides the type. <strong className="text-fg">View only</strong> opens its plans and records read-only. <strong className="text-fg">Assigned work</strong> lets an Engineer edit plans, manage checklists, inspect and verify; a Foreman reports progress, adds evidence and submits corrections on the work assigned to them. New plans follow their type. Changes are saved with Save changes.
+              <strong className="text-fg">No access</strong> hides the type. <strong className="text-fg">View only</strong> opens its plans and records read-only. <strong className="text-fg">Assigned work</strong> lets an Engineer edit plans, manage tasks and QC checklists, inspect and verify; a Foreman reports progress, adds evidence and submits corrections on the work assigned to them. New plans follow their type. {readOnly ? "Project Managers change these access levels." : "Changes are saved with Save changes."}
             </p>
             {field.length > 4 || filter ? (
               <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter people by name or email" aria-label="Filter people" className={`min-h-10 ${inputClass}`} />
             ) : null}
             {field.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-fg-muted">Add an Engineer or Foreman in step 1 first.</p>
+              <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-fg-muted">{readOnly ? "No Engineer or Foreman is on this team yet." : "Add an Engineer or Foreman in step 1 first."}</p>
             ) : columns.length === 0 ? (
               <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-fg-muted">This project has no plans yet. Upload a plan in Blueprints: its type then appears here to give access.</p>
             ) : shownField.length === 0 ? (

@@ -4,6 +4,8 @@ import MyDataModal from "../MyDataModal"
 import NotificationBell from "../NotificationBell"
 import AdminIcon, { type AdminIconName } from "../../pages/Admin/AdminIcon"
 import CommandPalette, { type PaletteAction, type PaletteSearch } from "./CommandPalette"
+import { PageGuideButton, PageGuideModal } from "./PageGuide"
+import { guideFor } from "../../lib/pageGuides"
 import { searchProject, type SearchRole } from "../../lib/projectSearch"
 import { followLink } from "../../lib/notifications"
 import { getSelectedProjectId } from "../../lib/projects"
@@ -151,9 +153,12 @@ export default function AppShell({
   const [palette, setPalette] = useState(false)
   const [privacy, setPrivacy] = useState(false)
   const [myData, setMyData] = useState(false)
+  const [guideOpen, setGuideOpen] = useState(false)
 
   const all = useMemo(() => groups.flatMap((group) => group.items), [groups])
   const current = all.find((item) => item.key === active)
+  // Instructions for the open page (lib/pageGuides.ts), for every workspace.
+  const guide = guideFor(persona, active)
   const go = useCallback((key: string) => {
     setDrawer(false)
     onNavigate(key)
@@ -172,6 +177,7 @@ export default function AppShell({
 
   const canEraseOwn = Boolean(profile) && profile?.role !== "super_admin" && profile?.role !== "admin"
   const actions: PaletteAction[] = useMemo(() => [
+    { id: "guide", label: "Guide for this page", icon: "help", run: () => setGuideOpen(true) },
     { id: "theme", label: mode === "dark" ? "Switch to the light theme" : "Switch to the dark theme", icon: mode === "dark" ? "sun" : "moon", run: () => setMode(mode === "dark" ? "light" : "dark") },
     { id: "privacy", label: "Read the data privacy notice", icon: "shield", run: () => setPrivacy(true) },
     ...(canEraseOwn ? [{ id: "mydata", label: "Delete my data", icon: "trash" as const, run: () => setMyData(true) }] : []),
@@ -300,6 +306,7 @@ export default function AppShell({
             <p className="truncate text-base font-extrabold sm:text-lg">{current?.label ?? "BuildTrack"}</p>
           </div>
           {topExtra}
+          <PageGuideButton title={guide.title} onOpen={() => setGuideOpen(true)} />
           <button type="button" onClick={() => setPalette(true)} className="hidden h-10 w-64 items-center gap-2 rounded-xl border border-line bg-surface-muted px-3 text-sm text-fg-muted transition hover:border-brand md:flex" aria-label="Search or jump to a page (Ctrl K)">
             <span className="h-4 w-4 [&>svg]:h-4 [&>svg]:w-4"><AdminIcon name="search" /></span>
             <span className="flex-1 text-left">Jump to...</span>
@@ -332,6 +339,7 @@ export default function AppShell({
       {palette ? <CommandPalette items={all} actions={actions} onGo={(key) => { setPalette(false); go(key) }} onClose={() => setPalette(false)} search={paletteSearch} /> : null}
       {privacy ? <PrivacyNoticeModal scope="general" onClose={() => setPrivacy(false)} /> : null}
       {myData ? <MyDataModal onClose={() => setMyData(false)} /> : null}
+      {guideOpen ? <PageGuideModal guide={guide} onClose={() => setGuideOpen(false)} /> : null}
     </div>
   )
 }

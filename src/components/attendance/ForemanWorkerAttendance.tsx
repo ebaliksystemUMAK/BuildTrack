@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import Modal from "../Modal"
 import WorkerPortrait from "./WorkerPortrait"
 import AttendanceReportButton from "./AttendanceReportButton"
@@ -28,7 +28,7 @@ export function DailyAttendanceTable({ rows, onWorker }: { rows: DailyStatusRow[
   </div>
 }
 
-const fieldClass = "min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-fg"
+const fieldClass = "min-h-11 w-full min-w-0 rounded-xl border border-border bg-surface px-3 text-sm text-fg"
 const secondary = "min-h-10 rounded-xl border border-border px-4 text-sm font-semibold disabled:opacity-40"
 
 function useToday() {
@@ -40,16 +40,19 @@ function useToday() {
   return today
 }
 
-export function AttendanceCalendar({ day, today, onChange }: { day: string; today: string; onChange: (day: string) => void }) {
+export function AttendanceCalendar({ day, today, onChange, action }: { day: string; today: string; onChange: (day: string) => void; action?: ReactNode }) {
   const [error, setError] = useState("")
-  return <div>
-    <label className="block space-y-1 text-xs font-semibold">Attendance date
+  return <div className="min-w-0">
+    <div className={`grid items-end gap-3 ${action ? "sm:grid-cols-[minmax(0,1fr)_auto]" : ""}`}>
+    <label className="block min-w-0 space-y-1 text-xs font-semibold">Attendance date
       <input type="date" aria-label="Attendance date" className={fieldClass} value={day} max={today} aria-invalid={Boolean(error)} onChange={event => {
         const value = event.target.value
         if (!validAttendanceDay(value, today)) { setError("Choose today or a valid past date."); return }
         setError(""); onChange(value)
       }} />
     </label>
+    {action}
+    </div>
     <p className="mb-0 mt-1 text-xs text-fg-muted">Philippine time</p>
     {error && <p role="alert" className="mt-1 text-xs text-red-600">{error}</p>}
   </div>
@@ -120,10 +123,10 @@ export function ProjectAttendanceRecords({ projectId, day, today, page, onDay, o
   const status = useDailyStatus(projectId, day)
   const counts = dailyStatusCounts(status.data ?? [])
   const openRow = (row: DailyStatusRow) => onWorker({ id: row.worker_id, project_id: projectId, full_name: row.full_name, worker_code: row.worker_code, trade: row.trade, biometric_uid: null, photo_path: null, active: true })
-  return <section className="space-y-5 rounded-2xl border border-border bg-surface p-5 sm:p-6" aria-label="Project attendance records">
+  return <section className="min-w-0 space-y-5 rounded-2xl border border-border bg-surface p-5 sm:p-6" aria-label="Project attendance records">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div><h2 className="text-xl font-bold">Attendance records</h2><p className="mt-1 text-sm text-fg-muted">{day === today ? "Today" : day} · Recorded biometric scans for this project.</p></div>
-      <div className="flex flex-wrap items-end gap-3"><AttendanceCalendar day={day} today={today} onChange={onDay} /><AttendanceReportButton projectId={projectId} anchorDay={day} /></div>
+      <div className="w-full min-w-0 sm:w-auto"><AttendanceCalendar day={day} today={today} onChange={onDay} action={<AttendanceReportButton projectId={projectId} anchorDay={day} />} /></div>
     </div>
     <div className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -161,7 +164,7 @@ export function WorkerAttendanceDetails({ worker, projectId, initialDay, onClose
         </dl>
       </div>
       {onEdit && <button type="button" className={secondary} onClick={() => onEdit(data.worker)}>Edit profile</button>}
-      <div className="flex flex-wrap items-center justify-between gap-4"><div><h3 className="text-lg font-bold">Attendance summary</h3><p className="mt-1 text-xs text-fg-muted">{day === today ? "Today" : day} · Entire selected day, not just this record page.</p></div><div className="flex flex-wrap items-end gap-3"><AttendanceCalendar day={day} today={today} onChange={value => { setChosenDay(value === today ? "" : value); setPage(0) }} /><AttendanceReportButton projectId={projectId} workerId={data.worker.id} workerName={data.worker.full_name} anchorDay={day} /></div></div>
+      <div className="flex flex-wrap items-start justify-between gap-4"><div><h3 className="text-lg font-bold">Attendance summary</h3><p className="mt-1 text-xs text-fg-muted">{day === today ? "Today" : day} · Entire selected day, not just this record page.</p></div><div className="w-full sm:w-auto"><AttendanceCalendar day={day} today={today} onChange={value => { setChosenDay(value === today ? "" : value); setPage(0) }} action={<AttendanceReportButton projectId={projectId} workerId={data.worker.id} workerName={data.worker.full_name} anchorDay={day} />} /></div></div>
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[["Time in", data.summary.firstIn ? attendanceTime(data.summary.firstIn) : "—"], ["Time out", data.summary.lastOut ? attendanceTime(data.summary.lastOut) : "—"], ["Status", dayStatus ? dailyStatusLabel(dayStatus) : status.error ? "Unavailable" : "—"], ["Undertime", dayStatus && undertimeLabel(dayStatus) || "—"]].map(([label, value]) => <div key={label} className="rounded-xl border border-border p-4"><dt className="text-xs text-fg-muted">{label}</dt><dd className="ml-0 mt-2 text-lg font-bold tabular-nums">{value}</dd></div>)}
       </dl>

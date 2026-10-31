@@ -20,14 +20,14 @@ export function LinkedWorkEditor({ value, pins, items, disabled, onChange }: { v
   const change = (index: number, patch: Partial<ReportWork>) => onChange(value.map((row, i) => i === index ? { ...row, ...patch } : row))
   const options = pins.filter(p => p.category !== "note")
   return <section className="space-y-2 rounded-xl border border-line p-3" aria-label="Linked work">
-    <h3 className="text-sm font-bold">Linked work · checklist items</h3>
-    <p className="text-xs text-fg-muted">Link today's work to the work pin and the checklist item you worked on. This records the day; QA and completion stay with the work item.</p>
+    <h3 className="text-sm font-bold">Linked work · tasks</h3>
+    <p className="text-xs text-fg-muted">Link today's work to the work pin and the task you worked on. This records the day; QA and completion stay with the task.</p>
     {value.map((row, index) => {
       const pinItems = items.filter(item => item.pin_id === row.pin_id).sort((a, b) => a.position - b.position)
       return <div key={index} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
       <label className="text-xs">Work pin<select disabled={disabled} className={inputClass} value={row.pin_id} onChange={e => change(index, { pin_id: e.target.value, item_id: null })}><option value="">Choose work</option>{options.map(p => <option key={p.id} value={p.id}>{p.title}{p.status === "verified" ? " · Completed" : ""}</option>)}</select></label>
-      <label className="text-xs">Checklist item<select disabled={disabled || !row.pin_id || !pinItems.length} className={inputClass} value={row.item_id ?? ""} onChange={e => change(index, { item_id: e.target.value || null })}>
-        <option value="">{!row.pin_id ? "Choose a work pin first" : pinItems.length ? "Choose the checklist item" : "No checklist items on this pin"}</option>
+      <label className="text-xs">Task<select disabled={disabled || !row.pin_id || !pinItems.length} className={inputClass} value={row.item_id ?? ""} onChange={e => change(index, { item_id: e.target.value || null })}>
+        <option value="">{!row.pin_id ? "Choose a work pin first" : pinItems.length ? "Choose the task" : "No tasks on this pin"}</option>
         {pinItems.map(item => <option key={item.id} value={item.id}>{item.text}{itemState(item)}</option>)}
       </select></label>
       {!disabled ? <button type="button" className={buttonSecondary + " self-end"} onClick={() => onChange(value.filter((_, i) => i !== index))}>Remove</button> : null}
@@ -52,7 +52,7 @@ export function ReportHistory({ reportId, nameOf, describe }: { reportId: string
     {error ? <p role="alert" className="text-danger-fg">{error}</p> : null}
     {rows.map(row => <details key={row.id} className="mt-2 border-t border-line pt-2"><summary className="cursor-pointer text-xs font-bold">Revision {row.revision} · {row.event} · {new Date(row.created_at).toLocaleString("en-PH", { timeZone: "Asia/Manila" })}{nameOf ? ` · ${nameOf(row.actor_id)}` : ""}</summary>
       <dl className="mt-2 space-y-1 text-xs">{[["Work done", row.snapshot.work_done], ["Workers", row.snapshot.workers_count], ["Issues", row.snapshot.issues], ["Delays", row.snapshot.delays], ["Safety", row.snapshot.safety], ["Review feedback", row.snapshot.review_note]].filter(([key, value]) => value || !["Issues", "Delays", "Safety"].includes(String(key))).map(([key, value]) => <div key={String(key)}><dt className="font-bold">{key}</dt><dd className="whitespace-pre-wrap">{value || "—"}</dd></div>)}</dl>
-      {(row.snapshot.linked_work ?? []).map((work, i) => <p key={i} className="mt-1 text-xs">Linked work: {describe ? describe(work) : work.item_id ? "checklist item" : "work pin"}</p>)}
+      {(row.snapshot.linked_work ?? []).map((work, i) => <p key={i} className="mt-1 text-xs">Linked work: {describe ? describe(work) : work.item_id ? "task" : "work pin"}</p>)}
       {row.photos_snapshot.length ? <div className="mt-2"><PhotoGrid bucket="daily-photos" photos={row.photos_snapshot.map(p => ({ ...p, label: `Revision ${row.revision} evidence` }))} emptyHint="No evidence" /></div> : null}
     </details>)}
     {!rows.length && !error ? <p className="mt-2 text-xs text-fg-muted">History starts with the next submission or review.</p> : null}
@@ -111,10 +111,10 @@ export function ReportReviewPanel({ report, pins, nameOf, onChanged }: { report:
     {(report.linked_work ?? []).map((work, i) => {
       const pin = pins.find(p => p.id === work.pin_id)
       const item = work.item_id ? items.find(row => row.id === work.item_id) : undefined
-      const state = item ? (item.review_status === "verified" ? "Completed by the Engineer" : item.review_status === "for_review" ? "Submitted for QA" : item.done ? "Ready (not yet submitted)" : "In progress")
-        : work.item_id ? "Linked checklist item is unavailable" : pin?.status === "verified" ? "Work completed" : "Not completed"
+      const state = item ? (item.review_status === "verified" ? "Completed by the Engineer" : item.review_status === "for_review" ? "Submitted for QA Review" : item.done ? "Ready (not yet submitted)" : "In progress")
+        : work.item_id ? "Linked task is unavailable" : pin?.status === "verified" ? "Work completed" : "Not completed"
       return <div key={i} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface-muted p-2 text-xs"><p><strong>{describe(work)}</strong> · {state}</p>
-        {pin && item && item.pin_id === pin.id ? <button type="button" className="font-bold text-brand-text underline" onClick={() => followLink(workItemPath("engineer", report.project_id, item.id), report.project_id)}>Open checklist, QA and NCRs</button>
+        {pin && item && item.pin_id === pin.id ? <button type="button" className="font-bold text-brand-text underline" onClick={() => followLink(workItemPath("engineer", report.project_id, item.id), report.project_id)}>Open task, QA and NCRs</button>
           : pin ? <OpenOnBlueprint projectId={report.project_id} pinId={pin.id} sheetId={pin.blueprint_id} section="reports" label="Open work pin on blueprint" className="font-bold text-brand-text underline" /> : <span>Linked work is unavailable.</span>}
       </div>
     })}

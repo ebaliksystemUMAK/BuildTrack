@@ -6,9 +6,9 @@ import type { ForemanPageKey, ForemanPageProps } from "./types"
 
 const steps: { key: ForemanPageKey; icon: AdminIconName; title: string; text: string }[] = [
   { key: "daily-report", icon: "file", title: "Daily progress report", text: "Weather, crew head count, work done and problems met today." },
-  { key: "photo-documentation", icon: "camera", title: "Photo documentation", text: "Daily report, checklist and work progress photos for this project." },
-  { key: "quality-control", icon: "clipboard", title: "QA requests", text: "Each checklist item with its next action, inspection and completion status." },
-  { key: "issues", icon: "edit", title: "Corrections", text: "Fix returned work items and their NCRs with one correction form." },
+  { key: "photo-documentation", icon: "camera", title: "Photo documentation", text: "Daily report, task and work progress photos for this project." },
+  { key: "quality-control", icon: "clipboard", title: "QA requests", text: "Each task with its next action, inspection and completion status." },
+  { key: "issues", icon: "edit", title: "Corrections", text: "Fix returned tasks and their NCRs with one correction form." },
 ]
 
 // The foreman's site plan: open a pin to report progress, then use the shortcuts for the day's paperwork.
@@ -18,7 +18,7 @@ export default function ForemanDailyWorkManagement({ onNavigate }: ForemanPagePr
       <PageHead
         eyebrow="Today on site"
         title="My work"
-        description="Open your assigned work and its work items (FLOOR, WALL…). Add photos and submit each item for QA. The Engineer completes each checklist after passed QA and closure of its linked NCRs. The work pin completes when all checklists are completed and all NCRs and inspections are clear."
+        description="Open your assigned work and its tasks (FLOOR, WALL…). Add photos and submit each item for QA Review. The Engineer completes each task after passed QA and closure of its linked NCRs. The work pin completes when all tasks are completed and all NCRs and inspections are clear."
       />
       <ProjectContextBar listPath="/foreman/projects" listLabel="My projects" />
 

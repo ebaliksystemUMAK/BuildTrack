@@ -53,7 +53,7 @@ export default function PmAttendance(_: PmPageProps) {
         description="Daily time records from the site scanners and the registered workers of this project. Flag anything that needs an Admin's attention; worker registration, fingerprints and devices are managed by Admins."
         actions={<>
           {pm.canManage ? <button type="button" className={buttonSecondary} onClick={() => setFlagging({ day, workerId: null })}>Flag a concern</button> : null}
-          <AttendanceReportButton projectId={projectId} anchorDay={day} />
+          {tab !== "records" ? <AttendanceReportButton projectId={projectId} anchorDay={day} /> : null}
         </>} />
       {pm.note ? <p role="status" className="mb-4 rounded-lg bg-surface-muted px-4 py-2 text-sm text-fg">{pm.note}</p> : null}
       <div role="tablist" aria-label="Attendance" className="mb-4 inline-flex max-w-full flex-wrap gap-0.5 rounded-xl border border-line bg-surface p-1 shadow-sm">

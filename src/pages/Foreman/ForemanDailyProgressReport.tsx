@@ -90,14 +90,14 @@ export default function ForemanDailyProgressReport(_: ForemanPageProps) {
     if (readOnly) { toast.info("Today's report is already submitted", `${pin.title} was not added. The Engineer can return the report for changes.`); return }
     dirty.current = true
     setForm((current) => current.linked_work.some((row) => row.pin_id === wanted.pin_id && (row.item_id ?? null) === wanted.item_id) ? current : { ...current, linked_work: [...current.linked_work, wanted] })
-    toast.success("Work pin added to today's report", workItems.some((item) => item.pin_id === pin.id) && !wanted.item_id ? `Choose the checklist item worked on for ${pin.title}, then save.` : "Save or submit the report to keep it.")
+    toast.success("Work pin added to today's report", workItems.some((item) => item.pin_id === pin.id) && !wanted.item_id ? `Choose the task worked on for ${pin.title}, then save.` : "Save or submit the report to keep it.")
   }, [loading, date, today, pins, projectId, readOnly, workItems, toast])
 
   const validate = (submitting: boolean) => {
     const found: typeof errors = {}
     if (submitting && form.work_done.trim().length < 5) found.work_done = "Describe the work done today (at least 5 characters)."
     if (form.work_done.length > 4000) found.work_done = "Keep it under 4000 characters."
-    if (form.linked_work.some(row => !row.pin_id || (!row.item_id && workItems.some(item => item.pin_id === row.pin_id)))) found.linked_work = "Choose a work pin and the checklist item worked on for each linked row."
+    if (form.linked_work.some(row => !row.pin_id || (!row.item_id && workItems.some(item => item.pin_id === row.pin_id)))) found.linked_work = "Choose a work pin and the task worked on for each linked row."
     setErrors(found)
     return Object.keys(found).length === 0
   }
@@ -170,7 +170,7 @@ export default function ForemanDailyProgressReport(_: ForemanPageProps) {
   return (
     <div className="foreman-page">
       <ProjectContextBar listPath="/foreman/projects" listLabel="My projects" />
-      <PageHead eyebrow="Foreman · Daily site record" title="Daily progress report" description="Record the work completed for the selected date, link the work items, and take camera photos with optional annotations. Worker headcount comes from this project’s biometric Time in records." />
+      <PageHead eyebrow="Foreman · Daily site record" title="Daily progress report" description="Record the work completed for the selected date, link the tasks, and take camera photos with optional annotations. Worker headcount comes from this project’s biometric Time in records." />
 
       {!projectId ? null : (
         <div className="grid gap-5 lg:grid-cols-[17rem_1fr]">
@@ -225,7 +225,7 @@ export default function ForemanDailyProgressReport(_: ForemanPageProps) {
               </div>
               {!readOnly && attendance.error ? <p role="alert" className="text-sm text-danger-fg">{attendance.error} <button type="button" className="font-bold underline" onClick={() => void attendance.reload()}>Retry attendance</button></p> : null}
               <label className="block text-sm font-semibold">Work completed on this report date *
-                <textarea className={`${inputClass} mt-1`} rows={5} value={form.work_done} onChange={set("work_done")} disabled={readOnly} placeholder="e.g. Poured slab B (north) and completed the formwork for column C4. Link the related checklist items below." />
+                <textarea className={`${inputClass} mt-1`} rows={5} value={form.work_done} onChange={set("work_done")} disabled={readOnly} placeholder="e.g. Poured slab B (north) and completed the formwork for column C4. Link the related tasks below." />
                 {note("work_done")}
               </label>
               </fieldset>

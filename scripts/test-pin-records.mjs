@@ -124,7 +124,7 @@ props = issuesFor("engineer")
 assert.ok(!all(tree).some(named("NextActions")) && !all(tree).some(buttonText("Log an issue")), "Records contain no next actions or creation buttons")
 assert.deepEqual(lists().map(list => list.title), ["NCRs (non-conformances)", "Inspections and QA requests", "Site issues", "Client problem reports"])
 const ncrRows = lists()[0].rows
-assert.deepEqual(lists()[0].columns, ["NCR", "Problem", "Checklist item", "Status", "Responsible", "Due", "Source"], "Detailed columns in the full view")
+assert.deepEqual(lists()[0].columns, ["NCR", "Problem", "Task", "Status", "Responsible", "Due", "Source"], "Detailed columns in the full view")
 assert.deepEqual(ncrRows.map(row => [row.cells[0], row.cells[2], row.cells[4], row.cells[6]]), [
   ["NCR-0001", "FLOOR TILES", "Frank Foreman", "Inspection IR-0004"], ["NCR-0002", "FLOOR TILES", "Frank Foreman", "Raised directly"], ["NCR-0003", "Whole work pin", "Not assigned", "Raised directly"]],
   "An inspection NCR keeps its criterion's item; a direct NCR its own item (current name)")
@@ -303,10 +303,10 @@ reset(); render(earlierResults.type, earlierResults.props)
 assert.deepEqual(photoQuery, ["A", "checklist", undefined, { from: "2026-10-01", to: "2026-10-05" }, { sheet: "s1", pin: "p1", item: "" }], "Dates and pin scope reach the database hook, before its query limit")
 const grids = all(tree).filter(named("PhotoGrid"))
 assert.deepEqual(grids.map(grid => grid.props.photos.map(photo => photo.id)), [["o"], ["c"]], "Correction photos never mix with the original submission")
-assert.ok(grids.every(grid => grid.props.variant === "details" && grid.props.photos[0].uploaderName === "Frank Foreman"), "Detailed photos show the uploader")
+assert.ok(grids.every(grid => grid.props.variant === "tiles" && grid.props.photos[0].uploaderName === "Frank Foreman"), "Photo tiles retain uploader details for the viewer")
 assert.match(text(tree), /Original submission evidence \(1\).*Correction evidence \(1\)/)
 reset(); render(Photos, { pin }); assert.deepEqual(find(named("DateRangeFilter")).props.range, { from: "2026-10-24", to: "2026-10-24" }, "Reopening the tab resets to today")
-console.log("Pin photos: today default/reset, calendar query range, fresh result/viewer per filter, detailed cards and separate original/correction evidence passed")
+console.log("Pin photos: today default/reset, calendar query range, fresh result/viewer per filter, tiles and separate original/correction evidence passed")
 
 // ---------- Resizable inspector: captured pointer, keyboard, limits ----------
 Object.assign(deps, sizeModel)
@@ -381,7 +381,7 @@ const linked = () => find(named("LinkedWorkEditor")).props.value
 reset(); reportState.items = [{ id: "i1", pin_id: "p1", text: "FLOOR" }]; openReport("?project=A&linkpin=p1")
 render(ForemanReport, {}); render(ForemanReport, {})
 assert.deepEqual(linked(), [{ pin_id: "p1", item_id: null }], "The pin is added to today's new draft")
-assert.match(successes.at(-1)[1], /Choose the checklist item worked on for Laundry/)
+assert.match(successes.at(-1)[1], /Choose the task worked on for Laundry/)
 assert.ok(!replaced.includes("linkpin"), "The request is used once and removed from the address")
 reset(); successes.length = 0
 reportState.reports = [{ id: "draft", project_id: "A", author_id: "fore", report_date: "2026-10-24", status: "draft", weather: "sunny", workers_count: 4, work_done: "Tiling", linked_work: [{ pin_id: "p2", item_id: null }], updated_at: "1" }]

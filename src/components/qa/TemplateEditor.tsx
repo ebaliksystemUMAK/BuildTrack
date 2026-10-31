@@ -49,14 +49,14 @@ export default function TemplateEditor({ template, projectId, standards, onClose
     }))
     const result = await qaActions.saveTemplate({ id: template?.id ?? null, projectId, name: name.trim(), trade, description: description.trim(), standards: cited, items: payload })
     setBusy(false)
-    if (!result.ok) return toast.error("Checklist not saved", result.message)
-    toast.success("Checklist saved", name.trim())
+    if (!result.ok) return toast.error("QC Checklist not saved", result.message)
+    toast.success("QC Checklist saved", name.trim())
     await onSaved()
   }
 
   return (
     <Modal
-      title={template ? "Edit checklist" : "New checklist"}
+      title={template ? "Edit QC checklist" : "New QC checklist"}
       description={projectId ? "Used for this project only. Inspections already requested keep the list they were created with." : "Company library: every project can use it. Only a Super Admin edits it."}
       size="2xl"
       onClose={onClose}
@@ -64,12 +64,12 @@ export default function TemplateEditor({ template, projectId, standards, onClose
         <>
           {problem ? <span className="mr-auto text-xs font-bold text-danger-fg" role="status">{problem}</span> : null}
           <button type="button" className={buttonSecondary} onClick={onClose}>Cancel</button>
-          <button type="button" className={buttonPrimary} disabled={busy || Boolean(problem)} onClick={() => void save()}>{busy ? "Saving..." : "Save checklist"}</button>
+          <button type="button" className={buttonPrimary} disabled={busy || Boolean(problem)} onClick={() => void save()}>{busy ? "Saving..." : "Save QC checklist"}</button>
         </>
       }
     >
       <div className="space-y-4">
-        <p className="rounded-lg bg-surface-muted p-3 text-xs text-fg-muted">References are not automatic proof of compliance. Record the applicable edition and exact clause, acceptance criteria, and required evidence or test for each item. The Engineer can copy applicable criteria while creating each work checklist item. Existing inspections keep their original criteria.</p>
+        <p className="rounded-lg bg-surface-muted p-3 text-xs text-fg-muted">References are not automatic proof of compliance. Record the applicable edition and exact clause, acceptance criteria, and required evidence or test for each item. The Engineer can copy applicable criteria while creating each task. Existing inspections keep their original criteria.</p>
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="sm:col-span-2"><label className={label} htmlFor="t-name">Name</label><input id="t-name" className={inputClass} maxLength={120} value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Slab pre-pour inspection" /></div>
           <div><label className={label} htmlFor="t-trade">Trade</label><select id="t-trade" className={inputClass} value={trade} onChange={(event) => setTrade(event.target.value as Trade)}>{trades.map((t) => <option key={t} value={t}>{tradeLabels[t]}</option>)}</select></div>

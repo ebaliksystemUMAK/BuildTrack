@@ -48,7 +48,7 @@ const all = node => Array.isArray(node) ? node.flatMap(all) : node && typeof nod
 const text = node => Array.isArray(node) ? node.map(text).join("") : node?.props ? text(node.props.children) : typeof node === "string" || typeof node === "number" ? String(node) : ""
 const find = predicate => { const node = all(tree).find(predicate); assert.ok(node, "Expected QA layout control"); return node }
 const render = (Component, props) => { cursor = 0; tree = Component(props); return tree }
-const filters = () => all(find(node => node.props?.["aria-label"] === "Show work items")).filter(node => node.type === "button")
+const filters = () => all(find(node => node.props?.["aria-label"] === "Show tasks")).filter(node => node.type === "button")
 const Board = await compile("../src/components/qa/WorkItemBoard.tsx")
 globalThis.__qaLayoutBoard = Board
 const boardProps = { groups: [
@@ -86,12 +86,12 @@ assert.doesNotMatch(text(tree), /Review queue|Waiting for you/)
 let register = find(node => node.props?.workTabs).props
 assert.deepEqual(register.tabs, ["inspections", "defects", "complete", "completed", "snags"])
 assert.equal(register.workTabs.complete.count, 0, "Inspection in progress cannot be completed")
-assert.equal(register.workTabs.completed.count, 1, "Completed checklists live inside the register")
+assert.equal(register.workTabs.completed.count, 1, "Completed tasks live inside the register")
 assert.deepEqual(register.workTabs.completed.content.props.groups[0].rows.map(row => row.item.id), ["FLOOR"])
 for (const tab of ["complete", "completed"]) {
   assert.equal(register.workTabs[tab].content.props.showGroupFilters, false, "Engineer register tabs do not repeat the group tabs")
   slots = []; render(Board, register.workTabs[tab].content.props)
-  assert.ok(!all(tree).some(node => node.props?.["aria-label"] === "Show work items"))
+  assert.ok(!all(tree).some(node => node.props?.["aria-label"] === "Show tasks"))
 }
 const originalRow = rows[0]
 rows[0] = { ...originalRow, view: { ...originalRow.view, action: "complete", stage: "passed" } }
@@ -102,10 +102,10 @@ globalThis.__qaLayoutDeps.useItemParam = () => [null, id => { opened = id }]
 slots = []; render(Engineer, { onNavigate() {} })
 register = find(node => node.props?.workTabs).props
 slots = []; render(Board, register.workTabs.complete.content.props)
-assert.ok(!all(tree).some(node => node.props?.["aria-label"] === "Show work items"))
-assert.ok(all(tree).some(node => node.props?.["aria-label"] === "Search work items"), "Search remains available without duplicate tabs")
+assert.ok(!all(tree).some(node => node.props?.["aria-label"] === "Show tasks"))
+assert.ok(all(tree).some(node => node.props?.["aria-label"] === "Search tasks"), "Search remains available without duplicate tabs")
 find(node => node.type === "button" && text(node) === "Open").props.onClick()
-assert.equal(opened, "WALL", "Complete checklist opens the exact work item and retains its guarded completion action")
+assert.equal(opened, "WALL", "Complete task opens the exact work item and retains its guarded completion action")
 rows[0] = originalRow
 groups = [{ key: "inspect", short: "Inspect", title: "Inspect", rows: [rows[0]] }]
 // The page's other lists (here Recently completed) are separate: own chip, shown under All, hidden under Inspect.
@@ -151,9 +151,9 @@ assert.deepEqual(correctionsBoard.extras.map(extra => [extra.key, extra.count, B
 assert.doesNotMatch(text(tree), /Site issues on your work|Raised on site/, "the lists live inside the board, not below it")
 slots = []; render(Board, correctionsBoard)
 assert.deepEqual(filters().map(text), ["Completed 1", "Other NCRs 1", "Site issues 1", "All 3"])
-assert.deepEqual(sections(), ["Completed checklists"])
+assert.deepEqual(sections(), ["Completed tasks"])
 filters().at(-1).props.onClick(); render(Board, correctionsBoard)
-assert.deepEqual(sections(), ["Completed checklists", "Other NCRs", "Site issues on your work"], "All shows every list")
+assert.deepEqual(sections(), ["Completed tasks", "Other NCRs", "Site issues on your work"], "All shows every list")
 filters()[2].props.onClick(); render(Board, correctionsBoard)
 assert.deepEqual(sections(), ["Site issues on your work"], "a chip shows only its own list")
 filters()[1].props.onClick(); render(Board, correctionsBoard)
@@ -200,7 +200,7 @@ let pageSlots = [], boardSlots = []
 const renderPage = () => { slots = pageSlots; render(Corrections, {}); pageSlots = slots; return find(node => node.type === Board).props }
 let props = renderPage()
 const renderBoard = () => { slots = boardSlots; render(Board, props); boardSlots = slots }
-const workFilters = () => find(node => node.props?.label === "Filter work items").props
+const workFilters = () => find(node => node.props?.label === "Filter tasks").props
 const changeScope = (key, value) => { workFilters().onChange(key, value); renderBoard() }
 const selectList = prefix => { find(node => node.type === "button" && text(node).startsWith(prefix)).props.onClick(); renderBoard() }
 renderBoard()
@@ -303,7 +303,7 @@ Object.assign(globalThis.__qaLayoutDeps, {
   checklistGroups: () => [], checklistNames: () => [],
 })
 const DefectsPanel = await compile("../src/components/qa/QaPanels.tsx", "DefectsPanel")
-const fullNcr = defect => ({ ...defect, severity: "major", trade: "architectural", raised_at: "2026-10-26T01:00:00Z", due_date: null })
+const fullNcr = defect => ({ ...defect, severity: "major", trade: "architectural", raised_at: "2026-10-26T01:00:00Z", due_date: null, preventive_action: "Prevent recurrence", closing_note: "Verified close" })
 workspace.today = "2026-10-26"
 workspace.defects = [fullNcr(ncrA), fullNcr(ncrB), fullNcr({ ...ncrB, id: "closed-b", number: 15, status: "closed", title: "Kitchen completed fix" })]
 const panelProps = { ws: workspace, mode: "foreman", onNew: null, onOpen: id => { tableOpened = id }, scope: extra.content.props.scope }
@@ -313,6 +313,10 @@ find(node => node.type === "tr" && node.props["aria-label"]?.includes("NCR-0013"
 assert.equal(tableOpened, ncrB.id)
 find(node => node.type === "button" && text(node) === "Export CSV").props.onClick()
 assert.match(csv, /NCR-0013/); assert.doesNotMatch(csv, /NCR-0012|NCR-0015/)
+const ncrCsv = csv.split("\r\n").map(line => line.split(","))
+assert.equal(ncrCsv[1].length, ncrCsv[0].length, "NCR data aligns with every CSV heading")
+assert.equal(ncrCsv[1][ncrCsv[0].indexOf("Preventive action")], "Prevent recurrence")
+assert.equal(ncrCsv[1][ncrCsv[0].indexOf("Closing note")], "Verified close")
 find(node => node.props?.["aria-label"] === "Filter by status").props.onChange({ target: { value: "closed" } }); render(DefectsPanel, panelProps)
 assert.match(text(tree), /Kitchen completed fix/); assert.doesNotMatch(text(tree), /Kitchen finish|Laundry alignment/)
 find(node => node.props?.["aria-label"] === "Filter by class").props.onChange({ target: { value: "critical" } }); render(DefectsPanel, panelProps)

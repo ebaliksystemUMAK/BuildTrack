@@ -19,7 +19,7 @@ export function inspectionReportHtml(input: { inspection: Inspection; items: Ins
     meta: [
       ["Result", inspectionStatusLabels[ir.status]],
       ["Score", ir.score === null ? "-" : `${ir.score}% (pass mark ${ir.threshold ?? "-"}%)`],
-      ["Scope", ir.full_checklist_reinspection ? "Full checklist reinspection, including previously passed checks. All results belong to this inspection; earlier results/evidence remain unchanged. This is not whole-project acceptance." : "Full scope recorded in this inspection"],
+      ["Scope", ir.full_checklist_reinspection ? "Full QC checklist reinspection, including previously passed checks. All results belong to this inspection; earlier results/evidence remain unchanged. This is not whole-project acceptance." : "Full scope recorded in this inspection"],
       ["Trade", tradeLabels[ir.trade]],
       ["Completed", stamp(ir.completed_at)],
     ],
@@ -38,7 +38,7 @@ export function inspectionReportHtml(input: { inspection: Inspection; items: Ins
       },
       { heading: "Engineer's summary", body: ir.summary ?? "No summary written." },
       {
-        heading: "Checklist",
+        heading: "QC Checklist",
         table: {
           head: ["No.", "Item", "Class", "Hold", "Requirement", "Result", "Measured", "Remarks"],
           rows: items.map((item) => [

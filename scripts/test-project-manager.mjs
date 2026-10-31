@@ -107,7 +107,8 @@ test("dashboard: progress, reviews waiting, open / late NCRs and deadlines (late
     { id: "d2", status: "for_verification", severity: "minor", title: "Paint", due_date: "2026-11-02" },
     { id: "d3", status: "closed", severity: "major", title: "Done", due_date: "2026-10-01" },
   ]
-  const s = dashboardSummary({ pins, inspections, defects, project: { start_date: "2026-10-01", end_date: "2026-11-10", status: "active" }, today: "2026-10-29" })
+  const taskPins = pins.map(pin => ({ ...pin, tasks: [{ id: pin.id, pin_id: pin.id, text: pin.title, done: pin.status === "verified", review_status: pin.status === "verified" ? "verified" : "not_submitted" }] }))
+  const s = dashboardSummary({ pins: taskPins, inspections, defects, project: { start_date: "2026-10-01", end_date: "2026-11-10", status: "active" }, today: "2026-10-29" })
   assert.equal(s.totals.total, 4, "notes are not work")
   assert.equal(s.totals.percentVerified, 25)
   assert.equal(s.pendingReviews, 1)

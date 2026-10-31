@@ -180,7 +180,7 @@ requests.find(row => row.table === "biometric_daily_totals").resolve({ data: nul
 requests.find(row => row.name === "attendance_day_summary").resolve({ data: { workers: 3, scans: 7 }, error: null }); await tick()
 render(ReviewPanel, { report: records[0], pins: [pin], nameOf: author, onChanged: async () => {} })
 assert.match(text(tree), /3 unique workers · 7 scans/)
-find(node => node.type === "button" && text(node) === "Open checklist, QA and NCRs").props.onClick()
+find(node => node.type === "button" && text(node) === "Open task, QA and NCRs").props.onClick()
 assert.deepEqual(globalThis.__lastReportLink, ["/engineer/verification?project=A&item=floor", "A"])
 assert.match(text(tree), /Completed by the Engineer/)
 

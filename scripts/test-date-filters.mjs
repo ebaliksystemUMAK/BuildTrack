@@ -6,6 +6,7 @@ import * as progress from "../src/lib/progress.ts"
 import { allDates } from "../src/lib/dateRangeModel.ts"
 import { qaOverviewSummary, qaOverviewTrend } from "../src/lib/qaOverviewModel.ts"
 import { qaSummaryHtml } from "../src/lib/qaPrint.ts"
+import * as taskProgress from "../src/lib/taskProgress.ts"
 
 // Calendar filtering on the QA register (inspections requested / NCRs raised / client reports made) and Progress by zone
 // (work due): the real filter control, page, view and panels, compiled with stubbed imports (no browser, no network).
@@ -68,12 +69,13 @@ assert.match(text(find(node => node.props?.role === "alert")), /end date must be
 reset(); render(Filter, filterProps(october)); assert.equal(find(node => node.type === "select").props.value, "thisMonth")
 find(node => node.type === "button" && text(node) === "Clear dates").props.onClick(); assert.deepEqual(chosen, allDates)
 
-// ---- Progress by zone: work due in the chosen dates, per zone and discipline; CSV and the address follow ----
+// ---- Progress by zone: progress made in the chosen period (task approval dates); zones, CSV and the address follow ----
 const sheets = [{ id: "A", title: "Ground floor", level: "1", discipline: "civil" }, { id: "B", title: "Roof", level: "R", discipline: null }]
-const pin = (id, blueprint_id, status, due_date, extra = {}) => ({ id, blueprint_id, status, due_date, category: "progress", title: id, discipline: null, assigned_to: null, verified_at: null, ...extra })
+const task = (id, pin_id, approved, verified_at = null) => ({ id, pin_id, text: id, done: approved, review_status: approved ? "verified" : "not_submitted", verified_at })
+const pin = (id, blueprint_id, status, due_date, extra = {}) => ({ id, blueprint_id, status, due_date, category: "progress", title: id, discipline: null, assigned_to: null, verified_at: null, tasks: [task(`${id}-task`, id, status === "verified", extra.verified_at)], ...extra })
 const pins = [
   pin("a1", "A", "verified", "2026-10-10", { verified_at: "2026-10-12T02:00:00Z" }),
-  pin("a2", "A", "in_progress", "2026-10-20"),
+  pin("a2", "A", "in_progress", "2026-10-20", { tasks: [task("floor", "a2", true, "2026-10-20T03:00:00Z"), task("wall", "a2", true, "2026-10-20T04:00:00Z"), task("ceiling", "a2", true, "2026-10-20T05:00:00Z"), task("paint", "a2", false)] }),
   pin("b1", "B", "not_started", "2026-11-15"),
   pin("a3", "A", "in_progress", null),
   pin("b2", "B", "verified", "2026-09-30", { verified_at: "2026-10-02T03:00:00Z" }),
@@ -81,35 +83,51 @@ const pins = [
 ]
 let csv = null
 Object.assign(deps, {
-  ...progress, downloadCsv: (name, content) => { csv = { name, content } },
+  ...progress, ...taskProgress, downloadCsv: (name, content) => { csv = { name, content } },
   getSelectedProjectId: () => "P", disciplineLabels: { civil: "Civil" }, statusDot: {}, statusLabels: { not_started: "Not started", in_progress: "In progress", for_review: "For review", issue: "Issue", verified: "Completed" },
   useProjectWork: () => ({ project: { code: "PRJ", start_date: "2026-09-01", end_date: "2026-12-31" }, blueprints: sheets, pins, today: "2026-10-22", loading: false, error: "", reload: async () => {}, sheetOf: id => id, nameOf: () => "Foreman" }),
 })
-const Progress = (await compile("../src/pages/Engineer/EngineerProgress.tsx", { "../../lib/dateRangeModel": model })).default
+const Progress = (await compile("../src/pages/Engineer/EngineerProgress.tsx", { "../../lib/dateRangeModel": model, "../../lib/periodProgress": new URL("../src/lib/periodProgress.ts", import.meta.url).href })).default
 const card = label => find(node => named("StatCard")(node) && node.props.label === label)
 setLocation("/engineer/progress", "?project=P"); replaced = []
 reset(); render(Progress, { onNavigate() {} })
-assert.equal(card("Verified").props.note, "2 of 5 work pins", "unfiltered: every work pin, notes left out")
-assert.equal(find(named("DateRangeFilter")).props.label, "Due date"); assert.deepEqual(find(named("DateRangeFilter")).props.presets, ["all", "thisWeek", "thisMonth", "lastMonth", "next30", "last30"])
+assert.equal(card("Verified").props.note, "5 of 8 tasks approved", "unfiltered: every task, notes left out")
+assert.equal(card("Verified").props.value, "62.5%")
+assert.equal(find(named("DateRangeFilter")).props.label, "Period"); assert.deepEqual(find(named("DateRangeFilter")).props.presets, ["all", "today", "thisWeek", "thisMonth", "lastMonth"])
+assert.ok(!has(node => node.type === "button" && /Work due|Progress made/.test(text(node))), "no view switch: a period always means progress made")
+// Progress made: every work pin counts (a3 has no due date, b2 was due in September), by the day each task was approved.
 find(named("DateRangeFilter")).props.onChange(october); render(Progress, { onNavigate() {} })
 assert.deepEqual(replaced.at(-1), "/engineer/progress?project=P&from=2026-10-01&to=2026-10-31", "the dates stay in the address")
-assert.equal(card("Verified").props.note, "1 of 2 work pins", "only work due in October counts"); assert.equal(card("Verified").props.value, "50%")
-assert.equal(all(tree).filter(node => node.type === "article").length, 1, "zones with nothing due are hidden")
-assert.match(text(tree), /1 sheet has no work due on these dates/)
-const summary = text(find(node => node.type === "p" && /Work due 1 Oct 2026 to 31 Oct 2026/.test(text(node))))
-assert.match(summary, /2 work pins verified on these dates/, "verified in October counts any due date (b2 was due in September)")
-assert.match(summary, /1 work pin has no due date and is left out/)
-assert.ok(has(node => node.type === "h2" && text(node) === "Work due 1 Oct 2026 to 31 Oct 2026"))
-assert.equal(find(named("SCurveChart")).props.pins, pins, "the S-curve stays whole-project")
+assert.equal(card("Approved in period").props.value, 5, "a1 (12 Oct), floor / wall / ceiling (20 Oct) and b2 (2 Oct), whatever their due dates")
+assert.equal(card("Progress at end of period").props.value, "62.5%"); assert.match(card("Progress at end of period").props.note, /5 of 8 tasks approved by 22 Oct 2026/, "a running period ends today")
+assert.equal(card("Change in period").props.value, "+62.5 pts"); assert.equal(card("Change in period").props.note, "from 0% to 62.5%")
+assert.ok(!has(node => named("EmptyState")(node)), "a month without due dates still shows its progress")
+assert.equal(all(tree).filter(node => node.type === "article").length, 2, "every sheet with work is shown")
+assert.match(text(all(tree).filter(node => node.type === "article")[0]), /4 tasks approved in this period/)
+assert.match(text(all(tree).filter(node => node.type === "article")[0]), /4\/6 tasks approved by 22 Oct 2026/)
+const approvedList = all(tree).filter(node => node.type === "li" && all(node.props.children).some(child => String(child?.props?.className ?? "").includes("bg-green-100")))
+assert.deepEqual(approvedList.map(node => text(node)), ["a2 · ceilingA20 Oct 2026", "a2 · floorA20 Oct 2026", "a2 · wallA20 Oct 2026", "a1 · a1-taskA12 Oct 2026", "b2 · b2-taskB2 Oct 2026"], "pin · task, sheet, approval day: the five approved tasks, newest first")
+assert.match(text(approvedList[0]), /20 Oct 2026/); assert.match(text(approvedList.at(-1)), /2 Oct 2026/)
+assert.deepEqual(find(named("SCurveChart")).props.pins.map(pin => pin.id), ["a1", "a2", "b1", "a3", "b2"], "the S-curve shows the whole project")
 find(node => node.type === "button" && text(node) === "Export CSV").props.onClick()
-assert.equal(csv.name, "progress-PRJ-2026-10-22-due-2026-10-01-to-2026-10-31.csv"); assert.match(csv.content, /Ground floor/); assert.doesNotMatch(csv.content, /Roof/)
-find(named("DateRangeFilter")).props.onChange({ from: "2026-12-01", to: "2026-12-31" }); render(Progress, { onNavigate() {} })
-const empty = find(node => named("EmptyState")(node) && node.props.title === "No work due on these dates")
-empty.props.action.props.onClick(); render(Progress, { onNavigate() {} })
-assert.equal(card("Verified").props.note, "2 of 5 work pins", "Show all dates clears the filter"); assert.equal(replaced.at(-1), "/engineer/progress?project=P")
-setLocation("/engineer/progress", "?project=P&from=2026-11-01&to=2026-11-30")
+assert.equal(csv.name, "progress-PRJ-2026-10-22-made-2026-10-01-to-2026-10-22.csv"); assert.match(csv.content, /Tasks approved in period/)
+assert.match(csv.content, /Ground floor,1,Civil,4,4,6,66\.7,0,66\.7/)
+find(named("DateRangeFilter")).props.onChange({ from: "2026-11-01", to: "2026-11-30" }); render(Progress, { onNavigate() {} })
+assert.equal(card("Approved in period").props.value, 0, "a future period has no approvals yet"); assert.equal(card("Change in period").props.value, "0 pts")
+find(named("DateRangeFilter")).props.onChange(october); render(Progress, { onNavigate() {} })
+find(named("DateRangeFilter")).props.onChange({ from: "2026-10-31", to: "2026-10-01" }); render(Progress, { onNavigate() {} })
+assert.match(text(tree), /end date must be on or after/)
+assert.ok(!has(named("StatCard")), "An invalid range must not show unfiltered progress")
+assert.equal(find(node => node.type === "button" && text(node) === "Export CSV").props.disabled, true)
+find(named("DateRangeFilter")).props.onChange({ from: "", to: "" }); render(Progress, { onNavigate() {} })
+assert.equal(card("Verified").props.note, "5 of 8 tasks approved", "All dates shows the whole project again"); assert.equal(replaced.at(-1), "/engineer/progress?project=P")
+find(node => node.type === "button" && text(node) === "Export CSV").props.onClick()
+assert.equal(csv.name, "progress-PRJ-2026-10-22.csv"); assert.match(csv.content, /Approved tasks,Total tasks,% approved tasks/)
+setLocation("/engineer/progress", "?project=P&by=due&from=2026-10-01&to=2026-10-31")
 reset(); render(Progress, { onNavigate() {} })
-assert.equal(card("Verified").props.note, "0 of 1 work pins", "a shared link opens with its dates"); assert.match(text(find(node => node.type === "article")), /Roof/)
+assert.equal(card("Approved in period").props.value, 5, "a shared link opens with its dates; an old by=due link shows progress made")
+window.location.search = "?project=P&from=2026-10-12&to=2026-10-12"; listeners.popstate(); render(Progress, { onNavigate() {} })
+assert.equal(card("Approved in period").props.value, 1, "Back/forward navigation restores the period and its progress (a1 on 12 Oct)")
 
 // ---- QA register view: one filter for the Overview and registers, labelled by the date each one reads ----
 Object.assign(deps, { useSnags: () => ({ snags: [], loading: false, error: "", reload: async () => {} }) })
@@ -149,8 +167,8 @@ const completionProps = { ...viewProps, tabs: ["inspections", "defects", "comple
 } }
 setLocation("/engineer/qa", "?project=P&tab=complete")
 reset(); render(View, completionProps)
-assert.equal(tab("Complete checklist").props["aria-selected"], true)
-assert.equal(text(tab("Complete checklist")), "Complete checklist2")
+assert.equal(tab("Complete task").props["aria-selected"], true)
+assert.equal(text(tab("Complete task")), "Complete task2")
 assert.match(text(tree), /Ready checklist content/); assert.doesNotMatch(text(tree), /Completed checklist history|Review queue/)
 assert.ok(!has(named("DateRangeFilter")), "Requested/raised date filters never imply they filter completion dates")
 tab("Completed").props.onClick(); render(View, completionProps)
@@ -281,4 +299,4 @@ render(Hook, "large"); for (let i = 0; i < 100; i++) await settle(); render(Hook
 assert.match(tree.error, /record limit/); assert.deepEqual(tree.items, [], "never report partial totals when the paging cap is reached")
 reset()
 
-console.log("Calendar filters: presets / custom / validation / clear; Progress due dates and CSV; QA Overview and registers share dates and URL / history; Overview cards, current-state cohorts, real inspection-item denominator, attention, recent, trends and print; loading/error/empty states; minimal project-scoped paginated reads, retry and stale-response protection; Foreman pages unchanged")
+console.log("Calendar filters: presets / custom / validation / clear; Progress made per period and CSV; QA Overview and registers share dates and URL / history; Overview cards, current-state cohorts, real inspection-item denominator, attention, recent, trends and print; loading/error/empty states; minimal project-scoped paginated reads, retry and stale-response protection; Foreman pages unchanged")

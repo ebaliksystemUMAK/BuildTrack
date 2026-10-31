@@ -27,7 +27,7 @@ function ChecklistViewer({ template, onClose, onAdd, added }: { template: Templa
     >
       <div className="space-y-3">
         {template.description ? <p className="text-sm text-fg-muted">{template.description}</p> : null}
-        <ChecklistDocumentation standards={template.standards} items={template.qa_template_items} emptyText="No standard or clause is cited yet. Edit the checklist to cite the standards and exact clauses it is based on." />
+        <ChecklistDocumentation standards={template.standards} items={template.qa_template_items} emptyText="No standard or clause is cited yet. Edit the QC checklist to cite the standards and exact clauses it is based on." />
         <ol className="space-y-2">
           {template.qa_template_items.map((item, index) => (
             <li key={item.id} className="rounded-lg border border-line bg-surface p-3">
@@ -53,10 +53,10 @@ function LibraryPicker({ library, project, busy, onAdd, onClose }: { library: Te
   const [viewing, setViewing] = useState<Template | null>(null)
   const shown = library.filter((t) => `${t.name} ${tradeLabels[t.trade]} ${t.standards.join(" ")}`.toLowerCase().includes(query.trim().toLowerCase()))
   return (
-    <Modal title="Add a checklist from the company library" size="xl" onClose={onClose} description="Added checklists are copied into this project: adapt them to the project's specification there. Only checklists added to the project can be used on its work items and inspection requests.">
+    <Modal title="Add a QC checklist from the company library" size="xl" onClose={onClose} description="Added QC checklists are copied into this project: adapt them to the project's specification there. Only QC checklists added to the project can be used on its tasks and inspection requests.">
       <div className="space-y-3">
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name, trade or cited standard" aria-label="Search the library" className={`min-h-10 ${inputClass}`} />
-        {shown.length === 0 ? <p className="rounded-xl border border-dashed border-line p-4 text-sm text-fg-muted">No library checklist matches.</p> : (
+        {shown.length === 0 ? <p className="rounded-xl border border-dashed border-line p-4 text-sm text-fg-muted">No library QC checklist matches.</p> : (
           <ul className="divide-y divide-line rounded-xl border border-line">
             {shown.map((template) => {
               const added = addedToProject(template, project)
@@ -104,10 +104,10 @@ export default function ProjectChecklists({ ws, canEdit, onEdit }: { ws: QaWorks
     await ws.reloadTemplates()
   }
   const archive = async (template: Template) => {
-    if (!template.archived && !(await confirm({ title: `Archive "${template.name}"?`, message: "It is no longer offered for work items or inspection requests. Inspections already made keep their criteria.", confirmLabel: "Archive" }))) return
+    if (!template.archived && !(await confirm({ title: `Archive "${template.name}"?`, message: "It is no longer offered for tasks or inspection requests. Inspections already made keep their criteria.", confirmLabel: "Archive" }))) return
     const result = await qaActions.archiveTemplate(template.id, !template.archived)
     if (!result.ok) return toast.error("Not changed", result.message)
-    toast.success(template.archived ? "Checklist restored" : "Checklist archived")
+    toast.success(template.archived ? "QC Checklist restored" : "QC Checklist archived")
     await ws.reloadTemplates()
   }
 
@@ -115,22 +115,22 @@ export default function ProjectChecklists({ ws, canEdit, onEdit }: { ws: QaWorks
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-sm font-extrabold text-fg">This project's checklists ({live.length})</h2>
-          <p className="text-xs text-fg-muted">Only these are offered when criteria are set on a work item or a stage / hold-point inspection is requested.</p>
+          <h2 className="text-sm font-extrabold text-fg">This project's QC checklists ({live.length})</h2>
+          <p className="text-xs text-fg-muted">Only these are offered when criteria are set on a task or a stage / hold-point inspection is requested.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="mr-1 flex min-h-8 items-center gap-1.5 text-sm font-semibold"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Show archived</label>
           {canEdit ? <button type="button" className={buttonSecondary} onClick={() => setPicking(true)}>Add from library</button> : null}
-          {canEdit ? <button type="button" className={buttonPrimary} onClick={() => onEdit(null, "project")}>New checklist</button> : null}
+          {canEdit ? <button type="button" className={buttonPrimary} onClick={() => onEdit(null, "project")}>New QC checklist</button> : null}
         </div>
       </div>
 
-      {ws.loading ? <SkeletonList rows={4} label="Loading checklists" /> : list.length === 0 ? (
+      {ws.loading ? <SkeletonList rows={4} label="Loading QC checklists" /> : list.length === 0 ? (
         <EmptyState
-          title="No checklist added to this project yet"
-          action={canEdit ? <span className="flex flex-wrap justify-center gap-2"><button type="button" className={buttonSecondary} onClick={() => setPicking(true)}>Add from library</button><button type="button" className={buttonPrimary} onClick={() => onEdit(null, "project")}>New checklist</button></span> : undefined}
+          title="No QC checklist added to this project yet"
+          action={canEdit ? <span className="flex flex-wrap justify-center gap-2"><button type="button" className={buttonSecondary} onClick={() => setPicking(true)}>Add from library</button><button type="button" className={buttonPrimary} onClick={() => onEdit(null, "project")}>New QC checklist</button></span> : undefined}
         >
-          Add the checklists this project uses. Work items and inspection requests can only use checklists added here.
+          Add the QC checklists this project uses. Tasks and inspection requests can only use QC checklists added here.
         </EmptyState>
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

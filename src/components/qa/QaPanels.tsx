@@ -181,14 +181,14 @@ export function InspectionsPanel({ ws, onOpen, onNew, canRequest, kind: fixedKin
     return ws.inspections.filter((row) => inRange(row.requested_at, dates) && (kindFilter === "all" || kindOf(row.id) === kindFilter) && (!checklist || matchedIds.has(row.id)) && (status === "all" || (status === "open" ? row.status === "requested" || row.status === "in_progress" : row.status === status)) && (trade === "all" || row.trade === trade) && (!text || `${refNumber("ir", row.number)} ${row.title} ${row.location ?? ""} ${(namesByInspection.get(row.id) ?? []).join(" ")}`.toLowerCase().includes(text)))
   }, [ws.inspections, status, trade, query,checklist,matchedIds,namesByInspection,kindFilter,dates]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const exportCsv = () => downloadCsv(`inspections-${ws.project?.code ?? "project"}-${ws.today}.csv`, toCsv(["IR", "Type", "Title", "Work item(s)", "Trade", "Location", "Status", "Score %", "Pass mark %", "Requested by", "Requested", "Inspector", "Completed"], list.map((row) => [refNumber("ir", row.number), kindOf(row.id) === "work" ? "Work item QA" : "Stage / hold point", row.title, (namesByInspection.get(row.id) ?? []).join(" / "), tradeLabels[row.trade], row.location ?? "", inspectionStatusLabels[row.status], row.score ?? "", row.threshold ?? "", ws.nameOf(row.requested_by), row.requested_at.slice(0, 10), ws.nameOf(row.inspector_id), row.completed_at?.slice(0, 10) ?? ""]))) // eslint-disable-line
+  const exportCsv = () => downloadCsv(`inspections-${ws.project?.code ?? "project"}-${ws.today}.csv`, toCsv(["IR", "Type", "Title", "Task(s)", "Trade", "Location", "Status", "Score %", "Pass mark %", "Requested by", "Requested", "Inspector", "Completed"], list.map((row) => [refNumber("ir", row.number), kindOf(row.id) === "work" ? "Task QA" : "Stage / hold point", row.title, (namesByInspection.get(row.id) ?? []).join(" / "), tradeLabels[row.trade], row.location ?? "", inspectionStatusLabels[row.status], row.score ?? "", row.threshold ?? "", ws.nameOf(row.requested_by), row.requested_at.slice(0, 10), ws.nameOf(row.inspector_id), row.completed_at?.slice(0, 10) ?? ""]))) // eslint-disable-line
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search IR, work or work item name..." aria-label="Search inspections" className={`${inputClass} !w-64`} />
-        {!fixedKind ? <select aria-label="Filter by request type" className={`${inputClass} !w-auto`} value={kindFilter} onChange={(event) => setKindFilter(event.target.value as typeof kindFilter)}><option value="all">All request types</option><option value="work">Work item QA</option><option value="stage">Stage / hold point</option></select> : null}
-        {fixedKind !== "stage" ? <select aria-label="Filter by work item name" className={`${inputClass} !w-auto max-w-full`} value={checklist} disabled={submissionIndex.loading || Boolean(submissionIndex.error)} onChange={event=>setChecklist(event.target.value)}><option value="">All work items</option>{groups.map(group=><option key={group.key} value={group.key}>{group.name} ({group.rows.length} requests)</option>)}</select> : null}
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search IR, work or task name..." aria-label="Search inspections" className={`${inputClass} !w-64`} />
+        {!fixedKind ? <select aria-label="Filter by request type" className={`${inputClass} !w-auto`} value={kindFilter} onChange={(event) => setKindFilter(event.target.value as typeof kindFilter)}><option value="all">All request types</option><option value="work">Task QA</option><option value="stage">Stage / hold point</option></select> : null}
+        {fixedKind !== "stage" ? <select aria-label="Filter by task name" className={`${inputClass} !w-auto max-w-full`} value={checklist} disabled={submissionIndex.loading || Boolean(submissionIndex.error)} onChange={event=>setChecklist(event.target.value)}><option value="">All tasks</option>{groups.map(group=><option key={group.key} value={group.key}>{group.name} ({group.rows.length} requests)</option>)}</select> : null}
         <select aria-label="Filter by status" className={`${inputClass} !w-auto`} value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
           {mode !== "engineer" ? <><option value="all">All statuses</option><option value="open">Waiting or in progress</option></> : null}
           {statuses.map((value) => <option key={value} value={value}>{inspectionStatusLabels[value]}</option>)}
@@ -202,13 +202,13 @@ export function InspectionsPanel({ ws, onOpen, onNew, canRequest, kind: fixedKin
       </div>
       {submissionIndex.error ? <p role="alert" className="text-sm text-danger-fg">{submissionIndex.error}<button type="button" className="ml-2 font-bold underline" onClick={()=>void submissionIndex.reload()}>Retry</button></p> : null}
       {ws.loading || submissionIndex.loading ? <SkeletonList rows={5} label="Loading inspections" /> : ws.inspections.length === 0 ? (
-        <EmptyState title="No inspections yet" action={canRequest && fixedKind !== "work" ? <button type="button" className={buttonPrimary} onClick={onNew}>Request stage / hold-point inspection</button> : undefined}>Work items are submitted from the work item itself. Stage and hold-point inspections are requested here and recorded by the Engineer against their criteria.</EmptyState>
+        <EmptyState title="No inspections yet" action={canRequest && fixedKind !== "work" ? <button type="button" className={buttonPrimary} onClick={onNew}>Request stage / hold-point inspection</button> : undefined}>Tasks are submitted from the task itself. Stage and hold-point inspections are requested here and recorded by the Engineer against their criteria.</EmptyState>
       ) : list.length === 0 ? <EmptyState title="Nothing matches">{isFiltered(dates) ? "Change the dates, the filters or the search." : "Change the filters or the search."}</EmptyState> : (
         <Table label="Inspections" head={["IR", "Inspection", "Trade", "Status", "Score", "Requested", "Target / owner", "Inspector"]}>
           {list.map((row: Inspection) => (
             <tr key={row.id} tabIndex={0} aria-label={`Open ${refNumber("ir", row.number)}: ${row.title}`} onClick={() => onOpen(row.id)} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(row.id) } }} className="cursor-pointer hover:bg-surface-muted/60 focus:bg-brand-soft focus-visible:outline-2 focus-visible:outline-brand">
               <td className="whitespace-nowrap px-3 py-2"><button type="button" className={rowButton} onClick={event => { event.stopPropagation(); onOpen(row.id) }}>{refNumber("ir", row.number)}</button></td>
-              <td className="px-3 py-2"><span className="block font-semibold">{row.title}</span>{row.location ? <span className="block text-xs text-fg-muted">{row.location}</span> : null}<span className="block text-xs font-bold text-brand-text">{kindOf(row.id) === "work" ? `Work item QA · ${(namesByInspection.get(row.id) ?? []).join(" · ")}` : "Stage / hold point"}</span></td>
+              <td className="px-3 py-2"><span className="block font-semibold">{row.title}</span>{row.location ? <span className="block text-xs text-fg-muted">{row.location}</span> : null}<span className="block text-xs font-bold text-brand-text">{kindOf(row.id) === "work" ? `Task QA · ${(namesByInspection.get(row.id) ?? []).join(" · ")}` : "Stage / hold point"}</span></td>
               <td className="px-3 py-2 text-xs">{tradeLabels[row.trade]}</td>
               <td className="px-3 py-2"><Chip tone={inspectionTone[row.status]}>{inspectionStatusLabels[row.status]}</Chip>{(ws.canActOn?.(row) ?? true) ? null : <span className="ml-1"><Chip tone="border border-line bg-surface-muted text-fg-muted">View only</Chip></span>}{row.reinspection_of ? <span className="ml-1 text-[11px] font-bold text-fg-muted">re-inspection</span> : null}</td>
               <td className="px-3 py-2 tabular-nums">{row.score === null ? "-" : `${row.score}%`}</td>
@@ -246,7 +246,7 @@ export function DefectsPanel({ ws, mode, onOpen, onNew, scope, dates = allDates 
   }, [ws.defects, ws.today, status, severity, trade, mine, query, profile?.id, scope, dates])
 
   const exportCsv = () =>
-    downloadCsv(`ncr-register-${ws.project?.code ?? "project"}-${ws.today}.csv`, toCsv(["NCR", "Title", "Class", "Category", "Trade", "Standard", "Status", "Responsible", "Raised", "Due", "Closed", "Root cause", "Corrective action", "Preventive action", "Closing note"], list.map((row) => [refNumber("ncr", row.number), row.title, qaSeverityLabels[row.severity], row.category, tradeLabels[row.trade], row.reference ?? "", defectStatusLabels[row.status], ws.nameOf(row.assigned_to), row.raised_at.slice(0, 10), row.due_date ?? "", row.closed_at?.slice(0, 10) ?? "", row.root_cause ?? "", row.corrective_action ?? "", row.closing_note ?? ""])))
+    downloadCsv(`ncr-register-${ws.project?.code ?? "project"}-${ws.today}.csv`, toCsv(["NCR", "Title", "Class", "Category", "Trade", "Standard", "Status", "Responsible", "Raised", "Due", "Closed", "Root cause", "Corrective action", "Preventive action", "Closing note"], list.map((row) => [refNumber("ncr", row.number), row.title, qaSeverityLabels[row.severity], row.category, tradeLabels[row.trade], row.reference ?? "", defectStatusLabels[row.status], ws.nameOf(row.assigned_to), row.raised_at.slice(0, 10), row.due_date ?? "", row.closed_at?.slice(0, 10) ?? "", row.root_cause ?? "", row.corrective_action ?? "", row.preventive_action ?? "", row.closing_note ?? ""])))
 
   return (
     <div className="space-y-3">
@@ -344,7 +344,7 @@ export function ChecklistsPanel({ ws, canEdit, canEditLibrary, onEdit }: { ws: Q
     if (!template.archived && !(await confirm({ title: `Archive "${template.name}"?`, message: "It disappears from new requests. Inspections already created keep their list.", confirmLabel: "Archive" }))) return
     const result = await qaActions.archiveTemplate(template.id, !template.archived)
     if (!result.ok) return toast.error("Not changed", result.message)
-    toast.success(template.archived ? "Checklist restored" : "Checklist archived")
+    toast.success(template.archived ? "QC Checklist restored" : "QC Checklist archived")
     await ws.reloadTemplates()
   }
 
@@ -353,15 +353,15 @@ export function ChecklistsPanel({ ws, canEdit, canEditLibrary, onEdit }: { ws: Q
       <div className="flex flex-wrap items-center justify-between gap-2">
         <label className="flex items-center gap-1.5 text-sm font-semibold"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Show archived</label>
         <span className="flex gap-2">
-          {canEdit ? <button type="button" className={buttonPrimary} onClick={() => onEdit(null, "project")}>New checklist</button> : null}
-          {canEditLibrary ? <button type="button" className={buttonPrimary} onClick={() => onEdit(null, "library")}>New library checklist</button> : null}
+          {canEdit ? <button type="button" className={buttonPrimary} onClick={() => onEdit(null, "project")}>New QC checklist</button> : null}
+          {canEditLibrary ? <button type="button" className={buttonPrimary} onClick={() => onEdit(null, "library")}>New library QC checklist</button> : null}
         </span>
       </div>
-      {ws.loading ? <SkeletonList rows={4} label="Loading checklists" /> : groups.map((group) => group.name === "This project" && !ws.projectId ? null : (
+      {ws.loading ? <SkeletonList rows={4} label="Loading QC checklists" /> : groups.map((group) => group.name === "This project" && !ws.projectId ? null : (
         <section key={group.name} aria-label={group.name}>
           <h2 className="text-sm font-extrabold">{group.name}</h2>
           <p className="mb-2 text-xs text-fg-muted">{group.note}</p>
-          {group.list.length === 0 ? <p className="rounded-xl border border-dashed border-line p-4 text-sm text-fg-muted">{group.name === "This project" ? "No project checklist yet. Copy one from the library or create your own." : "No checklist."}</p> : (
+          {group.list.length === 0 ? <p className="rounded-xl border border-dashed border-line p-4 text-sm text-fg-muted">{group.name === "This project" ? "No project QC checklist yet. Copy one from the library or create your own." : "No QC checklist."}</p> : (
             <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {group.list.map((template) => {
                 const holds = template.qa_template_items.filter((i) => i.hold_point).length

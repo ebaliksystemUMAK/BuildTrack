@@ -20,7 +20,7 @@ const labels: Record<EngineerPageKey, { label: string; icon: AdminIconName }> = 
   assignments: { label: "Assignment Board", icon: "users" },
   reports: { label: "Site Logs & Reports", icon: "file" },
   qa: { label: "QA Register", icon: "clipboard" },
-  checklists: { label: "Checklist Configuration", icon: "settings" },
+  checklists: { label: "QC Checklists", icon: "settings" },
 }
 
 // First the Engineer's assigned projects; inside a project, the sidebar shows only that project's sections (and its own badges).

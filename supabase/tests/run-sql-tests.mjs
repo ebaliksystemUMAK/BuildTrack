@@ -108,8 +108,8 @@ await test("Project creation is written to the audit log", async () => {
   if (n < 1) throw new Error("no audit row for projects.insert")
 })
 
-await test("Assigning members works and rejects non-field roles", async () => {
-  await as("admin", "aal2")
+await test("Super Admin recovery assignment works and rejects non-field roles", async () => {
+  await as("super", "aal2")
   const { rows } = await db.query("select id from public.projects where code = 'VCB-001'")
   const pid = rows[0].id
   ids.p1 = pid

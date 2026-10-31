@@ -12,7 +12,7 @@ export default function PmQuality(_: PmPageProps) {
   return (
     <div className="admin-page">
       <PageHead eyebrow={`${pm.project?.code ?? "Project"} • Quality & QA`} title="Quality & QA"
-        description="Follow inspections, project checklists, NCRs and corrective work. Engineers inspect, verify and close; Foremen correct. This view is read-only." />
+        description="Follow inspections, project QC checklists, NCRs and corrective work. Engineers inspect, verify and close; Foremen correct. This view is read-only." />
       <QaView ws={ws} mode="engineer" tabs={["overview", "inspections", "defects", "checklists"]} dateFilter readOnly />
     </div>
   )

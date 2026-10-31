@@ -13,6 +13,8 @@ export default async function ({ db, asOwner, test, expectFail }) {
       assert.ok(original.some(s => s.code === code), code)
     }
     assert.equal(original.length, 16)
+    assert.equal(original.filter(s => s.source).length, 13, "documented official sources: 7 from 20261028150000 + 6 from 20261031102813")
+    assert.equal(original.find(s => s.code === "NSCP 2015").source, undefined, "no invented link")
     assert.equal(Number((await db.query("select count(*) n from public.qa_template_items where acceptance_criteria is not null or evidence_requirement is not null")).rows[0].n), 0, "No fabricated criteria backfilled")
   })
 

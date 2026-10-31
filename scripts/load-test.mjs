@@ -34,6 +34,7 @@ const seedStart = process.hrtime.bigint()
 await addUser("eng", "engineer")
 await addUser("fore", "foreman")
 await addUser("client", "client")
+await addUser("audit", "admin")
 await asOwner()
 const project = (await db.query("insert into public.projects (code, name, start_date, end_date) values ('LOAD-1', 'Load test tower', current_date - 180, current_date + 180) returning id")).rows[0].id
 await db.query("insert into public.project_members (project_id, user_id) values ($1, $2), ($1, $3), ($1, $4)", [project, ids.eng, ids.fore, ids.client])
@@ -90,6 +91,9 @@ const paged = async (sql, params) => {
     if (page < 1000) return total
   }
 }
+
+await measure("Company audit log (100 complete entries and names)", "audit", async () => (await db.query("select * from public.get_audit_log(null, null, null, null, 100, 0)")).rows.length)
+await measure("Company audit search (related pin names)", "audit", async () => (await db.query("select * from public.get_audit_log('Work item 500', 'pins.update', null, null, 100, 0)")).rows.length)
 
 await measure("All pins of the project (paged, as the app reads them)", "eng", () => paged("select * from public.pins where project_id = $1 order by created_at, id", [project]))
 await measure("Same, as the client (Row Level Security)", "client", () => paged("select * from public.pins where project_id = $1 order by created_at, id", [project]))

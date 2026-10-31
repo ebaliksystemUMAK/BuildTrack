@@ -9,7 +9,7 @@ export function useProjectWork(projectId: string | null) {
   const { project, loading: projectLoading, notFound } = useProject(projectId)
   const { blueprints, loading: sheetsLoading, error: sheetsError, reload: reloadSheets } = useBlueprints(projectId)
   useLiveReload([...byProject("blueprints",projectId),{table:"blueprint_revisions"}],()=>void reloadSheets())
-  const { pins, setPins, loading: pinsLoading, error, reload: reloadPins } = useProjectPins(projectId, true)
+  const { pins, setPins, loading: pinsLoading, error, reload: reloadPins } = useProjectPins(projectId, true, true)
   const { team, loading: teamLoading, error: teamError, reload: reloadTeam } = useProjectTeam(projectId)
   const reload=useCallback(async()=>{await Promise.all([reloadSheets(),reloadPins(),reloadTeam()])},[reloadSheets,reloadPins,reloadTeam])
   usePeriodicReload(projectId ? `work:${projectId}` : null, () => { void reloadSheets(); void reloadPins() })

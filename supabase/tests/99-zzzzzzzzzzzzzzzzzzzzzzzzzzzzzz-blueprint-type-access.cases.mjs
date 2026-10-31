@@ -26,8 +26,10 @@ export default async function (ctx) {
     await as("admin", "aal2")
     P.one = (await one("insert into public.projects (code, name) values ('TYPE-1', 'Type access project') returning id")).id
     P.two = (await one("insert into public.projects (code, name) values ('TYPE-2', 'Other type project') returning id")).id
+    await as("super", "aal2") // Recovery authority seeds teams; Admin upload checks remain below.
     for (const who of ["btEngA", "btEngB", "btForeA", "btForeB", "btClient"]) await expectOk("insert into public.project_members (project_id, user_id) values ($1, $2)", [P.one, ids[who]])
     await expectOk("insert into public.project_members (project_id, user_id) values ($1, $2)", [P.two, ids.btEngA])
+    await as("admin", "aal2")
     for (const [key, type] of [["arch", "architectural"], ["elec", "electrical"], ["plumb", "plumbing_sanitary"]])
       S[key] = (await one("insert into public.blueprints (project_id, title, blueprint_type) values ($1, $2, $3) returning id", [P.one, `${type} sheet`, type])).id
     S.otherArch = (await one("insert into public.blueprints (project_id, title, blueprint_type) values ($1, 'Other project plan', 'architectural') returning id", [P.two])).id
@@ -55,14 +57,18 @@ export default async function (ctx) {
     assert.deepEqual(rows.map((r) => `${r.blueprint_type}:${r.discipline}`), ["architectural:architectural", "electrical:mep", "plumbing_sanitary:mep"])
   })
 
-  await test("Type access: only an Admin with Projects permission + MFA sets it, only for Engineer / Foreman members, only known values", async () => {
+  await test("Type access: Super Admin recovery requires MFA; only Engineer / Foreman members and known values", async () => {
     await as("btEngA")
-    await expectFail("select public.set_blueprint_access($1, $2, $3)", [P.one, ids.btEngA, '{"architectural":"assigned"}'], /Only an Admin/)
+    await expectFail("select public.set_blueprint_access($1, $2, $3)", [P.one, ids.btEngA, '{"architectural":"assigned"}'], /Project Managers/)
     await as("admin", "aal1")
-    await expectFail("select public.set_blueprint_access($1, $2, $3)", [P.one, ids.btEngA, '{"architectural":"assigned"}'], /Only an Admin/)
+    await expectFail("select public.set_blueprint_access($1, $2, $3)", [P.one, ids.btEngA, '{"architectural":"assigned"}'], /Project Managers/)
     await as("noperm", "aal2")
-    await expectFail("select public.set_blueprint_access($1, $2, $3)", [P.one, ids.btEngA, '{"architectural":"assigned"}'], /Only an Admin/)
+    await expectFail("select public.set_blueprint_access($1, $2, $3)", [P.one, ids.btEngA, '{"architectural":"assigned"}'], /Project Managers/)
+    await as("super", "aal1")
+    await expectFail("select public.set_blueprint_access($1, $2, $3)", [P.one, ids.btEngA, '{"architectural":"assigned"}'], /Project Managers/)
     await as("admin", "aal2")
+    await expectFail("select public.set_blueprint_access($1, $2, $3)", [P.one, ids.btEngA, '{"architectural":"assigned"}'], /Project Managers/)
+    await as("super", "aal2")
     await expectFail("select public.set_blueprint_access($1, $2, $3)", [P.one, ids.btClient, '{"architectural":"view"}'], /Add this Engineer or Foreman/)
     await expectFail("select public.set_blueprint_access($1, $2, $3)", [P.two, ids.btEngB, '{"architectural":"view"}'], /Add this Engineer or Foreman/)
     await expectFail("select public.set_blueprint_access($1, $2, $3)", [P.one, ids.btEngA, '{"civil":"view"}'], /Unknown blueprint type/)
@@ -71,7 +77,7 @@ export default async function (ctx) {
     await as("btEngA")
     await expectFail("insert into public.project_blueprint_access (project_id, user_id, blueprint_type, access_level) values ($1, $2, 'electrical', 'assigned')", [P.one, ids.btEngA], /row-level security/)
     // The same person gets different levels on different types, in one call.
-    await as("admin", "aal2")
+    await as("super", "aal2")
     await setAccess(P.one, ids.btEngA, { architectural: "assigned", electrical: "view" })
     await setAccess(P.one, ids.btEngB, { electrical: "assigned", plumbing_sanitary: "assigned" })
     await setAccess(P.one, ids.btForeA, { architectural: "assigned", electrical: "view" })
@@ -217,7 +223,7 @@ export default async function (ctx) {
   })
 
   await test("Type access: a View only Engineer reads the type but cannot inspect, verify or raise NCRs on it", async () => {
-    await as("admin", "aal2")
+    await as("super", "aal2")
     await setAccess(P.one, ids.btEngB, { architectural: "view" })
     await asOwner()
     const ncr = await one("select title, category, severity, assigned_to from public.qa_defects where id = $1", [ids.archNcr])
@@ -234,7 +240,7 @@ export default async function (ctx) {
     await asOwner()
     const before = await one("select inspector_id, requested_by from public.qa_inspections where id = $1", [ids.archIr])
     const events = await count("select count(*) n from public.pin_events where pin_id = $1", [ids.archPin])
-    await as("admin", "aal2")
+    await as("super", "aal2")
     await setAccess(P.one, ids.btForeA, { architectural: "view" })
     await asOwner()
     assert.equal((await one("select assigned_to from public.pins where id = $1", [ids.archPin])).assigned_to, null, "open work released")
@@ -244,7 +250,7 @@ export default async function (ctx) {
     await as("btForeA")
     assert.equal(await count("select count(*) n from public.pins where id = $1", [ids.archPin]), 1, "still readable as View only")
     await expectFail("select public.report_pin_progress($1, 'in_progress', 'After revoke')", [ids.archPin], /./)
-    await as("admin", "aal2")
+    await as("super", "aal2")
     await setAccess(P.one, ids.btEngA, { architectural: "none" })
     await as("btEngA")
     assert.equal(await count("select count(*) n from public.qa_inspections where id = $1", [ids.archIr]), 0, "No access hides it")
@@ -260,12 +266,12 @@ export default async function (ctx) {
     await as("btEngA")
     assert.equal(await count("select count(*) n from public.blueprints where project_id = $1", [P.two]), 0, "member of TYPE-2 without grants")
     assert.equal(await count("select count(*) n from public.blueprints where id = $1", [S.otherArch]), 0)
-    await as("admin", "aal2")
+    await as("super", "aal2")
     await setAccess(P.two, ids.btEngA, { architectural: "view" })
     await as("btEngA")
     assert.equal(await count("select count(*) n from public.blueprints where id = $1", [S.otherArch]), 1)
     await expectFail("insert into public.pins (project_id, blueprint_id, x, y, title) values ($1, $2, 1, 1, 'X')", [P.two, S.otherArch], /Assigned work access/)
-    await as("admin", "aal2")
+    await as("super", "aal2")
     await expectOk("delete from public.project_members where project_id = $1 and user_id = $2", [P.two, ids.btEngA])
     await asOwner()
     assert.equal(await count("select count(*) n from public.project_blueprint_access where project_id = $1", [P.two]), 0)
@@ -275,6 +281,7 @@ export default async function (ctx) {
   await test("Type access: transition keeps today's access — current members get Assigned work on the types their project has", async () => {
     await as("admin", "aal2")
     const p = (await one("insert into public.projects (code, name) values ('TYPE-3', 'Transition project') returning id")).id
+    await as("super", "aal2")
     for (const who of ["btEngA", "btForeB", "btClient"]) await expectOk("insert into public.project_members (project_id, user_id) values ($1, $2)", [p, ids[who]])
     await expectOk("insert into public.blueprints (project_id, title, blueprint_type) values ($1, 'Structural', 'civil_structural')", [p])
     await system()

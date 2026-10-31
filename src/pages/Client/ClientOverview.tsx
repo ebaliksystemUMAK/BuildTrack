@@ -39,7 +39,7 @@ export default function ClientOverview({ onNavigate }: ClientPageProps) {
             description="Only work that the engineer has checked and approved counts as done."
             actions={
               <>
-                <button type="button" className={buttonSecondary} onClick={() => setWeekly(true)} disabled={totals.total === 0}>Weekly summary</button>
+                <button type="button" className={buttonSecondary} onClick={() => setWeekly(true)} disabled={work.loading || Boolean(work.error) || totals.totalTasks === 0}>Weekly summary</button>
                 <button type="button" className={buttonSecondary} onClick={() => onNavigate("blueprint")}>View plans</button>
                 <button type="button" className={buttonPrimary} onClick={() => onNavigate("communication")}>Ask the team</button>
               </>
@@ -47,8 +47,10 @@ export default function ClientOverview({ onNavigate }: ClientPageProps) {
           />
           {work.loading ? (
             <SkeletonCardGrid count={3} label="Loading the project" />
+          ) : work.error ? (
+            <p role="alert" className="rounded-lg bg-danger-soft p-4 text-sm text-danger-fg">{work.error} <button type="button" className="underline" onClick={() => void work.reload()}>Retry</button></p>
           ) : totals.total === 0 ? (
-            <EmptyState title="Work has not been mapped yet">When the engineer adds work items to the plans, your progress appears here.</EmptyState>
+            <EmptyState title="Work has not been mapped yet">When the engineer adds work pins and tasks to the plans, your progress appears here.</EmptyState>
           ) : (
             <>
               <section className="mb-5 rounded-2xl border border-line bg-surface p-6 shadow-sm">
@@ -57,7 +59,7 @@ export default function ClientOverview({ onNavigate }: ClientPageProps) {
                     <p className="text-xs font-extrabold uppercase tracking-wider text-fg-muted">Checked and approved</p>
                     <p className="text-5xl font-extrabold leading-none text-brand-text">{totals.percentVerified}%</p>
                   </div>
-                  <p className="max-w-md text-sm text-fg-muted">{totals.verified} of {totals.total} work items are finished and approved by the engineer.</p>
+                  <p className="max-w-md text-sm text-fg-muted">{totals.approvedTasks} of {totals.totalTasks} tasks are approved by the engineer. {totals.verified} of {totals.total} pins are fully completed.</p>
                 </div>
                 <div className="mt-4"><Meter value={totals.percentVerified} tone="green" label="Approved work" /></div>
                 <p className={`mt-3 text-sm font-semibold ${gap !== null && gap < -15 ? "text-danger-fg" : ""}`}>{message}</p>
@@ -95,6 +97,7 @@ export default function ClientOverview({ onNavigate }: ClientPageProps) {
                       <li key={area.blueprintId}>
                         <div className="mb-1 flex items-center justify-between text-sm"><span className="font-semibold">{area.title}{area.level ? ` (level ${area.level})` : ""}</span><span className="text-fg-muted">{area.totals.percentVerified}%</span></div>
                         <Meter value={area.totals.percentVerified} tone="green" label={`${area.title} approved`} />
+                        <p className="mt-1 text-xs text-fg-muted">{area.totals.approvedTasks}/{area.totals.totalTasks} tasks approved</p>
                       </li>
                     ))}
                   </ul>

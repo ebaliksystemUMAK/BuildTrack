@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { taskProgress } from "../../lib/taskProgress"
 import { Icon } from "./EditorToolbar"
 import LayerStack, { EyeButton, describe } from "./LayerStack"
 import { ChecklistProgress, PinChecklist, PinTimeline, ProgressTracker, field } from "./PinParts"
@@ -66,9 +67,9 @@ const timeFmt = (iso: string) => new Date(iso).toLocaleString("en-PH", { timeZon
 
 function ChecklistSummary({ pinId }: { pinId: string }) {
   const { items, loading } = useChecklist(pinId)
-  if (loading) return <SkeletonList rows={1} label="Loading checklist" />
-  if (!items.length) return <p className="text-xs text-fg-muted">No checklist items yet.</p>
-  return <ChecklistProgress done={items.filter((item) => item.done).length} total={items.length} />
+  if (loading) return <SkeletonList rows={1} label="Loading tasks" />
+  if (!items.length) return <p className="text-xs text-fg-muted">No tasks yet.</p>
+  return <ChecklistProgress done={taskProgress(items).approved} total={items.length} />
 }
 
 // Checklist ticks, remarks and photo uploads: ONLY the Foreman the pin is assigned to. Engineers build the checklist and
@@ -80,10 +81,10 @@ export const canWorkOn = (props: Pick<InspectorProps, "role" | "canReport" | "me
 export const checklistNotice = (props: Pick<InspectorProps, "role" | "canReport" | "meId">, pin: Pin, assigneeName?: string) => {
   if (props.role === "foreman" && pin.assigned_to !== props.meId) {
     return pin.assigned_to
-      ? `This work is assigned to ${assigneeName ?? "another foreman"}. Only that foreman can add evidence and submit for QA. Ask the engineer to reassign it if it is yours.`
-      : "This work is not assigned to anyone yet. The engineer must assign this pin to you (Details > Assigned foreman) before you can add evidence and submit for QA."
+      ? `This work is assigned to ${assigneeName ?? "another foreman"}. Only that foreman can add evidence and submit for QA Review. Ask the engineer to reassign it if it is yours.`
+      : "This work is not assigned to anyone yet. The engineer must assign this pin to you (Details > Assigned foreman) before you can add evidence and submit for QA Review."
   }
-  if (props.role === "engineer") return "Add each checklist item with its inspection criteria. The assigned Foreman opens the item, adds photos and submits directly for QA. You inspect and complete each item once QA passes and linked NCRs are closed."
+  if (props.role === "engineer") return "Add each task with its QC criteria. The assigned Foreman opens the task, adds photos and submits it for QA Review. You inspect and complete each task once QC passes and linked NCRs are closed."
   return ""
 }
 
@@ -271,7 +272,7 @@ export function PinDetailsTab(props: InspectorProps & { pin: Pin; inDialog?: boo
               <div className="flex gap-2">
                 <button type="button" disabled={busy || pin.status === "for_review"} onClick={() => void report("in_progress")} className="flex-1 rounded-lg border border-line px-2 py-2 text-xs font-bold hover:bg-surface-muted disabled:opacity-60">Work in progress</button>
               </div>
-              <p role="status" className="text-xs text-fg-muted">{pin.status === "for_review" ? "Awaiting Engineer inspection" : "Request QA inspection from the Checklist, including for partially completed work."}</p>
+              <p role="status" className="text-xs text-fg-muted">{pin.status === "for_review" ? "Awaiting Engineer inspection" : "Submit tasks for QA Review from Tasks & QC, including for partially completed work."}</p>
             </>
           )}
         </div>
@@ -298,7 +299,7 @@ export function PinDetailsTab(props: InspectorProps & { pin: Pin; inDialog?: boo
       {props.inDialog ? null : (
         <>
           <div>
-            <p className="mb-1 text-xs font-bold uppercase tracking-wider text-fg-muted">Checklist</p>
+            <p className="mb-1 text-xs font-bold uppercase tracking-wider text-fg-muted">Tasks</p>
             <ChecklistSummary pinId={pin.id} />
           </div>
 

@@ -79,7 +79,7 @@ export default function CorrectionForm({ formId, item, pin, draft, previousIr, p
       const ok = await confirm({
         title: "Submit correction?",
         size: "md",
-        message: `${names}: the full recorded checklist will be reinspected${previousIr ? ` (follows ${irRef(previousIr)})` : ""}, including previously passed checks. ${chosen.length ? `${chosen.map((row) => ncrRef(row.number)).join(", ")} will be sent for verification with these correction remarks and new photos. ` : ""}Original results and evidence stay unchanged. Selecting NCRs identifies the repairs; it does not narrow inspection scope. Each NCR still requires Engineer verification and closure.`,
+        message: `${names}: the full recorded QC checklist will be reinspected${previousIr ? ` (follows ${irRef(previousIr)})` : ""}, including previously passed checks. ${chosen.length ? `${chosen.map((row) => ncrRef(row.number)).join(", ")} will be sent for verification with these correction remarks and new photos. ` : ""}Original results and evidence stay unchanged. Selecting NCRs identifies the repairs; it does not narrow inspection scope. Each NCR still requires Engineer verification and closure.`,
         confirmLabel: "Submit request",
       })
       if (!ok) return
@@ -104,7 +104,7 @@ export default function CorrectionForm({ formId, item, pin, draft, previousIr, p
     <form id={formId} noValidate onSubmit={(event) => void submit(event)} className="space-y-4 rounded-xl border-2 border-brand/60 bg-brand-soft/40 p-3">
       <div>
         <p className="text-sm font-extrabold">Correction package · {item.text}</p>
-        <p className="text-xs leading-relaxed text-fg-muted">These remarks and photos belong to this correction only{previousIr ? `; ${irRef(previousIr)} keeps its own` : ""}. Select the NCR findings actually corrected. The entire {item.text} checklist will be reinspected, including previously passed checks, because a repair may affect other work. NCR selection does not reduce that scope. Unrelated checklists and the whole project are not resubmitted. Open findings still block completion.</p>
+        <p className="text-xs leading-relaxed text-fg-muted">These remarks and photos belong to this correction only{previousIr ? `; ${irRef(previousIr)} keeps its own` : ""}. Select the NCR findings actually corrected. The entire {item.text} QC checklist will be reinspected, including previously passed checks, because a repair may affect other work. NCR selection does not reduce that scope. Unrelated QC checklists and the whole project are not resubmitted. Open findings still block completion.</p>
       </div>
       <div>
         <label className={label} htmlFor={`${formId}-remarks`}>What was corrected *</label>
@@ -146,7 +146,7 @@ export default function CorrectionForm({ formId, item, pin, draft, previousIr, p
           {row.item.text}{row.ready ? "" : <span className="text-xs text-fg-muted"> (needs remarks and a new photo in its own correction first)</span>}
         </label>)}
       </fieldset> : null}
-      {problem ? <p role="status" className="text-xs font-semibold text-fg-muted">{problem}</p> : <p className="text-xs font-semibold text-fg">Ready to submit: {included.length > 1 ? `${included.length} work items` : item.text} for re-inspection{selected.length ? ` and ${selected.length} NCR${selected.length === 1 ? "" : "s"} for verification` : ""}.</p>}
+      {problem ? <p role="status" className="text-xs font-semibold text-fg-muted">{problem}</p> : <p className="text-xs font-semibold text-fg">Ready to submit: {included.length > 1 ? `${included.length} tasks` : item.text} for re-inspection{selected.length ? ` and ${selected.length} NCR${selected.length === 1 ? "" : "s"} for verification` : ""}.</p>}
     </form>
   )
 }

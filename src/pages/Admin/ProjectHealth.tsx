@@ -6,10 +6,11 @@ import { manilaToday, projectHealth, scheduleElapsed, summarize, type Health } f
 import { openProject, type Project } from "../../lib/projects"
 import { supabase } from "../../lib/supabase"
 import { fetchAll } from "../../lib/paging"
+import { fetchProgressPins } from "../../lib/progressData"
 import { useLiveReload } from "../../lib/realtime"
 import { Panel, StatusBadge } from "./AdminShell"
 
-type LitePin = Pick<Pin, "project_id" | "status" | "severity" | "category" | "due_date">
+type LitePin = Pick<Pin, "id" | "project_id" | "status" | "severity" | "category" | "due_date" | "tasks">
 type LiteDefect = { project_id: string; status: string; severity: string; due_date: string | null }
 type LiteInspection = { project_id: string; status: string; reinspection_of: string | null }
 
@@ -29,14 +30,14 @@ export default function ProjectHealth({ projects }: { projects: Project[] }) {
   const [inspections, setInspections] = useState<LiteInspection[]>([])
   const today = manilaToday()
   const [tick, setTick] = useState(0)
-  useLiveReload([{ table: "pins" }, { table: "qa_defects" }, { table: "qa_inspections" }], () => setTick((value) => value + 1), 800)
+  useLiveReload([{ table: "pins" }, { table: "pin_checklist_items" }, { table: "qa_defects" }, { table: "qa_inspections" }], () => setTick((value) => value + 1), 800)
 
   useEffect(() => {
     let active = true
     Promise.all([
       fetchAll<LiteDefect>((from, to) => supabase.from("qa_defects").select("project_id,status,severity,due_date").order("id").range(from, to)),
       fetchAll<LiteInspection>((from, to) => supabase.from("qa_inspections").select("project_id,status,reinspection_of").order("id").range(from, to)),
-      fetchAll<LitePin>((from, to) => supabase.from("pins").select("project_id,status,severity,category,due_date").order("id").range(from, to)),
+      fetchProgressPins<LitePin>((from, to) => supabase.from("pins").select("id,project_id,status,severity,category,due_date").order("id").range(from, to), null),
     ]).then(([ncr, ir, pinRows]) => {
       if (!active) return
       setDefects(ncr.data)

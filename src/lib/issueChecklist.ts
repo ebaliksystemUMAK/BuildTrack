@@ -14,9 +14,9 @@ export function issueChecklistOptions(reports: IssueChecklistLink[]) {
 }
 
 export function issueChecklistSelectionProblem(pinId:string,itemId:string,items:Array<{id:string;pin_id:string}>,loading:boolean,error:string) {
-  if(loading) return "Loading this work pin's checklist…"
-  if(error) return "Could not load this work pin's checklist. Retry before logging the issue."
-  if(itemId && !items.some(item=>item.id===itemId && item.pin_id===pinId)) return "Select a checklist item belonging to this work pin."
+  if(loading) return "Loading this work pin's tasks…"
+  if(error) return "Could not load this work pin's tasks. Retry before logging the issue."
+  if(itemId && !items.some(item=>item.id===itemId && item.pin_id===pinId)) return "Select a task belonging to this work pin."
   return ""
 }
 

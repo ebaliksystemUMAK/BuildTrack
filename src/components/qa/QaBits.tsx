@@ -9,7 +9,9 @@ import type { IssuePhotoDraft } from "../../lib/siteIssues"
 import { useConfirm } from "../../lib/confirm"
 import { errorText, useToast } from "../../lib/toast"
 import { buttonPrimary, buttonSecondary } from "../ui/PageParts"
-import { captureStamp, stampSummary, photoPreviewBlocked, type PhotoStamp } from "../../lib/photoStamp"
+import { captureStamp, stampSummary, photoPreviewBlocked, type CaptureSource, type PhotoStamp } from "../../lib/photoStamp"
+import { usePhotoPolicy } from "../../lib/photoPolicy"
+import CameraCapture from "../CameraCapture"
 import { useAuth } from "../../lib/auth"
 import { useProjectTeam } from "../../lib/projects"
 
@@ -102,13 +104,30 @@ export function EvidenceStrip({
   const urls = useRef(new Set<string>())
   useEffect(() => () => { for (const url of urls.current) URL.revokeObjectURL(url) }, [])
   const size = compact ? "h-12 w-12" : "h-16 w-16"
+  // Camera only (company switch off for a Foreman, or the person's own "Camera only" choice in System settings): evidence comes
+  // only from the in-app camera at the project site (enforced by the database too).
+  const policy = usePhotoPolicy(projectId)
+  const cameraOnly = policy.qaCameraOnly
+  const [cameraOpen, setCameraOpen] = useState(false)
+  const [draftSource, setDraftSource] = useState<CaptureSource>("upload")
 
-  // Each picture is shrunk before it is shown, so the markup sits on exactly the pixels that are stored.
-  const choose = async (files: FileList | null) => {
+  const choose = (files: FileList | null) => {
     const list = Array.from(files ?? [])
     if (input.current) input.current.value = ""
-    if (!list.length) return
-    stamp.current = captureStamp() // the phone's time and (if allowed) position when chosen, checked against the site by the database
+    if (!list.length || cameraOnly) return
+    void prepareDrafts(list, "upload", captureStamp()) // the phone's time and (if allowed) position when chosen, checked against the site by the database
+  }
+  const captured = (file: File, where: PhotoStamp) => {
+    setCameraOpen(false)
+    const problem = policy.problem(where)
+    if (problem) return toast.error("Photo not accepted", problem)
+    void prepareDrafts([file], "camera", Promise.resolve(where))
+  }
+
+  // Each picture is shrunk before it is shown, so the markup sits on exactly the pixels that are stored.
+  const prepareDrafts = async (list: File[], from: CaptureSource, where: Promise<PhotoStamp>) => {
+    stamp.current = where
+    setDraftSource(from)
     setPreparing(true)
     const ready: IssuePhotoDraft[] = []
     const problems: string[] = []
@@ -154,7 +173,7 @@ export function EvidenceStrip({
     let reason = ""
     for (const draft of drafts) {
       try {
-        await uploadQaPhoto(projectId, target, draft, where)
+        await uploadQaPhoto(projectId, target, draft, where, draftSource)
       } catch (error) {
         failed.push(draft)
         reason ||= errorText(error)
@@ -189,13 +208,14 @@ export function EvidenceStrip({
       {stampSummary(photos) ? <p role="status" className="w-full rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs font-semibold text-amber-950 dark:bg-amber-900/40 dark:text-amber-100">Check these photos: {stampSummary(photos)}.</p> : null}
       {canAdd ? (
         <>
-          <button type="button" disabled={busy || preparing || Boolean(drafts)} onClick={() => input.current?.click()} aria-label={`Add a photo: ${label}`} className={`flex ${size} flex-col items-center justify-center rounded-lg border border-dashed border-line text-fg-muted transition hover:border-brand hover:bg-brand-soft hover:text-brand-text disabled:opacity-60`}>
+          <button type="button" disabled={busy || preparing || cameraOpen || Boolean(drafts)} onClick={() => (cameraOnly ? setCameraOpen(true) : input.current?.click())} aria-label={cameraOnly ? `Take a photo: ${label}` : `Add a photo: ${label}`} className={`flex ${size} flex-col items-center justify-center rounded-lg border border-dashed border-line text-fg-muted transition hover:border-brand hover:bg-brand-soft hover:text-brand-text disabled:opacity-60`}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 8h3l2-2h6l2 2h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
-            <span className="text-[11px] font-bold">{busy || preparing ? "..." : "Photo"}</span>
+            <span className="text-[11px] font-bold">{busy || preparing ? "..." : cameraOnly ? "Camera" : "Photo"}</span>
           </button>
-          <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" capture="environment" multiple hidden onChange={(event) => void choose(event.target.files)} />
+          {!cameraOnly ? <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" capture="environment" multiple hidden onChange={(event) => choose(event.target.files)} /> : null}
         </>
       ) : null}
+      {cameraOpen ? <CameraCapture title={`Take a photo: ${label}`} description="Photo uploads are turned off: take the photo here at the project site with location turned on. You can mark it up before adding it." fileName="qa-evidence" onClose={() => setCameraOpen(false)} onCapture={captured} /> : null}
       {drafts ? (
         <Modal
           title={`Add photos: ${label}`}
@@ -209,8 +229,8 @@ export function EvidenceStrip({
             </>
           }
         >
-          <IssuePhotoPicker photos={drafts} onChange={setDrafts} limit={BATCH} disabled={busy} prepare={prepareQaPhoto} onPreparing={setPreparing} captionLimit={QA_CAPTION_LIMIT} nameCaptions={false} editorTitle="Mark up evidence photo"
-            hint={`Up to ${BATCH} photos at a time. Use Edit / annotate to mark one up and give it a caption; the original photo is kept.`} />
+          <IssuePhotoPicker photos={drafts} onChange={setDrafts} limit={BATCH} disabled={busy} prepare={prepareQaPhoto} onPreparing={setPreparing} captionLimit={QA_CAPTION_LIMIT} nameCaptions={false} editorTitle="Mark up evidence photo" allowFiles={draftSource === "upload"}
+            hint={draftSource === "upload" ? `Up to ${BATCH} photos at a time. Use Edit / annotate to mark one up and give it a caption; the original photo is kept.` : "Use Edit / annotate to mark it up and give it a caption; the original photo is kept. Take another photo after adding this one."} />
           {draftError ? <p role="alert" className="mt-3 text-sm text-danger-fg">{draftError}</p> : null}
         </Modal>
       ) : null}

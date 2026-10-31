@@ -77,7 +77,7 @@ export function PhotoGrid({ photos, bucket, loading = false, emptyHint, onRemove
               <span className="block space-y-1 px-3 py-2">
                 <span className={`${variant === "details" ? "block whitespace-pre-wrap" : "line-clamp-2"} break-words text-sm font-semibold`}>{photo.caption || photo.work?.title || photo.label}</span>
                 {photo.checklist ? <span className="block rounded-lg bg-surface-muted p-2 text-xs">
-                  <span className="block font-bold text-brand-text">Checklist item</span>
+                  <span className="block font-bold text-brand-text">Task</span>
                   <span className={`${variant === "details" ? "block" : "line-clamp-2"} whitespace-pre-wrap break-words`}>{photo.checklist.text}</span>
                   <span className="mt-1 block font-semibold text-fg-muted">{photo.checklist.done ? "Completed" : "Not completed"}</span>
                   {variant === "details" && photo.checklist.remark ? <span className="mt-1 block whitespace-pre-wrap break-words">Remarks: {photo.checklist.remark}</span> : null}

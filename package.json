@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build --configLoader runner",
+    "build": "vite build --configLoader bundle",
     "preview": "vite preview",
     "format": "oxfmt",
     "functions:deploy": "npx supabase functions deploy admin-users --project-ref ruimjlhsfpaezkgfphsz --use-api && npx supabase functions deploy impersonate --project-ref ruimjlhsfpaezkgfphsz --use-api && npx supabase functions deploy send-notifications --project-ref ruimjlhsfpaezkgfphsz --use-api && npx supabase functions deploy oauth-gate --project-ref ruimjlhsfpaezkgfphsz --use-api",
@@ -25,6 +25,7 @@
     "test:attendance-reports": "node scripts/test-attendance-reports.mjs",
     "test:direct-qa": "node scripts/test-direct-qa.mjs",
     "test:work-item-evidence": "node scripts/test-work-item-evidence.mjs",
+    "test:task-navigation": "node scripts/test-task-navigation.mjs",
     "test:qa-board-layout": "node scripts/test-qa-board-layout.mjs",
     "test:project-records": "node scripts/test-project-records.mjs",
     "test:client-portal": "node scripts/test-client-portal.mjs",
@@ -32,7 +33,9 @@
     "test:valencia": "node scripts/test-valencia-introduction.mjs",
     "test:public-navigation": "node scripts/test-public-navigation.mjs",
     "test:qa-photo-markup": "node scripts/test-qa-photo-markup.mjs",
+    "test:photo-settings": "node scripts/test-photo-settings.mjs",
     "test:date-filters": "node scripts/test-date-filters.mjs",
+    "test:progress-data": "node scripts/test-progress-data.mjs",
     "test:project-calendar": "node scripts/test-project-calendar.mjs",
     "test:assignments": "node scripts/test-assignments.mjs",
     "test:pin-records": "node scripts/test-pin-records.mjs",
@@ -41,7 +44,9 @@
     "test:project-checklists": "node scripts/test-project-checklists.mjs",
     "test:project-manager": "node scripts/test-project-manager.mjs",
     "test:load": "node scripts/load-test.mjs",
-    "check": "tsc --noEmit && pnpm test:lib && pnpm test:comparison && pnpm test:issue-editor && pnpm test:attendance && pnpm test:biometric-access && pnpm test:worker-camera && pnpm test:worker-enrollment && pnpm test:scan-notices && pnpm test:foreman-attendance && pnpm test:admin-worker-profiles && pnpm test:attendance-reports && pnpm test:direct-qa && pnpm test:work-item-evidence && pnpm test:qa-board-layout && pnpm test:project-records && pnpm test:client-portal && pnpm test:site-visits && pnpm test:valencia && pnpm test:public-navigation && pnpm test:qa-photo-markup && pnpm test:date-filters && pnpm test:project-calendar && pnpm test:assignments && pnpm test:pin-records && pnpm test:qa-reinspection && pnpm test:blueprint-access && pnpm test:project-checklists && pnpm test:project-manager && pnpm test:sql && pnpm build"
+    "check": "tsc --noEmit && pnpm test:lib && pnpm test:comparison && pnpm test:issue-editor && pnpm test:attendance && pnpm test:biometric-access && pnpm test:worker-camera && pnpm test:worker-enrollment && pnpm test:scan-notices && pnpm test:foreman-attendance && pnpm test:admin-worker-profiles && pnpm test:attendance-reports && pnpm test:direct-qa && pnpm test:work-item-evidence && pnpm test:task-navigation && pnpm test:qa-board-layout && pnpm test:project-records && pnpm test:client-portal && pnpm test:site-visits && pnpm test:valencia && pnpm test:public-navigation && pnpm test:qa-photo-markup && pnpm test:photo-settings && pnpm test:audit-log && pnpm test:date-filters && pnpm test:progress-data && pnpm test:project-calendar && pnpm test:assignments && pnpm test:pin-records && pnpm test:qa-reinspection && pnpm test:blueprint-access && pnpm test:project-checklists && pnpm test:project-manager && pnpm test:role-separation && pnpm test:sql && pnpm build",
+    "test:audit-log": "node scripts/test-audit-log.mjs",
+    "test:role-separation": "node scripts/test-role-separation.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",

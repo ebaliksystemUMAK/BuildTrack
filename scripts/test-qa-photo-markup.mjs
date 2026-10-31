@@ -84,8 +84,14 @@ assert.equal(store.inserts.at(-1).row.caption.length, qa.QA_CAPTION_LIMIT)
 // ---- EvidenceStrip: chosen photos open the markup dialog; failures stay to retry; Cancel asks only after work ----
 const calls = { prepare: [], upload: [], toasts: [], confirms: [], changed: 0 }
 let uploadImpl = async () => {}, confirmAnswer = true
+// Super Admin switch photos.allow_device_upload (lib/photoPolicy): uploads allowed unless a test turns them off.
+const uploadsAllowed = { allowUpload: true, cameraOnly: false, qaCameraOnly: false, problem: () => "" }
+let photoPolicy = uploadsAllowed, authRole = "engineer"
+// qa = the role-aware QA rule from the hook (an Engineer without a choice of their own keeps uploads for inspection photos)
+const cameraOnlyPolicy = (problem = "", qa = true) => ({ allowUpload: false, cameraOnly: true, qaCameraOnly: qa, problem: () => problem })
 Object.assign(deps, {
-  useProjectTeam: () => ({ team: [] }), useAuth: () => ({ profile: { role: "engineer" } }), useSignedUrl: () => ({ url: "blob:photo", failed: false }),
+  usePhotoPolicy: () => photoPolicy,
+  useProjectTeam: () => ({ team: [] }), useAuth: () => ({ profile: { role: authRole } }), useSignedUrl: () => ({ url: "blob:photo", failed: false }),
   useToast: () => ({ success: (...args) => calls.toasts.push(["success", ...args]), error: (...args) => calls.toasts.push(["error", ...args]) }),
   useConfirm: () => async options => { calls.confirms.push(options); return confirmAnswer },
   errorText: error => error.message, captureStamp: async () => stamp, stampSummary: () => "", photoPreviewBlocked: () => false,
@@ -114,7 +120,7 @@ uploadImpl = async (_project, _target, draft) => { if (draft.caption !== "Joint 
 button("Add 2 photos").props.onClick()
 await settle(); render(EvidenceStrip, stripProps)
 assert.equal(calls.upload.length, 2)
-assert.deepEqual(calls.upload[0].slice(0, 2), ["P", { itemId: "I" }]); assert.deepEqual(calls.upload[0][2].annotations, markup); assert.equal(calls.upload[0][3], stamp, "the stamp from when the photos were chosen is used")
+assert.deepEqual(calls.upload[0].slice(0, 2), ["P", { itemId: "I" }]); assert.deepEqual(calls.upload[0][2].annotations, markup); assert.equal(calls.upload[0][3], stamp, "the stamp from when the photos were chosen is used"); assert.equal(calls.upload[0][4], "upload", "chosen files are recorded as uploads")
 assert.deepEqual(calls.toasts.at(-1), ["success", "Photo added"]); assert.equal(calls.changed, 1)
 picker = find(node => node.type?.name === "IssuePhotoPicker")
 assert.equal(picker.props.photos.length, 1, "only the failed photo stays in the dialog")
@@ -142,6 +148,27 @@ confirmAnswer = true
 button("Cancel").props.onClick(); await settle(); render(EvidenceStrip, stripProps)
 assert.ok(!has(node => node.type?.name === "Modal"))
 assert.equal(calls.upload.length, 3, "cancelled photos are never uploaded")
+
+// Uploads turned off: a Foreman gets only the in-app camera; a photo away from the site never reaches the dialog. Engineers keep files.
+photoPolicy = cameraOnlyPolicy("", false)
+render(EvidenceStrip, stripProps)
+assert.ok(has(node => node.type === "input" && node.props.type === "file"), "the Engineer's own inspection photos are not affected")
+authRole = "foreman"; photoPolicy = cameraOnlyPolicy()
+const ForemanStrip = EvidenceStrip
+const takeQaPhoto = () => find(node => node.type === "button" && node.props["aria-label"] === "Take a photo: Item 1")
+reset(); render(ForemanStrip, stripProps)
+assert.ok(!has(node => node.type === "input" && node.props.type === "file"), "no file picker for the Foreman")
+photoPolicy = cameraOnlyPolicy("This photo was taken 2.6 km from the project site. Photos must be taken at the site.")
+takeQaPhoto().props.onClick(); render(ForemanStrip, stripProps)
+find(node => node.type?.name === "CameraCapture").props.onCapture(photoFile("shot.jpg"), stamp); await settle(); render(ForemanStrip, stripProps)
+assert.ok(!has(node => node.type?.name === "Modal")); assert.deepEqual(calls.toasts.at(-1), ["error", "Photo not accepted", "This photo was taken 2.6 km from the project site. Photos must be taken at the site."])
+photoPolicy = cameraOnlyPolicy()
+takeQaPhoto().props.onClick(); render(ForemanStrip, stripProps)
+find(node => node.type?.name === "CameraCapture").props.onCapture(photoFile("shot.jpg"), stamp); await settle(); render(ForemanStrip, stripProps)
+assert.equal(find(node => node.type?.name === "IssuePhotoPicker").props.allowFiles, false, "no files can be added to a camera photo")
+button("Add photo").props.onClick(); await settle(); render(ForemanStrip, stripProps)
+assert.equal(calls.upload.at(-1)[4], "camera"); assert.equal(calls.upload.at(-1)[3], stamp, "the shutter stamp is used")
+authRole = "engineer"; photoPolicy = uploadsAllowed
 
 // The saved thumbnail draws the markup cropped exactly like the photo (object-cover = slice), with a badge.
 render(EvidenceStrip, { ...stripProps, photos: [{ id: "q1", path: "P/item-I/1.webp", caption: null, annotations: markup }, { id: "q2", path: "P/item-I/2.webp", caption: null }] })
@@ -264,9 +291,10 @@ const pinWork = { id: "W", project_id: "P", title: "LAUNDRY" }
 const buttonProps = { pin: pinWork, itemId: "I", label: "FLOOR correction", attemptId: "A", onAdded: () => { added++ } }
 reset(); render(Parts.ChecklistUploadButton, buttonProps)
 const inputs = () => all(tree).filter(node => node.type === "input")
-inputs()[0].props.ref.current = { value: "x" }; inputs()[1].props.ref.current = { value: "x" }
-inputs()[0].props.onChange({ target: { files: [photoFile("a.jpg"), photoFile("b.jpg")] } }); render(Parts.ChecklistUploadButton, buttonProps)
-assert.equal(inputs()[0].props.ref.current.value, "", "the file input is cleared")
+assert.equal(inputs().length, 1, "Take photo opens the in-app camera, not a second file input")
+const picked = { files: [photoFile("a.jpg"), photoFile("b.jpg")], value: "x" }
+inputs()[0].props.onChange({ target: picked }); render(Parts.ChecklistUploadButton, buttonProps)
+assert.equal(picked.value, "", "the file input is cleared")
 const workDialog = find(node => node.type?.name === "MarkupUploadDialog")
 assert.equal(workDialog.props.title, "Add photos: FLOOR correction"); assert.equal(workDialog.props.files.length, 2); assert.equal(workDialog.props.prepare, Parts.preparePinPhoto)
 assert.ok(all(tree).filter(node => node.type === "button").every(node => node.props.disabled), "no second batch while one is being marked up")
@@ -274,7 +302,7 @@ Object.defineProperty(globalThis, "navigator", { value: { onLine: true }, config
 const draft = { id: "d1", file: new File(["jpg"], "a.jpg", { type: "image/jpeg" }), url: "blob:a", caption: "  Joint fixed  ", annotations: markup }
 assert.equal(await workDialog.props.onUpload(draft), "uploaded")
 assert.equal(pinInserts[0].table, "pin_photos"); assert.equal(pinInserts[0].row.checklist_item_id, "I"); assert.equal(pinInserts[0].row.qa_attempt_id, "A", "correction photos stay linked to their correction")
-assert.equal(pinInserts[0].row.caption, "Joint fixed"); assert.deepEqual(pinInserts[0].row.annotations, markup); assert.equal(pinInserts[0].row.taken_at, stamp.taken_at)
+assert.equal(pinInserts[0].row.caption, "Joint fixed"); assert.deepEqual(pinInserts[0].row.annotations, markup); assert.equal(pinInserts[0].row.taken_at, stamp.taken_at); assert.equal(pinInserts[0].row.capture_source, "upload")
 assert.match(pinStorage[0][2], /^P\/W\/[0-9a-f-]+\.jpg$/)
 await workDialog.props.onUpload({ ...draft, caption: "", annotations: [] })
 assert.ok(!("annotations" in pinInserts[1].row) && !("caption" in pinInserts[1].row), "a plain photo sends neither")
@@ -284,11 +312,28 @@ await assert.rejects(workDialog.props.onUpload(draft), /evidence are locked/); a
 pinInsertError = null
 globalThis.navigator.onLine = false
 assert.equal(await workDialog.props.onUpload(draft), "queued")
-assert.equal(queued[0].kind, "pin_photo"); assert.deepEqual(queued[0].payload.annotations, markup); assert.equal(queued[0].payload.caption, "Joint fixed"); assert.equal(queued[0].payload.blob, draft.file); assert.equal(queued[0].payload.attemptId, "A")
+assert.equal(queued[0].kind, "pin_photo"); assert.deepEqual(queued[0].payload.annotations, markup); assert.equal(queued[0].payload.caption, "Joint fixed"); assert.equal(queued[0].payload.blob, draft.file); assert.equal(queued[0].payload.attemptId, "A"); assert.equal(queued[0].payload.source, "upload")
 await workDialog.props.onDone({ uploaded: 1, queued: 1 })
 assert.equal(added, 1); assert.ok(calls.toasts.some(toast => toast[1] === "1 photo added")); assert.ok(calls.toasts.some(toast => toast[1] === "1 photo saved on this device"))
 workDialog.props.onClose(); render(Parts.ChecklistUploadButton, buttonProps)
 assert.ok(!has(node => node.type?.name === "MarkupUploadDialog"))
+
+// Uploads turned off: only Take photo (in-app camera); the camera photo goes up as a camera photo with its shutter stamp.
+photoPolicy = cameraOnlyPolicy("Turn on location: photos must be taken at the project site, and this photo has no position.")
+reset(); render(Parts.ChecklistUploadButton, buttonProps)
+assert.equal(inputs().length, 0); assert.ok(!has(node => node.type === "button" && text(node) === "Upload photos"))
+button("Take photo").props.onClick(); render(Parts.ChecklistUploadButton, buttonProps)
+find(node => node.type?.name === "CameraCapture").props.onCapture(photoFile("cam.jpg"), stamp); render(Parts.ChecklistUploadButton, buttonProps)
+assert.ok(!has(node => node.type?.name === "MarkupUploadDialog")); assert.match(calls.toasts.at(-1)[2], /Turn on location/)
+photoPolicy = cameraOnlyPolicy()
+button("Take photo").props.onClick(); render(Parts.ChecklistUploadButton, buttonProps)
+find(node => node.type?.name === "CameraCapture").props.onCapture(photoFile("cam.jpg"), stamp); render(Parts.ChecklistUploadButton, buttonProps)
+const cameraDialog = find(node => node.type?.name === "MarkupUploadDialog")
+assert.equal(cameraDialog.props.files.length, 1); assert.equal(cameraDialog.props.allowFiles, false)
+globalThis.navigator.onLine = true
+assert.equal(await cameraDialog.props.onUpload({ ...draft, caption: "", annotations: [] }), "uploaded")
+assert.equal(pinInserts.at(-1).row.capture_source, "camera"); assert.equal(pinInserts.at(-1).row.taken_at, stamp.taken_at)
+cameraDialog.props.onClose(); photoPolicy = uploadsAllowed; globalThis.navigator.onLine = false
 
 // The offline queue later sends the photo with its caption and markup; old queued photos (no markup) still send.
 const queueInserts = []
@@ -296,9 +341,9 @@ Object.assign(deps, { sendOrder: rows => rows, summarizeQueue: () => ({}), verdi
 deps.supabase.from = table => ({ insert: async row => { queueInserts.push({ table, row }); return { error: null } } })
 const Queue = await compile("../src/lib/offlineQueue.ts")
 assert.equal(await Queue.sendQueuedItem({ kind: "pin_photo", payload: { ...queued[0].payload } }), null)
-assert.deepEqual(queueInserts[0].row.annotations, markup); assert.equal(queueInserts[0].row.caption, "Joint fixed"); assert.equal(queueInserts[0].row.qa_attempt_id, "A")
+assert.deepEqual(queueInserts[0].row.annotations, markup); assert.equal(queueInserts[0].row.caption, "Joint fixed"); assert.equal(queueInserts[0].row.qa_attempt_id, "A"); assert.equal(queueInserts[0].row.capture_source, "upload")
 await Queue.sendQueuedItem({ kind: "pin_photo", payload: { projectId: "P", pinId: "W", itemId: "I", attemptId: null, path: "P/W/old.jpg", blob: new Blob(["x"]), stamp } })
-assert.ok(!("annotations" in queueInserts[1].row) && !("caption" in queueInserts[1].row), "photos queued before markup existed send as before")
+assert.ok(!("annotations" in queueInserts[1].row) && !("caption" in queueInserts[1].row) && !("capture_source" in queueInserts[1].row), "photos queued before markup existed send as before")
 
 // Daily progress evidence: captured original + overlay, camera-only picker, retry uses the same record/path.
 let dailyLookups = [{ data: null, error: null }], dailyRows = [], dailyUploads = [], dailyFailure = null
@@ -309,7 +354,7 @@ deps.supabase.from = () => {
 }
 deps.supabase.storage = { from: bucket => ({ upload: async (path, file) => { dailyUploads.push({ bucket, path, file }); return { error: null } }, remove: async () => ({ error: null }) }) }
 const { saveDailyReportCapture } = await compile("../src/lib/dailyReportCapture.ts", { "./issueMarkup": new URL("../src/lib/issueMarkup.ts", import.meta.url).href })
-const dailyCapture = { id: "capture-1", file: photoFile("camera.jpg"), url: "blob:camera", caption: "  Slab progress  ", annotations: markup, stamp }
+const dailyCapture = { id: "capture-1", file: photoFile("camera.jpg"), url: "blob:camera", caption: "  Slab progress  ", annotations: markup, stamp, source: "camera" }
 await saveDailyReportCapture("P", "R", dailyCapture)
 assert.equal(dailyUploads[0].file, dailyCapture.file, "Store the camera original without baking markup into its pixels")
 assert.equal(dailyRows[0].capture_source, "camera"); assert.equal(dailyRows[0].taken_at, stamp.taken_at)
@@ -321,6 +366,9 @@ dailyFailure = { message: "Connection lost after commit" }
 dailyLookups = [{ data: null, error: null }, { data: { id: "saved" }, error: null }]
 await saveDailyReportCapture("P", "R", dailyCapture)
 assert.equal(dailyUploads.at(-1).path, dailyUploads[0].path)
+dailyFailure = null; dailyLookups = [{ data: null, error: null }]
+await saveDailyReportCapture("P", "R", { ...dailyCapture, id: "capture-2", source: "upload" })
+assert.equal(dailyRows.at(-1).capture_source, "upload", "a photo chosen from the device is recorded as an upload")
 
 let savedCaptures = [], parentBusy = [], photoReloads = 0
 globalThis.navigator.onLine = true
@@ -330,11 +378,17 @@ Object.assign(deps, {
 })
 const DailyPhotos = (await compile("../src/components/DailyReportPhotos.tsx")).default
 const dailyProps = { projectId: "P", reportId: null, editable: true, ensureDraft: async () => "R", onBusy: value => parentBusy.push(value) }
+photoPolicy = cameraOnlyPolicy("This photo was taken 2.6 km from the project site. Photos must be taken at the site.")
 reset(); render(DailyPhotos, dailyProps)
 assert.ok(!all(tree).some(node => node.type === "input" && node.props.type === "file"))
-assert.doesNotMatch(text(tree), /Choose photos|Add photos/)
+assert.doesNotMatch(text(tree), /Choose photos|Add photos|Upload photo/); assert.match(text(tree), /Photo uploads are turned off/)
 button("Take photo").props.onClick(); render(DailyPhotos, dailyProps)
-find(node => node.type?.name === "DailyReportCamera").props.onCapture(dailyCapture.file, stamp); render(DailyPhotos, dailyProps)
+find(node => node.type?.name === "CameraCapture").props.onCapture(dailyCapture.file, stamp); render(DailyPhotos, dailyProps)
+assert.ok(!has(node => node.type?.name === "IssuePhotoEditor"), "a photo away from the site is not kept")
+assert.match(text(find(node => node.props?.role === "alert")), /Photo not accepted: This photo was taken 2\.6 km/)
+photoPolicy = cameraOnlyPolicy()
+button("Take photo").props.onClick(); render(DailyPhotos, dailyProps)
+find(node => node.type?.name === "CameraCapture").props.onCapture(dailyCapture.file, stamp); render(DailyPhotos, dailyProps)
 let reportEditor = find(node => node.type?.name === "IssuePhotoEditor")
 assert.equal(reportEditor.props.title, "Annotate daily progress photo")
 const capturedId = reportEditor.props.photos[0].id
@@ -343,9 +397,19 @@ assert.ok(parentBusy.at(-1), "Unsaved capture prevents report submission/date sw
 button("Save photo to report").props.onClick(); button("Save photo to report").props.onClick(); await settle(); render(DailyPhotos, dailyProps)
 assert.equal(savedCaptures.length, 1); assert.equal(savedCaptures[0][0], "P"); assert.equal(savedCaptures[0][1], "R")
 assert.deepEqual(savedCaptures[0][2].annotations, markup); assert.equal(savedCaptures[0][2].file, dailyCapture.file)
-assert.equal(savedCaptures[0][2].stamp.taken_at, stamp.taken_at, "Annotation time never replaces the shutter timestamp")
+assert.equal(savedCaptures[0][2].stamp.taken_at, stamp.taken_at, "Annotation time never replaces the shutter timestamp"); assert.equal(savedCaptures[0][2].source, "camera")
 assert.equal(parentBusy.at(-1), false); assert.equal(photoReloads, 1)
+photoPolicy = uploadsAllowed
+reset(); render(DailyPhotos, dailyProps)
+assert.match(text(tree), /or upload one from this device/)
+const chosenFile = { files: [photoFile("gallery.jpg")], value: "x" }
+find(node => node.type === "input" && node.props.type === "file").props.onChange({ target: chosenFile }); await settle(); render(DailyPhotos, dailyProps)
+assert.equal(chosenFile.value, "")
+reportEditor = find(node => node.type?.name === "IssuePhotoEditor"); reportEditor.props.onClose(); render(DailyPhotos, dailyProps)
+assert.match(text(tree), /Unsaved uploaded photo/)
+button("Save photo to report").props.onClick(); await settle(); render(DailyPhotos, dailyProps)
+assert.equal(savedCaptures.at(-1)[2].source, "upload"); assert.equal(savedCaptures.at(-1)[2].file.type, "image/jpeg", "device photos are converted to JPEG first")
 reset(); render(DailyPhotos, { ...dailyProps, editable: false })
 assert.ok(!all(tree).some(node => node.type === "button" && text(node) === "Take photo"), "Submitted/history viewers have no capture controls")
 
-console.log("QA and daily report photo markup: camera-only report capture, annotation/caption before save, original bytes and shutter timestamp preserved, duplicate-safe save/retry, report-submit lock; existing QA/correction markup, picker/editor, viewer and offline queue passed")
+console.log("QA and daily report photo markup: Super Admin photo switch (in-app camera at the site only, or device uploads allowed) for report, work item and Foreman QA photos, report capture, annotation/caption before save, original bytes and shutter timestamp preserved, duplicate-safe save/retry, report-submit lock; existing QA/correction markup, picker/editor, viewer and offline queue passed")

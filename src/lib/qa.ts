@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { prepareImage } from "./sheetImages"
 import { supabase } from "./supabase"
-import { stampFields, type PhotoStamp, type StampFlag } from "./photoStamp"
+import { stampFields, type CaptureSource, type PhotoStamp, type StampFlag } from "./photoStamp"
 import { markupProblem, type IssueMarkup } from "./issueMarkup"
 import { fetchAll } from "./paging"
 import { byColumn, byProject, useLiveReload, type LiveSource } from "./realtime"
@@ -299,8 +299,9 @@ export async function prepareQaPhoto(file: File): Promise<File> {
 
 // Stores a picture made by prepareQaPhoto in the private `qa-evidence` bucket inside the project folder and records it with its
 // caption and markup (an overlay: the file is never drawn on). The database refuses it if the inspection is not in progress or
-// the defect is closed; the stored file is then removed again.
-export async function uploadQaPhoto(projectId: string, target: PhotoTarget, photo: { file: File; caption?: string; annotations?: IssueMarkup[] }, stamp?: PhotoStamp | null): Promise<void> {
+// the defect is closed, or when photo uploads are turned off and a Foreman's photo is not an in-app camera photo taken at the site;
+// the stored file is then removed again.
+export async function uploadQaPhoto(projectId: string, target: PhotoTarget, photo: { file: File; caption?: string; annotations?: IssueMarkup[] }, stamp?: PhotoStamp | null, source: CaptureSource = "upload"): Promise<void> {
   const annotations = photo.annotations ?? []
   const problem = markupProblem(annotations)
   if (problem) throw new Error(problem)
@@ -315,6 +316,7 @@ export async function uploadQaPhoto(projectId: string, target: PhotoTarget, phot
     item_id: target.itemId ?? null,
     defect_id: target.defectId ?? null,
     path,
+    capture_source: source,
     caption: photo.caption?.trim().slice(0, QA_CAPTION_LIMIT) || null,
     ...(annotations.length ? { annotations } : {}),
     ...stampFields(stamp),

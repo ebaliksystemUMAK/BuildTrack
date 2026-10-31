@@ -11,7 +11,7 @@ export default async function ({ db, ids, as, asOwner, test, expectOk, expectFai
   // Earlier files strip the shared admin's permissions; this file needs the two an Admin gets by default.
   await db.query("insert into public.admin_permissions (user_id, permission) values ($1, 'projects.manage'), ($1, 'blueprints.manage') on conflict do nothing", [ids.admin])
   const P = (await db.query("insert into public.projects (code, name, status) values ('ASG-1', 'Assignment tower', 'active') returning id")).rows[0].id
-  await as("admin", "aal2")
+  await as("super", "aal2") // Team fixture; Admins retain project/blueprint administration below.
   await expectOk("insert into public.project_members (project_id, user_id) values ($1, $2), ($1, $3), ($1, $4), ($1, $5), ($1, $6)",
     [P, ids.asgEng, ids.asgF1, ids.asgF2, ids.asgOff, ids.client1])
 
@@ -169,12 +169,13 @@ export default async function ({ db, ids, as, asOwner, test, expectOk, expectFai
     await as("asgEng", "aal2")
     const open = (await db.query(pinSql, [P, sheet, "Open work for F2", ids.asgF2])).rows[0].id
     await as("admin", "aal2")
+    await as("super", "aal2")
     await expectOk("delete from public.project_members where project_id = $1 and user_id = $2", [P, ids.asgF2])
     if ((await pinField(open, "assigned_to")) !== null) throw new Error("open pin still assigned")
     if ((await pinField(ids.asgPin, "assigned_to")) !== ids.asgF2) throw new Error("verified pin lost its foreman")
     await asOwner()
     const ev = (await db.query("select actor_id, from_user, to_user from public.pin_events where pin_id = $1 and kind = 'assigned' order by id desc limit 1", [open])).rows[0]
-    if (ev.from_user !== ids.asgF2 || ev.to_user !== null || ev.actor_id !== ids.admin) throw new Error("unassignment not recorded")
+    if (ev.from_user !== ids.asgF2 || ev.to_user !== null || ev.actor_id !== ids.super) throw new Error("unassignment not recorded")
     await as("asgEng", "aal2")
     await expectFail("update public.pins set assigned_to = $2 where id = $1", [open, ids.asgF2], /active Foreman on this project/)
   })

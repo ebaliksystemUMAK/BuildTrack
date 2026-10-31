@@ -115,7 +115,7 @@ data.stage.view = { stage: "passed", action: "review_ncrs" }
 testProject = { id: "project", name: "Test project", code: "T" }
 reset(); render(Workspace, { itemId: "floor", onClose() {} })
 assert.doesNotMatch(text(tree.props.footer), /Review NCR corrections|Return FLOOR/)
-assert.ok(all(tree.props.footer).find(node => node.type === "button" && text(node) === "Complete checklist")?.props.disabled, "Open NCR still blocks checklist completion")
+assert.ok(all(tree.props.footer).find(node => node.type === "button" && text(node) === "Complete task")?.props.disabled, "Open NCR still blocks checklist completion")
 let row = find(node => node.props?.defect?.id === finding.id && typeof node.props.onOpen === "function")
 tree = row.type(row.props)
 assert.ok(!all(tree).some(node => node.type === "textarea" || node.type === "form"), "No inline correction-decision textbox")
@@ -210,6 +210,7 @@ Object.assign(globalThis.__evidenceDeps, {
   useInspectionItems: () => ({ items: [], loading: false, error: "", setItems() {}, reload: async () => {} }),
   useReinspectionContext: id => { historyRequests.push(id); return { rows: [], loading: false, error: "", reload: async () => {} } },
   useWorkSubmission: () => ({ submission: null, loading: false, error: "" }),
+  useChecklist: () => ({ items: [], loading: false, error: "", reload: async () => {} }),
   usePinQa: () => ({ state: null, error: "" }), useInspectionTimeline: () => ({ events: [], error: "" }),
   previewScore: () => inspectionPreview,
   useConfirm: () => async options => { signoffConfirmation = options; return confirmDecision },
@@ -227,7 +228,7 @@ const inspectionTabs=()=>all(tree).filter(node=>node.props?.role==="tab")
 const tabPanel=key=>find(node=>node.props?.role==="tabpanel"&&node.props.id.endsWith(`-panel-${key}`))
 const chooseTab=(label,props)=>{find(node=>node.props?.role==="tab"&&text(node)===label).props.onClick();render(InspectionDetail,props)}
 reset(); render(InspectionDetail, inspectionProps)
-assert.deepEqual(inspectionTabs().map(text),["Checklist","Submitted evidence","Previous results","Details & schedule","NCRs","History"])
+assert.deepEqual(inspectionTabs().map(text),["QC Checklist","Submitted evidence","Previous results","Details & schedule","NCRs","History"])
 assert.equal(historyRequests.at(-1),"ir-2","Even older/stage reinspections read their exact prior checks")
 assert.equal(tabPanel("checklist").props.hidden,false)
 assert.ok(all(tree).filter(node=>node.props?.role==="tabpanel"&&node.props.id!==tabPanel("checklist").props.id).every(node=>node.props.hidden))
@@ -275,11 +276,11 @@ assert.equal(all(tabPanel("evidence")).filter(node=>node.props?.record).length,1
 chooseTab("Details & schedule",activeProps)
 assert.equal(tabPanel("details").props.hidden,false)
 assert.equal(all(tabPanel("details")).filter(node=>node.props?.inspection&&node.props.canEdit!==undefined).length,1)
-chooseTab("Checklist",activeProps)
+chooseTab("QC Checklist",activeProps)
 assert.equal(find(node=>node.props?.id==="qa-summary").props.value,"Repaired wall checked on site")
 const signoff = async () => { all(tree.props.footer).find(node => text(node) === "Complete inspection").props.onClick(); await new Promise(resolve => setImmediate(resolve)) }
 confirmDecision = false; await signoff(); assert.equal(completionCalls.length, 0)
-assert.match(signoffConfirmation.message, /close automatically.*Failed or N\/A.*Checklist completion remains separate/s)
+assert.match(signoffConfirmation.message, /close automatically.*Failed or N\/A.*Task completion remains separate/s)
 confirmDecision = true; await signoff()
 assert.deepEqual(completionCalls, [["ir-2", "Repaired wall checked on site"]]); assert.equal(verifiedRefreshes, 1)
 assert.equal(verificationCalls.length, 0, "No separate browser-side NCR mutation")
@@ -345,7 +346,7 @@ assert.ok(footerAction("Continue inspection"));assert.ok(!all(tree.props.footer)
 confirmDecision=false
 footerAction("Continue inspection").props.onClick();await settleAction()
 assert.equal(resumeCalls.length,0)
-assert.match(signoffConfirmation.message,/recorded checklist results.*original evidence.*newer submission/s)
+assert.match(signoffConfirmation.message,/recorded QC checklist results.*original evidence.*newer submission/s)
 confirmDecision=true
 let releaseResume
 resumeWait=new Promise(resolve=>{releaseResume=resolve})
@@ -381,7 +382,7 @@ assert.match(text(tree.props.footer), /Reopen FLOOR/)
 for (const role of ["foreman", "admin", "client"]) {
   testRole = role
   reset(); render(Workspace, { itemId: "floor", onClose() {} })
-  assert.doesNotMatch(text(tree.props.footer), /Return FLOOR|Reopen FLOOR|Complete checklist|Review NCR corrections/)
+  assert.doesNotMatch(text(tree.props.footer), /Return FLOOR|Reopen FLOOR|Complete task|Review NCR corrections/)
 }
 
 delete globalThis.__evidenceHooks; delete globalThis.__evidenceDeps; delete globalThis.__submittedEvidenceUI

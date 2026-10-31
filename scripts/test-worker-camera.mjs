@@ -153,8 +153,9 @@ const last = streams.at(-1)
 unmount()
 assert.equal(last.track.stops, 1, "Navigation/worker switch stops all camera tracks")
 
-// Daily progress report capture also requires a real camera frame and never offers a file/gallery picker.
-const { default: ReportCamera } = await compile("../src/components/DailyReportCamera.tsx", {
+// The shared in-app camera (daily progress reports; all field evidence while photo uploads are off) also requires a real
+// camera frame and never offers a file/gallery picker.
+const { default: ReportCamera } = await compile("../src/components/CameraCapture.tsx", {
   "./Modal": moduleUrl("export default function Modal(){return null}"),
   "./ui/PageParts": moduleUrl('export const buttonPrimary="primary",buttonSecondary="secondary"'),
   "../lib/photoStamp": moduleUrl('export const captureStamp=async()=>({taken_at:"2026-10-28T02:00:00Z"})'),
@@ -177,7 +178,7 @@ assert.equal(cameraRequests.at(-1).video.facingMode.ideal, "environment"); asser
 assert.equal(reportButton("Capture photo").props.disabled, true)
 reportAll(tree).find(node => node.type === "video").props.onLoadedData(); renderReport()
 await reportButton("Capture photo").props.onClick(); await new Promise(resolve => setImmediate(resolve)); renderReport()
-assert.equal(capturedReport.file.type, "image/jpeg"); assert.equal(await capturedReport.file.text(), "original camera bytes")
+assert.equal(capturedReport.file.type, "image/jpeg"); assert.equal(await capturedReport.file.text(), "original camera bytes"); assert.match(capturedReport.file.name, /^daily-report-\d+\.jpg$/)
 assert.equal(capturedReport.stamp.taken_at, "2026-10-28T02:00:00Z")
 assert.equal(encoded.at(-1).width, 1600); assert.equal(encoded.at(-1).height, 900)
 assert.equal(streams.at(-1).track.stops, 1)

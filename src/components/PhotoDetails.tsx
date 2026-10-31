@@ -5,7 +5,7 @@ import { reportDateLong } from "../lib/reportFormat"
 export default function PhotoDetails({ photo, bucket }: { photo: GalleryPhoto; bucket: "pin-photos" | "daily-photos" | "qa-evidence" }) {
   const stamp = stampLabel({ taken_at: photo.taken_at ?? null, distance_m: photo.distance_m ?? null, stamp_flag: photo.stamp_flag ?? null })
   const fields = [
-    ["Photo type", bucket === "daily-photos" ? "Daily report" : bucket === "qa-evidence" ? "QA / NCR evidence" : photo.checklist ? "Checklist evidence" : "Work progress"],
+    ["Photo type", bucket === "daily-photos" ? "Daily report" : bucket === "qa-evidence" ? "QA / NCR evidence" : photo.checklist ? "Task evidence" : "Work progress"],
     ["Uploaded", `${photoTime(photo.created_at)} (Manila)`],
     ["Uploaded by", photo.uploaderName || (photo.uploaded_by ? "Team member (name unavailable)" : "Not recorded")],
     ["Phone-recorded time", photo.taken_at ? `${photoTime(photo.taken_at)} (Manila)` : "Not recorded"],
@@ -25,13 +25,13 @@ export default function PhotoDetails({ photo, bucket }: { photo: GalleryPhoto; b
       <p className="text-xs capitalize text-fg-muted">Current status: {photo.work.status.replace(/_/g, " ")}</p>
       {photo.work.description ? <p className="whitespace-pre-wrap break-words text-sm">{photo.work.description}</p> : null}
     </section> : null}
-    {photo.checklist ? <section className="space-y-2 border-t border-line pt-3" aria-label="Linked checklist item">
-      <h4 className="text-xs font-extrabold uppercase text-fg-muted">Checklist item</h4>
+    {photo.checklist ? <section className="space-y-2 border-t border-line pt-3" aria-label="Linked task">
+      <h4 className="text-xs font-extrabold uppercase text-fg-muted">Task</h4>
       <p className="whitespace-pre-wrap break-words text-sm font-bold">{photo.checklist.text}</p>
       <span className="inline-flex rounded-full border border-line bg-surface px-2 py-1 text-xs font-bold">{photo.checklist.done ? "Completed" : "Not completed"}</span>
       {photo.checklist.done_at ? <p className="text-xs text-fg-muted">Completed: {photoTime(photo.checklist.done_at)} (Manila)</p> : null}
       <div><h5 className="text-xs font-bold text-fg-muted">Foreman's remark</h5><p className="whitespace-pre-wrap break-words text-sm">{photo.checklist.remark || "No remark recorded"}</p></div>
-      <p className="text-xs text-fg-muted">{photo.recordState === "snapshot" ? "Historical checklist snapshot from this request. Later corrections do not change it." : "Shows the current checklist record, not a snapshot of its state when uploaded."}</p>
+      <p className="text-xs text-fg-muted">{photo.recordState === "snapshot" ? "Historical task snapshot from this request. Later corrections do not change it." : "Shows the current task record, not a snapshot of its state when uploaded."}</p>
     </section> : null}
     {photo.report ? <section className="space-y-1 border-t border-line pt-3">
       <h4 className="text-xs font-extrabold uppercase text-fg-muted">Daily report</h4>

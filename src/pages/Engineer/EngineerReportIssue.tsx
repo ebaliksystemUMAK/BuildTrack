@@ -79,7 +79,7 @@ export default function EngineerReportIssue({ onNavigate }: EngineerPageProps) {
   }
 
   const exportCsv = () => {
-    const header = ["Title", "Sheet", "Checklist", "Category", "Severity", "Status", "Assigned to", "Raised", "Open for", "Due", "Description"]
+    const header = ["Title", "Sheet", "Task", "Category", "Severity", "Status", "Assigned to", "Raised", "Open for", "Due", "Description"]
     const body = rows.map((pin) => [pin.title, work.sheetOf(pin.blueprint_id), issueChecklistLabel(latest.get(pin.id) ?? {}), categoryLabels[pin.category], severityLabels[pin.severity], tab === "resolved" ? "Resolved" : tab === "open" ? "Open" : "Following up", work.nameOf(pin.assigned_to), (raised[pin.id] ?? pin.updated_at).slice(0, 10), tab === "open" ? ageOf(pin) : "", pin.due_date ?? "", latest.get(pin.id)?.description ?? pin.description ?? ""])
     downloadCsv(`issue-register-${work.project?.code ?? "project"}-${work.today}.csv`, toCsv(header, body))
     toast.success("Exported", `${rows.length} issue${rows.length === 1 ? "" : "s"}`)
@@ -121,7 +121,7 @@ export default function EngineerReportIssue({ onNavigate }: EngineerPageProps) {
               ))}
             </div>
             <select aria-label="Filter issues by zone" className={`${inputClass} !w-56`} value={sheet} onChange={event=>setSheet(event.target.value)}><option value="">All sheets / zones</option>{work.blueprints.map(bp=><option key={bp.id} value={bp.id}>{bp.title}</option>)}</select>
-            <select aria-label="Filter issues by checklist" className={`${inputClass} !w-56`} value={checklist} onChange={event=>setChecklist(event.target.value)}><option value="">All checklist items</option><option value={WHOLE_PIN_CHECKLIST}>Whole work pin / no checklist</option>{checklistOptions.map(item=><option key={item.key} value={item.key}>{item.name}</option>)}</select>
+            <select aria-label="Filter issues by task" className={`${inputClass} !w-56`} value={checklist} onChange={event=>setChecklist(event.target.value)}><option value="">All tasks</option><option value={WHOLE_PIN_CHECKLIST}>Whole work pin / no task</option>{checklistOptions.map(item=><option key={item.key} value={item.key}>{item.name}</option>)}</select>
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search issues..." aria-label="Search issues" className={`${inputClass} !w-56`} />
             <select value={severity} onChange={(event) => setSeverity(event.target.value as PinSeverity | "all")} aria-label="Filter by severity" className={`${inputClass} !w-40`}>
               <option value="all">All severities</option>
@@ -152,7 +152,7 @@ export default function EngineerReportIssue({ onNavigate }: EngineerPageProps) {
                     <tr key={pin.id} className="align-top">
                       <td className="px-4 py-3">
                         <button type="button" className="text-left font-bold text-brand-text hover:underline" onClick={()=>setViewing(pin.id)}>{pin.title}</button>
-                        <p className="text-xs font-semibold text-brand-text">Checklist: {issueChecklistLabel(latest.get(pin.id) ?? {})}</p>
+                        <p className="text-xs font-semibold text-brand-text">Task: {issueChecklistLabel(latest.get(pin.id) ?? {})}</p>
                         <p className="text-xs text-fg-muted">{work.sheetOf(pin.blueprint_id)} • {categoryLabels[pin.category]}{pin.due_date && isOverdue(pin, work.today) ? " • past deadline" : ""}</p>
                         {latest.get(pin.id)?.description || pin.description ? <p className="mt-1 line-clamp-2 max-w-md text-xs text-fg-muted">{latest.get(pin.id)?.description ?? pin.description}</p> : null}
                       </td>

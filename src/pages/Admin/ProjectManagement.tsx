@@ -8,7 +8,7 @@ import ProjectManagersDialog from "./ProjectManagersDialog"
 import { setProjectArchived, useProjectManagers } from "../../lib/projectManagers"
 import { slotsOf } from "../../lib/projectManagerModel"
 import { buttonPrimary, buttonSecondary } from "../../components/ui/PageParts"
-import type { Profile } from "../../lib/auth"
+import { useAuth, type Profile } from "../../lib/auth"
 import {
   disciplineLabels,
   phaseLabels,
@@ -105,6 +105,8 @@ function dbMessage(error: { code?: string; message: string }): string {
 }
 
 export default function ProjectManagement({ onNavigate }: AdminPageProps) {
+  const { profile } = useAuth()
+  const canEditTeam = profile?.role === "super_admin"
   const { projects, loading, error, reload } = useProjects()
   const [members, setMembers] = useState<ProjectMember[]>([])
   const [people, setPeople] = useState<Profile[]>([])
@@ -220,8 +222,7 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
       start_date: form.start_date || null,
       end_date: form.end_date || null,
       manager_name: form.manager_name.trim() || null,
-      lead_engineer_id: form.lead_engineer_id || null,
-      lead_foreman_id: form.lead_foreman_id || null,
+      ...(canEditTeam ? { lead_engineer_id: form.lead_engineer_id || null, lead_foreman_id: form.lead_foreman_id || null } : {}),
       disciplines: form.disciplines,
       site_lat: form.site_lat.trim() ? Number(form.site_lat) : null,
       site_lng: form.site_lng.trim() ? Number(form.site_lng) : null,
@@ -233,7 +234,7 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
     setBusy(false)
     if (saveError) return setFormError(dbMessage(saveError))
     if (!data?.length) return setFormError("Nothing was saved. You may not have permission to manage projects.")
-    setMessage({ text: form.id ? "Project updated." : "Project created. Use Team & access to add its team and choose their blueprint types.", ok: true })
+    setMessage({ text: form.id ? "Project updated." : "Project created. Assign its primary Project Manager so they can build the project team.", ok: true })
     setForm(null)
     await Promise.all([reload(), loadPeople()]) // the engineer / foreman in charge are added to the team automatically
   }
@@ -351,7 +352,7 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
                 <span className="mr-auto min-w-0 max-w-full truncate text-[11px] font-semibold text-fg-muted" title={managerLine(project.id)}>{managerLine(project.id)}</span>
                 <button type="button" className={cardAction} onClick={() => setManagersId(project.id)} aria-label={`Project Managers of ${project.code}`}>Managers</button>
                 <button type="button" className={cardAction} onClick={() => openForm(project)} aria-label={`Edit details of ${project.code}`}>Details</button>
-                <button type="button" className={cardAction} onClick={() => openAccess(project.id)} aria-label={`Team and access of ${project.code}`}>Team & access</button>
+                <button type="button" className={cardAction} onClick={() => openAccess(project.id)} aria-label={`Team and access of ${project.code}`}>{canEditTeam ? "Team & access" : "View team"}</button>
                 <button type="button" className={cardAction} onClick={() => openBlueprints(project.id)} aria-label={`Blueprints of ${project.code}`}>Blueprints</button>
                 <button type="button" className={cardAction} onClick={() => void archiveProject(project, !project.archived_at)} aria-label={`${project.archived_at ? "Restore" : "Archive"} ${project.code}`}>{project.archived_at ? "Restore" : "Archive"}</button>
                 <button type="button" className="inline-flex min-h-8 items-center rounded-lg px-2.5 text-xs font-bold text-danger-fg hover:bg-danger-soft" onClick={() => void removeProject(project)} aria-label={`Delete ${project.code}`}>
@@ -440,7 +441,7 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm font-semibold">
                   Engineer in charge
-                  <select className={field} value={form.lead_engineer_id} onChange={(e) => setForm({ ...form, lead_engineer_id: e.target.value })}>
+                  <select className={field} disabled={!canEditTeam} value={form.lead_engineer_id} onChange={(e) => setForm({ ...form, lead_engineer_id: e.target.value })}>
                     <option value="">Not assigned</option>
                     {people.filter((person) => person.role === "engineer").map((person) => (
                       <option key={person.id} value={person.id}>{displayName(person)}</option>
@@ -449,7 +450,7 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
                 </label>
                 <label className="block text-sm font-semibold">
                   Foreman in charge
-                  <select className={field} value={form.lead_foreman_id} onChange={(e) => setForm({ ...form, lead_foreman_id: e.target.value })}>
+                  <select className={field} disabled={!canEditTeam} value={form.lead_foreman_id} onChange={(e) => setForm({ ...form, lead_foreman_id: e.target.value })}>
                     <option value="">Not assigned</option>
                     {people.filter((person) => person.role === "foreman").map((person) => (
                       <option key={person.id} value={person.id}>{displayName(person)}</option>
@@ -457,7 +458,7 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
                   </select>
                 </label>
               </div>
-              <p className="text-xs text-fg-muted">They join the project team automatically. Choose their blueprint types in Team & access.</p>
+              <p className="text-xs text-fg-muted">{canEditTeam ? "They join the project team automatically. Choose their blueprint types in Team & access." : "The project's Project Manager assigns the Engineer and Foreman in charge."}</p>
             </fieldset>
 
             <fieldset className="rounded-xl border border-line p-3">
@@ -500,7 +501,7 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
             <div className="flex flex-col-reverse gap-2 border-t border-line pt-3 sm:flex-row sm:items-center sm:justify-between">
               {form.id ? (
                 <button type="button" className={buttonSecondary} onClick={() => { openAccess(form.id!); setForm(null) }}>
-                  Team & access
+                  {canEditTeam ? "Team & access" : "View team"}
                 </button>
               ) : <span className="hidden sm:block" />}
               <div className="flex flex-col-reverse gap-2 sm:flex-row">
@@ -525,6 +526,7 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
       {shareProject ? (
         <ProjectAccessDialog
           project={shareProject}
+          readOnly={!canEditTeam}
           people={people}
           members={members}
           onMembersChanged={async () => { await Promise.all([loadPeople(), reload()]) }}

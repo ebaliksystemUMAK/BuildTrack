@@ -109,7 +109,7 @@ export default function LandingPage({ navigate }: LandingPageProps) {
             <p>
               Drive execution precision. BuildTrack maps physical construction
               progress directly to 2D blueprints, automates site compliance
-              checklists, and registers real-time biometric tracking across
+              QC checklists, and registers real-time biometric tracking across
               projects.
             </p>
             <div className="hero__actions">

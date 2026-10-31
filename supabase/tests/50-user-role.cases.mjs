@@ -120,7 +120,7 @@ export default async function ({ db, ids, as, asOwner, test, expectOk, expectFai
   await test("After approval (done by the Edge Function) the user becomes an Engineer and can be assigned to a project", async () => {
     await asOwner()
     await db.query("update public.profiles set role = 'engineer', discipline = 'mep' where id = $1", [ids.newbie])
-    await as("admin", "aal2")
+    await as("super", "aal2")
     await expectOk("insert into public.project_members (project_id, user_id) values ($1, $2)", [ids.p1, ids.newbie])
     await as("newbie")
     if ((await count("select count(*) n from public.projects")) < 1) throw new Error("approved engineer cannot see the assigned project")

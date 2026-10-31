@@ -1,19 +1,19 @@
 import { useEffect, useMemo, useState } from "react"
-import { EmptyState, Meter, PageHead, StatCard, buttonSecondary } from "../../components/ui/PageParts"
+import { EmptyState, PageHead, StatCard } from "../../components/ui/PageParts"
 import { SkeletonCardGrid } from "../../components/ui/Skeleton"
 import { severityChip, severityLabels, type Pin } from "../../lib/blueprints"
 import { useAuth } from "../../lib/auth"
 import { followLink } from "../../lib/notifications"
 import { daysBetween, isOverdue, manilaToday, summarize } from "../../lib/progress"
-import { getSelectedProjectId, phaseLabels, statusColor, statusLabels, useProject } from "../../lib/projects"
+import { getSelectedProjectId, useProject } from "../../lib/projects"
 import { useQaLite, type QaLiteDefect, type QaLiteInspection } from "../../lib/qaLite"
 import { refNumber, severityTone } from "../../lib/qaModel"
 import { supabase } from "../../lib/supabase"
-import { fetchAll } from "../../lib/paging"
+import { fetchProgressPins } from "../../lib/progressData"
 import { byProject, useLiveReload } from "../../lib/realtime"
-import type { EngineerPageKey, EngineerPageProps } from "./types"
+import type { EngineerPageProps } from "./types"
 
-type LitePin = Pick<Pin, "id" | "project_id" | "title" | "status" | "severity" | "category" | "due_date" | "updated_at" | "assigned_to">
+type LitePin = Pick<Pin, "id" | "project_id" | "title" | "status" | "severity" | "category" | "due_date" | "updated_at" | "assigned_to" | "tasks">
 
 // One project's dashboard (the Engineer works one project at a time): what needs a decision now and how the project is going.
 export default function EngineerDashboard({ onNavigate }: EngineerPageProps) {
@@ -26,12 +26,14 @@ export default function EngineerDashboard({ onNavigate }: EngineerPageProps) {
   const today = manilaToday()
   const qaAll = useQaLite("dashboard")
   const [tick, setTick] = useState(0)
-  useLiveReload([...byProject("pins", projectId), ...byProject("pin_events", projectId)], () => setTick((value) => value + 1))
+  useLiveReload([...byProject("pins", projectId), ...byProject("pin_events", projectId), ...byProject("pin_checklist_items", projectId)], () => setTick((value) => value + 1))
 
   useEffect(() => {
     let active = true
     if (!projectId) return
-    fetchAll<LitePin>((from, to) => supabase.from("pins").select("id,project_id,title,status,severity,category,due_date,updated_at,assigned_to").eq("project_id", projectId).order("id").range(from, to)).then(({ data, error }) => {
+    setPinsLoading(true)
+    setPins([])
+    fetchProgressPins<LitePin>((from, to) => supabase.from("pins").select("id,project_id,title,status,severity,category,due_date,updated_at,assigned_to").eq("project_id", projectId).order("id").range(from, to), projectId).then(({ data, error }) => {
       if (!active) return
       setFailed(error)
       setPins(data)
@@ -66,7 +68,6 @@ export default function EngineerDashboard({ onNavigate }: EngineerPageProps) {
   }, [pins, qa.defects, qa.inspections, today])
 
   const first = (profile?.full_name || "Engineer").split(" ")[0]
-  const links: Array<[EngineerPageKey, string]> = [["annotation", "Plans"], ["qa", `QA register${qaToDo ? ` (${qaToDo})` : ""}`], ["progress", "Progress"], ["assignments", "Assign"]]
 
   return (
     <div className="engineer-page">
@@ -79,60 +80,35 @@ export default function EngineerDashboard({ onNavigate }: EngineerPageProps) {
       {failed ? <p role="alert" className="mb-4 rounded-lg bg-danger-soft px-4 py-2 text-sm text-danger-fg">Could not load this project's pins. Check your connection and refresh.</p> : null}
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        <StatCard label="Completed" value={loading ? "-" : `${totals.percentVerified}%`} tone="green" note={`${totals.verified} of ${totals.total} work pins`} />
+        <StatCard label="Approved task progress" value={loading || failed ? "-" : `${totals.percentVerified}%`} tone="green" note={`${totals.approvedTasks} of ${totals.totalTasks} tasks approved`} />
         <StatCard label="To review" value={loading ? "-" : totals.for_review} tone="amber" onClick={() => onNavigate("verification")} note="In the review inbox" />
         <StatCard label="Open issues" value={loading ? "-" : totals.issue} tone={totals.issue ? "red" : "green"} onClick={() => onNavigate("report-issue")} />
         <StatCard label="Overdue" value={loading ? "-" : totals.overdue} tone={totals.overdue ? "red" : "green"} note="Past their deadline" />
         <StatCard label="QA to action" value={loading || qaAll.loading ? "-" : qaToDo} tone={qaToDo ? "amber" : "green"} onClick={() => onNavigate("qa")} note="Inspections and repairs to verify" />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
-        <section>
-          <h2 className="mb-2 border-l-4 border-accent pl-3 text-base font-extrabold text-brand-strong">Needs your attention</h2>
-          {loading ? (
-            <SkeletonCardGrid count={2} label="Loading" />
-          ) : attention.length === 0 ? (
-            <EmptyState title="Nothing needs you right now">Reviews, issues and late work on this project show up here.</EmptyState>
-          ) : (
-            <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-              {attention.map(({ key, pin, defect, inspection, reason, tone, path }) => {
-                const title = pin ? pin.title : defect ? `${refNumber("ncr", defect.number)} ${defect.title}` : `${refNumber("ir", inspection!.number)} ${inspection!.title}`
-                return (
-                  <li key={key}>
-                    <button type="button" onClick={() => go(path)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-surface-muted">
-                      <span className="min-w-0 truncate text-sm font-bold">{title}</span>
-                      <span className={`flex-none rounded px-2 py-0.5 text-xs font-bold ${tone}`}>{reason}</span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </section>
-
-        <section>
-          <h2 className="mb-2 border-l-4 border-accent pl-3 text-base font-extrabold text-brand-strong">This project</h2>
-          {!project ? <SkeletonCardGrid count={1} label="Loading" /> : (
-            <div className="rounded-xl border border-line bg-surface p-4">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-xs font-bold uppercase tracking-wider text-brand-text">{project.code}</p>
-                  <h3 className="truncate text-sm font-extrabold">{project.name}</h3>
-                  <p className="text-xs text-fg-muted">{phaseLabels[project.phase]}{project.location ? ` • ${project.location}` : ""}</p>
-                </div>
-                <span className={`flex-none rounded-full px-2 py-0.5 text-xs font-semibold ${statusColor[project.status]}`}>{statusLabels[project.status]}</span>
-              </div>
-              <div className="mt-3 flex items-center gap-3">
-                <div className="flex-1"><Meter value={totals.percentVerified} tone="green" label={`${project.name} completed`} /></div>
-                <span className="text-sm font-extrabold">{totals.percentVerified}%</span>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {links.map(([page, label]) => <button key={page} type="button" className={buttonSecondary + " !px-3 !py-1 !text-xs"} onClick={() => onNavigate(page)}>{label}</button>)}
-              </div>
-            </div>
-          )}
-        </section>
-      </div>
+      <section>
+        <h2 className="mb-2 border-l-4 border-accent pl-3 text-base font-extrabold text-brand-strong">Needs your attention</h2>
+        {loading ? (
+          <SkeletonCardGrid count={2} label="Loading" />
+        ) : attention.length === 0 ? (
+          <EmptyState title="Nothing needs you right now">Reviews, issues and late work on this project show up here.</EmptyState>
+        ) : (
+          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+            {attention.map(({ key, pin, defect, inspection, reason, tone, path }) => {
+              const title = pin ? pin.title : defect ? `${refNumber("ncr", defect.number)} ${defect.title}` : `${refNumber("ir", inspection!.number)} ${inspection!.title}`
+              return (
+                <li key={key}>
+                  <button type="button" onClick={() => go(path)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-surface-muted">
+                    <span className="min-w-0 truncate text-sm font-bold">{title}</span>
+                    <span className={`flex-none rounded px-2 py-0.5 text-xs font-bold ${tone}`}>{reason}</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
     </div>
   )
 }

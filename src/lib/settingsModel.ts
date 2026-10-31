@@ -2,7 +2,7 @@ export type Weights = { critical: number; major: number; minor: number }
 export type WorkHours = { start: string; end: string; days: number[] }
 // source = official source link (documentation of the cited standard), optional (20261028150000).
 export type Standard = { code: string; title: string; source?: string }
-export type SystemSettings = { threshold: number; weights: Weights; hours: WorkHours; standards: Standard[]; inactiveDays: number }
+export type SystemSettings = { threshold: number; weights: Weights; hours: WorkHours; standards: Standard[]; inactiveDays: number; allowDeviceUpload: boolean }
 export type SettingRow = { key: string; value: unknown; updated_at: string; updated_by: string | null }
 
 export const defaultSettings: SystemSettings = {
@@ -11,6 +11,7 @@ export const defaultSettings: SystemSettings = {
   hours: { start: "07:00", end: "17:00", days: [1, 2, 3, 4, 5, 6] },
   standards: [],
   inactiveDays: 60,
+  allowDeviceUpload: true,
 }
 
 export const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -36,13 +37,16 @@ export function parseSettings(rows: Array<Pick<SettingRow, "key" | "value">>): S
       .map((item) => (typeof item.source === "string" && /^https:\/\//.test(item.source) ? { code: item.code, title: item.title, source: item.source } : { code: item.code, title: item.title }))
   const inactive = get("access.inactive_days")
   if (isInt(inactive, 14, 365)) result.inactiveDays = inactive
+  // false = daily report and field evidence photos only from the in-app camera at the project site (20261031120532).
+  if (get("photos.allow_device_upload") === false) result.allowDeviceUpload = false
   return result
 }
 
 // Maps the typed settings back to the database keys (used by the settings screen to save one card at a time).
-export const settingKeys = { threshold: "qa.acceptance_threshold", weights: "qa.weights", hours: "work.hours", standards: "standards", inactiveDays: "access.inactive_days" } as const
+export const settingKeys = { threshold: "qa.acceptance_threshold", weights: "qa.weights", hours: "work.hours", standards: "standards", inactiveDays: "access.inactive_days", allowDeviceUpload: "photos.allow_device_upload" } as const
 
 export function settingsError(error: { message: string }): string {
+  if (/Site photos permission/i.test(error.message)) return "You need the Site photos permission (and the authenticator check) to change photo rules."
   if (/Only a Super Admin/i.test(error.message)) return "Only a Super Admin who has completed the authenticator check can change settings."
   if (/network|fetch/i.test(error.message)) return "Network problem. Check your connection and try again."
   return error.message

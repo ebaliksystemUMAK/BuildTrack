@@ -106,20 +106,20 @@ export function workItemStage(input: StageInput): StageView {
     return view("correction", "Foreman", status, "Foreman submits the correction package.", "submit_correction", missing.length ? `Still needed: ${missing.join(" and ")}.` : "")
   }
 
-  if (!input.criteriaApproved) return view("preparing", "Engineer", "Inspection criteria needed.", `Engineer adds the inspection criteria to ${name}.`, "approve_criteria")
-  if (input.eligiblePhotos === 0) return view("preparing", "Foreman", "Evidence needed.", `Foreman adds photos of ${name}, then submits for QA.`, "add_evidence", "No eligible photo: photos with a wrong phone clock or older than 3 days do not count.")
-  return view("preparing", "Foreman", "Not submitted.", `Foreman submits ${name} for QA.`, "submit")
+  if (!input.criteriaApproved) return view("preparing", "Engineer", "QC Checklist needed.", `Engineer adds the QC checklist to ${name}.`, "approve_criteria")
+  if (input.eligiblePhotos === 0) return view("preparing", "Foreman", "Evidence needed.", `Foreman adds photos of ${name}, then submits for QA Review.`, "add_evidence", "No eligible photo: photos with a wrong phone clock or older than 3 days do not count.")
+  return view("preparing", "Foreman", "Not submitted.", `Foreman submits ${name} for QA Review.`, "submit")
 }
 
 export const headline = (stage: StageView) => `${stage.status} Next action: ${stage.next}`
 
 // Manual completion gate shown to the Engineer (same order as SQL review_checklist_item).
 export function completionProblem(input: { loading: boolean; error: string; open: boolean; inspectionStatus?: string; openItemNcrs: number }): string {
-  if (input.error) return "QA information is unavailable. Refresh before completing the checklist."
+  if (input.error) return "QA information is unavailable. Refresh before completing the task."
   if (input.loading) return "Checking inspection results…"
   if (input.open) return "Finish the pending QA inspection first."
   if (input.inspectionStatus !== "passed") return "This item's QA inspection must pass before completion."
-  if (input.openItemNcrs) return `Close the ${plural(input.openItemNcrs, "open NCR")} linked to this work item first.`
+  if (input.openItemNcrs) return `Close the ${plural(input.openItemNcrs, "open NCR")} linked to this task first.`
   return ""
 }
 
@@ -139,7 +139,15 @@ export function connectedHistory(
   ].sort((a, b) => b.at.localeCompare(a.at) || b.key.localeCompare(a.key))
 }
 
-export function workItemPath(role: "engineer" | "foreman", projectId: string, itemId: string, page?: string) {
+export type WorkItemTab = "inspection" | "corrections" | "evidence" | "history"
+
+export function readWorkItemTab(search: string, itemId: string): WorkItemTab | null {
+  const params = new URLSearchParams(search)
+  const tab = params.get("tasktab")
+  return params.get("item") === itemId && (tab === "inspection" || tab === "corrections" || tab === "evidence" || tab === "history") ? tab : null
+}
+
+export function workItemPath(role: "engineer" | "foreman", projectId: string, itemId: string, page?: string, tab?: WorkItemTab) {
   const target = page ?? (role === "engineer" ? "verification" : "quality-control")
-  return `/${role}/${target}?project=${encodeURIComponent(projectId)}&item=${encodeURIComponent(itemId)}`
+  return `/${role}/${target}?project=${encodeURIComponent(projectId)}&item=${encodeURIComponent(itemId)}${tab ? `&tasktab=${tab}` : ""}`
 }

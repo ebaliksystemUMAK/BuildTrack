@@ -59,7 +59,7 @@ export function useWorkItems(projectId: string | null, pins: Pin[], inspections:
       fetchAll<DraftRow>((from, to) => supabase.from("qa_work_attempts").select("id,item_id,pin_id,remarks,submitted_inspection_id").eq("project_id", projectId).is("submitted_inspection_id", null).order("id").range(from, to)),
     ])
     if (run !== sequence.current) return
-    setError(itemRows.error || draftRows.error ? "Could not load the work items. Refresh to retry." : "")
+    setError(itemRows.error || draftRows.error ? "Could not load the tasks. Refresh to retry." : "")
     if (!itemRows.error) setItems(itemRows.data)
     if (!draftRows.error) setDrafts(draftRows.data)
     setLoading(false)
@@ -196,6 +196,7 @@ export function useItemParam() {
     const url = new URL(window.location.href)
     if (id) url.searchParams.set("item", id)
     else url.searchParams.delete("item")
+    url.searchParams.delete("tasktab")
     window.history.replaceState({}, "", url)
     setItemId(id)
   }, [])

@@ -42,8 +42,8 @@ export default function ForemanIssueTracking(_: ForemanPageProps) {
   const issues = ws.work.pins.filter((pin) => (pin.status === "issue" || (issueRegister.everRaised.has(pin.id) && pin.status!=="verified")) && pin.assigned_to === profile?.id)
   const groups = [
     { key: "fix", short: "To fix", title: "Corrections to submit", hint: "Open the item, describe the fix once, add new photos, tick the NCRs it answers and submit one correction package.", rows: mine.filter(row => correctionGroup(row) === "fix") },
-    { key: "review", short: "In review", title: "Corrections the Engineer is reviewing", hint: "Correction packages awaiting reinspection, NCR verification or manual checklist completion.", rows: mine.filter(row => correctionGroup(row) === "review") },
-    { key: "completed", short: "Completed", title: "Completed checklists", always: true, hint: "Manually completed by the Engineer after QA passed and all linked NCRs were closed. Earlier corrections remain in the record.", rows: mine.filter(row => correctionGroup(row) === "completed") },
+    { key: "review", short: "In review", title: "Corrections the Engineer is reviewing", hint: "Correction packages awaiting reinspection, NCR verification or manual task completion.", rows: mine.filter(row => correctionGroup(row) === "review") },
+    { key: "completed", short: "Completed", title: "Completed tasks", always: true, hint: "Manually completed by the Engineer after QA passed and all linked NCRs were closed. Earlier corrections remain in the record.", rows: mine.filter(row => correctionGroup(row) === "completed") },
   ]
   // The other lists join the board's chips, so choosing To fix (or any chip) shows only that list; All shows them all.
   // Other NCRs counts the open ones assigned to you (what its register shows first) and stays available at 0, because it is
@@ -77,7 +77,7 @@ export default function ForemanIssueTracking(_: ForemanPageProps) {
   const filterItems = work.rows.filter(row => filterPins.some(pin => pin.id === row.pin.id)).map(row => row.item)
   const ncrContent = (filters?: BoardFilter) => <DefectsPanel ws={ws} mode="foreman" onNew={null} onOpen={setDefectId} scope={defect => scope(defect) && (!filters || ncrMatches(defect, filters))} />
   const extras: BoardExtra[] = [
-    { key: "other-ncrs", short: "Other NCRs", title: "Other NCRs", hint: "Raised on site or by a stage / hold-point inspection, not by a work item. Record the corrective action and a photo in the NCR itself.",
+    { key: "other-ncrs", short: "Other NCRs", title: "Other NCRs", hint: "Raised on site or by a stage / hold-point inspection, not by a task. Record the corrective action and a photo in the NCR itself.",
       count: otherNcrs.filter((defect) => defect.status !== "closed" && defect.assigned_to === profile?.id).length, always: otherNcrs.length > 0,
       filterPins, filterItems, content: ncrContent(), filter: filters => {
         const list = otherNcrs.filter(defect => ncrMatches(defect, filters))
@@ -116,12 +116,12 @@ export default function ForemanIssueTracking(_: ForemanPageProps) {
     <div className="foreman-page">
       <ProjectContextBar listPath="/foreman/projects" listLabel="My projects" />
       <PageHead eyebrow="Quality assurance" title="Corrections"
-        description="Work items sent back, corrections in review and completed checklists, in one place. Submit one correction package for full-checklist reinspection. Only the Engineer closes an NCR and completes the checklist."
+        description="Tasks sent back, corrections in review and completed tasks, in one place. Submit one correction package for full QC checklist reinspection. Only the Engineer closes an NCR and completes the task."
         actions={<button type="button" className={buttonSecondary} onClick={() => void reload()}>Refresh</button>} />
       {linkError ? <p role="alert" className="mb-3 text-sm text-danger-fg">{linkError}</p> : null}
       {projectId ? <>
         <WorkItemBoard key={`${projectId}:${profile?.id}`} groups={groups} extras={extras} loading={Boolean(loading)} error={error} nameOf={ws.nameOf} sheetOf={ws.work.sheetOf} onOpen={setItemId}
-          emptyTitle="Nothing to correct" emptyText="When an inspection fails or the Engineer returns a work item, it appears here with its NCRs." />
+          emptyTitle="Nothing to correct" emptyText="When an inspection fails or the Engineer returns a task, it appears here with its NCRs." />
       </> : null}
       {itemId ? <WorkItemWorkspace itemId={itemId} onClose={() => setItemId(null)} onChanged={reload} /> : null}
       {reportPin ? <ReportModal key={reportPin.id} pin={reportPin} onClose={() => setReporting(null)} onSaved={async () => { setReporting(null); await reload() }} /> : null}

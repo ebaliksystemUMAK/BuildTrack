@@ -102,7 +102,7 @@ export default function ForemanDashboard({ onNavigate }: ForemanPageProps) {
       <PageHead
         eyebrow="Foreman"
         title={`Good day, ${first}`}
-        description="Your work for today on this project. Open a task to report it, add photos and submit the work items for QA."
+        description="Your work for today on this project. Open a task to report it, add photos and submit the tasks for QA Review."
         actions={<button type="button" className={buttonSecondary} onClick={() => onNavigate("daily-work")}>Site plan</button>}
       />
       {failed ? <p role="alert" className="mb-4 rounded-lg bg-danger-soft px-4 py-2 text-sm text-danger-fg">Could not refresh your work. Any work below is the last loaded snapshot; totals are unavailable. Check your connection and refresh.</p> : null}
@@ -114,7 +114,7 @@ export default function ForemanDashboard({ onNavigate }: ForemanPageProps) {
         <StatCard label="Waiting" value={unavailable ? "-" : counts.waiting} tone="brand" note="For the engineer" onClick={() => show("waiting")} />
         <StatCard label="Completed" value={unavailable ? "-" : doneCount} tone="green" note="Completed work pins" />
         <StatCard label="Today's daily report" value={unavailable ? "-" : reportStatusLabel(reports, Boolean(projectId))} tone="sky" note="Open today's report · Manila date" onClick={openReport} />
-        <StatCard label="Checklist items left" value={unavailable ? "-" : checklistLeft} tone="amber" note="Not ready yet on your work" />
+        <StatCard label="Tasks left" value={unavailable ? "-" : checklistLeft} tone="amber" note="Not ready yet on your work" />
         <StatCard label="Photos today" value={unavailable ? "-" : photosToday} tone="green" note="Your uploads · Manila date" />
       </div>
 

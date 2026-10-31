@@ -24,7 +24,7 @@ const hints: Record<Exclude<TaskFilter, "all">, string> = {
   overdue: "Past its due date.",
   issue: "A problem was reported on this work: fix it and report.",
   ncr: "Correct it and send it for verification.",
-  doing: "In progress: finish the work items and submit them for QA.",
+  doing: "In progress: finish the tasks and submit them for QA Review.",
   to_start: "Not started yet.",
   waiting: "Waiting for the engineer.",
 }

@@ -24,7 +24,7 @@ export const pageTitles: Record<AdminPageKey, string> = {
   settings: "System Settings",
   "access-review": "Global Access Review",
   backup: "Full Backup & Export",
-  "qa-checklists": "Company QA Template Library",
+  "qa-checklists": "Company QC Checklist Library",
 }
 
 const navItems: Array<{
@@ -43,7 +43,7 @@ const navItems: Array<{
   { key: "blueprint-mapping", label: "Blueprint Mapping", icon: "pin" },
   { key: "blueprint-progress", label: "Progress Tracking", icon: "chart" },
   { key: "blueprint-version", label: "Version Control", icon: "history" },
-  { key: "qa-checklists", label: "QA template library", icon: "blueprint" },
+  { key: "qa-checklists", label: "QC checklist library", icon: "blueprint" },
   { key: "backup", label: "Full backup & export", icon: "history" },
   { key: "settings", label: "System settings", icon: "grid" },
 ]
@@ -282,6 +282,7 @@ export default function AdminShell({
   const reviewCount = useReviewCount(can("users.approve"))
 
   const visible = navItems.filter((item) => {
+    if (item.key === "biometrics" && profile?.role === "super_admin") return false
     if (["project-overview", "blueprint-mapping", "blueprint-progress", "blueprint-version"].includes(item.key)) return false
     const need = adminPagePermission[item.key]
     return !need || can(need)

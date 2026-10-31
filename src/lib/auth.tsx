@@ -23,6 +23,7 @@ export type AdminPermission =
   | "biometrics.manage"
   | "projects.manage"
   | "blueprints.manage"
+  | "photos.manage"
 
 export type Discipline = "civil_structural" | "architectural" | "mep"
 

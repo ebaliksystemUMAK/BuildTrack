@@ -42,7 +42,7 @@ export default function PublicFooter({ navigate, page = "buildtrack" }: PublicFo
         <div className="footer-column">
           <h3>Platform Services</h3>
           <span>Blueprint Overlays</span>
-          <span>Checklist Progress</span>
+          <span>Task Progress</span>
           <span>Biometrics Hub</span>
           <span>Documentation API</span>
         </div>

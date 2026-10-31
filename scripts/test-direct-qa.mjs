@@ -4,6 +4,7 @@ import ts from "typescript"
 import { checklistProblem } from "../src/lib/qaModel.ts"
 import { completionProblem } from "../src/lib/workItemModel.ts"
 import { pickableChecklists } from "../src/lib/qaChecklists.ts"
+import { progressPercent, taskProgress } from "../src/lib/taskProgress.ts"
 
 // Real React component controls, isolated hooks and fake RPCs. No production fixtures or credentials.
 let slots = [], cursor = 0, effects = [], tree, role = "foreman", calls = [], confirmation = true, saved = 0, preflightItem = null
@@ -22,7 +23,7 @@ const criterion = { id: "c1", text: "Synthetic floor check", acceptance_criteria
 const template = { id: "criteria", name: "Floor-specific criteria", archived: false, qa_template_items: [criterion] }
 const emptyHistory = { submissions: [], inspections: [], attempts: [], events: [], loading: false, reload: async () => {} }
 const qa = { state: { status: "in_progress", open: false }, preflight: async itemId => { preflightItem = itemId; return null }, reload: async () => {} }
-const stage = { view: { action: "submit", stage: "preparing", owner: "Foreman", next: "Submit FLOOR for QA" }, current: null, open: null, attempts: [], ncrs: [] }
+const stage = { view: { action: "submit", stage: "preparing", owner: "Foreman", next: "Submit FLOOR for QA Review" }, current: null, open: null, attempts: [], ncrs: [] }
 const data = { item, pin, stage, draft: null, photos: [], defects: [], history: emptyHistory, qa, pinItems: [item], reload: async () => {}, templateName: template.name }
 const fakeDb = {
   from(table) { return { update(payload) { calls.push({ table, payload }); return { eq() { return { select: async () => ({ data: [{ id: item.id }], error: null }) } } } } } },
@@ -38,7 +39,7 @@ globalThis.__directQaDeps = {
   useConfirm: () => async () => confirmation, useToast: () => ({ success() {}, error() {}, info() {} }),
   // Per-type access: this person holds Assigned work on the sheet type (view-only behaviour is covered by test:blueprint-access).
   usePinTypeAccess: () => ({ canAct: true, viewOnly: false, typeLabel: "Civil / Structural" }),
-  checklistProblem, pickableChecklists, pinLevelDefects: () => [], completionProblem, supabase: fakeDb,
+  checklistProblem, pickableChecklists, progressPercent, taskProgress, pinLevelDefects: () => [], completionProblem, supabase: fakeDb,
   qaActions: {
     async submitItems(pinId, items) { calls.push({ name: "submitItems", pinId, items }); return { ok: true } },
     async completeItem(itemId) { calls.push({ name: "completeItem", itemId }); return { ok: true } },
@@ -82,34 +83,34 @@ render(PinChecklist, { pin, canEdit: false, canTick: true })
 assert.ok(nodes(tree).some(node => node.props?.itemId === "floor"))
 reset(); role = "engineer"
 render(PinChecklist, { pin, canEdit: true, canTick: false })
-button("Add item & criteria").props.onClick()
+button("Add task & QC criteria").props.onClick()
 render(PinChecklist, { pin, canEdit: true, canTick: false })
 assert.ok(nodes(tree).some(node => node.props?.onSaved && node.props?.pin === pin))
 
 // Engineer action stays discoverable, with a reason rather than silently disappearing.
 reset(); qa.state.open = true
 render(PinChecklist, { pin, canEdit: true, canTick: false })
-assert.equal(button("Add item & criteria").props.disabled, false)
+assert.equal(button("Add task & QC criteria").props.disabled, false)
 qa.state.open = false; qa.state.awaitingVerification = true
 render(PinChecklist, { pin, canEdit: true, canTick: false })
-assert.equal(button("Add item & criteria").props.disabled, false)
+assert.equal(button("Add task & QC criteria").props.disabled, false)
 qa.state.awaitingVerification = false; qa.state.status = "verified"
 render(PinChecklist, { pin, canEdit: true, canTick: false })
-assert.equal(button("Add item & criteria").props.disabled, true)
+assert.equal(button("Add task & QC criteria").props.disabled, true)
 assert.match(text(tree), /Completed.*Reopen it from Details/)
 qa.state.status = "in_progress"
 const loadedQa = qa.state
 qa.state = null; qa.error = "Test connection error"
 render(PinChecklist, { pin, canEdit: true, canTick: false })
-assert.equal(button("Add item & criteria").props.disabled, true)
-assert.match(text(tree), /Could not check QA status/)
-button("Retry QA check")
+assert.equal(button("Add task & QC criteria").props.disabled, true)
+assert.match(text(tree), /Could not check QC status/)
+button("Retry QC check")
 qa.error = ""; qa.state = loadedQa
 render(PinChecklist, { pin, canEdit: false, canTick: false })
-assert.equal(button("Add item & criteria").props.disabled, true)
+assert.equal(button("Add task & QC criteria").props.disabled, true)
 assert.match(text(tree), /latest sheet revision.*exit presentation mode/)
 render(PinChecklist, { pin, canEdit: true, canTick: false })
-assert.equal(button("Add item & criteria").props.disabled, false)
+assert.equal(button("Add task & QC criteria").props.disabled, false)
 
 reset(); role = "foreman"
 pin.status = "for_review"; qa.state.open = true
@@ -127,11 +128,11 @@ find(node => node.type === "textarea").props.onChange({ target: { value: "Finish
 slots = parentSlots
 render(Workspace, { itemId: item.id, onClose() {} })
 confirmation = false
-button("Submit FLOOR for QA").props.onClick()
+button("Submit FLOOR for QA Review").props.onClick()
 await new Promise(resolve => setTimeout(resolve, 0))
 assert.equal(calls.length, 0, "Cancelled submission must not write")
 confirmation = true
-button("Submit FLOOR for QA").props.onClick()
+button("Submit FLOOR for QA Review").props.onClick()
 await new Promise(resolve => setTimeout(resolve, 0))
 assert.deepEqual(calls.map(row => row.name ?? row.table), ["pin_checklist_items", "submitItems"])
 assert.equal(calls[0].payload.remark, "Finished and checked on site")
@@ -146,41 +147,41 @@ stage.current = { id: "inspection", status: "passed" }
 stage.view = { stage: "passed", action: "complete", owner: "Engineer" }
 render(Workspace, { itemId: item.id, onClose() {} })
 assert.equal(calls.length, 0, "Passing QA/rendering does not complete the checklist automatically")
-assert.equal(button("Complete checklist").props.disabled, false)
+assert.equal(button("Complete task").props.disabled, false)
 assert.doesNotMatch(text(tree), /Accept FLOOR|Accepted/)
 for (const status of ["open", "in_progress", "for_verification"]) {
   stage.ncrs = [{ id: "ncr", number: 1, status }]
   render(Workspace, { itemId: item.id, onClose() {} })
-  assert.equal(button("Complete checklist").props.disabled, true, `${status} NCR blocks completion`)
-  assert.match(text(tree), /Cannot complete checklist: Close the 1 open NCR/)
-  await button("Complete checklist").props.onClick()
+  assert.equal(button("Complete task").props.disabled, true, `${status} NCR blocks completion`)
+  assert.match(text(tree), /Cannot complete task: Close the 1 open NCR/)
+  await button("Complete task").props.onClick()
   assert.equal(calls.length, 0, "Even an invoked disabled handler must not bypass the guard")
 }
 stage.ncrs = [{ id: "ncr", number: 1, status: "closed" }]
 data.error = "NCR data unavailable"
 render(Workspace, { itemId: item.id, onClose() {} })
-assert.equal(button("Complete checklist").props.disabled, true)
+assert.equal(button("Complete task").props.disabled, true)
 data.error = ""; emptyHistory.loading = true
 render(Workspace, { itemId: item.id, onClose() {} })
-assert.equal(button("Complete checklist").props.disabled, true)
+assert.equal(button("Complete task").props.disabled, true)
 emptyHistory.loading = false
 render(Workspace, { itemId: item.id, onClose() {} })
-confirmation = false; await button("Complete checklist").props.onClick()
+confirmation = false; await button("Complete task").props.onClick()
 assert.equal(calls.length, 0, "Cancelling confirmation does not complete the checklist")
-confirmation = true; await button("Complete checklist").props.onClick()
+confirmation = true; await button("Complete task").props.onClick()
 await new Promise(resolve => setTimeout(resolve, 0))
 assert.deepEqual(calls, [{ name: "completeItem", itemId: item.id }])
 for (const status of ["requested", "in_progress", "failed", "conditional"]) {
   stage.current.status = status
   render(Workspace, { itemId: item.id, onClose() {} })
-  assert.ok(!nodes(tree).some(node => node.type === "button" && text(node) === "Complete checklist"), `${status} QA cannot be completed`)
+  assert.ok(!nodes(tree).some(node => node.type === "button" && text(node) === "Complete task"), `${status} QA cannot be completed`)
 }
 stage.current.status = "passed"; role = "foreman"
 render(Workspace, { itemId: item.id, onClose() {} })
-assert.ok(!nodes(tree).some(node => node.type === "button" && text(node) === "Complete checklist"))
+assert.ok(!nodes(tree).some(node => node.type === "button" && text(node) === "Complete task"))
 role = "engineer"; item.review_status = "verified"
 render(Workspace, { itemId: item.id, onClose() {} })
-assert.ok(!nodes(tree).some(node => node.type === "button" && text(node) === "Complete checklist"), "Completed records cannot be completed twice")
+assert.ok(!nodes(tree).some(node => node.type === "button" && text(node) === "Complete task"), "Completed records cannot be completed twice")
 const { StageRail } = await compile("../src/components/qa/WorkItemParts.tsx")
 render(StageRail, { stage: "passed", completed: false })
 assert.deepEqual(nodes(tree).filter(node => node.type === "li").map(node => text(node).replace("✓ ", "")), ["Submitted", "Passed", "Completed"])
@@ -194,13 +195,13 @@ const editorProps = { pin, onClose() {}, onSaved() { saved++ } }
 let editor = ChecklistEditor(editorProps)
 const Editor = editor.type
 render(Editor, editor.props)
-assert.equal(button("Save item and criteria").props.disabled, true)
+assert.equal(button("Save task and QC criteria").props.disabled, true)
 find(node => node.type === "input" && node.props.placeholder).props.onChange({ target: { value: "FLOOR" } })
 find(node => node.type === "input" && node.props.id?.endsWith("-test")).props.onChange({ target: { value: "Synthetic floor check" } })
 find(node => node.type === "textarea" && node.props.id?.endsWith("-pass")).props.onChange({ target: { value: "Synthetic floor passing requirement" } })
 render(Editor, editor.props)
-assert.equal(button("Save item and criteria").props.disabled, false)
-button("Save item and criteria").props.onClick()
+assert.equal(button("Save task and QC criteria").props.disabled, false)
+button("Save task and QC criteria").props.onClick()
 await new Promise(resolve => setTimeout(resolve, 0))
 assert.equal(calls[0].name, "save_work_checklist_item")
 assert.equal(calls[0].payload.p_text, "FLOOR")

@@ -44,9 +44,9 @@ let props={loading:false,error:"",onChanged:async()=>changed++,onOpenInspection:
   {id:"selected",inspection_id:"original",source_number:1,text:"Alignment",result:"fail"},
 ]}
 render(Scope,props)
-assert.match(text(tree),/Full checklist reinspection/)
+assert.match(text(tree),/Full QC checklist reinspection/)
 assert.match(text(tree),/Every check.*fresh result.*including previously passed checks/s)
-assert.match(text(tree),/does not resubmit unrelated checklists or the whole project/)
+assert.match(text(tree),/does not resubmit unrelated QC checklists or the whole project/)
 assert.match(text(tree),/Previous Pass.*Must be checked again/s)
 assert.match(text(tree),/Earlier results and evidence remain unchanged/)
 assert.ok(!all(tree).some(n=>n.type==="select"||n.type==="textarea"),"No selective-scope editor")
@@ -59,7 +59,7 @@ assert.match(text(tree),/Previous remarks: Opening was below the approved size/)
 assert.match(text(tree),/Earlier Engineer/)
 assert.ok(!all(tree).some(n=>n.type==="input"||n.type==="textarea"||n.type==="select"),"Earlier results and measurements are read-only")
 reset();render(Scope,{...props,fullChecklist:false})
-assert.match(text(tree),/current Checklist tab defines what must be reinspected/)
+assert.match(text(tree),/current QC Checklist tab defines what must be reinspected/)
 assert.doesNotMatch(text(tree),/Every check.*fresh result|Must be checked again/)
 for(const extra of [{loading:true},{error:"offline"}]){
   reset();render(Scope,{...props,...extra})
@@ -102,7 +102,7 @@ assert.equal(result.loading,false)
 console.log("NCR readiness: keyed by finding and attempt, same-package isolation and stale-Pass rejection passed")
 
 const report=inspectionReportHtml({inspection:{number:2,title:"Wall",status:"passed",score:100,threshold:75,trade:"general",standards:[],full_checklist_reinspection:true,reinspection_of:"original"},items:[{position:0,text:"Opening",severity:"major",kind:"check",result:"pass",measured_value:null,acceptance_criteria:"Approved <finish>"}],defects:[],project:{name:"Test",code:"T"},nameOf:()=>"Engineer"})
-assert.match(report,/Full checklist reinspection, including previously passed checks/);assert.match(report,/not whole-project acceptance/);assert.match(report,/Approved &lt;finish&gt;/)
+assert.match(report,/Full QC checklist reinspection, including previously passed checks/);assert.match(report,/not whole-project acceptance/);assert.match(report,/Approved &lt;finish&gt;/)
 assert.doesNotMatch(report,/Targeted|reinspection scope only|Engineer scope reason/)
 console.log("Full checklist QA print report: complete scope, preserved history, no project-acceptance claim and escaping passed")
 
@@ -123,7 +123,7 @@ await submitForm()
 assert.equal(options.title,"Submit correction?")
 assert.equal(options.size,"md")
 assert.equal(options.confirmLabel,"Submit request")
-assert.match(options.message,/full recorded checklist will be reinspected.*including previously passed checks/)
+assert.match(options.message,/full recorded QC checklist will be reinspected.*including previously passed checks/)
 assert.match(options.message,/Original results and evidence stay unchanged/)
 assert.equal(submissions,0,"Cancel must not submit the correction")
 confirmed=true

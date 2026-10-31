@@ -8,6 +8,7 @@ export default async function ({ db, ids, as, asOwner, test, expectOk, expectFai
 
   await as("admin", "aal2")
   const other = (await db.query("insert into public.projects (code, name) values ('OTHER-9', 'Other site') returning id")).rows[0].id
+  await as("super", "aal2") // Team setup uses Super Admin recovery authority.
   await expectOk("insert into public.project_members (project_id, user_id) values ($1, $2)", [other, ids.eng2])
   ids.other = other
   const P1 = ids.p1

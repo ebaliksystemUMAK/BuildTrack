@@ -9,6 +9,7 @@ export default async function ({ db, ids, as, asOwner, test, expectOk, expectFai
   await test("Project checklists: setup — a project, its Engineer, a plan and a work pin", async () => {
     await as("admin", "aal2")
     P.project = (await one("insert into public.projects (code, name) values ('CHK-1', 'Checklist project') returning id")).id
+    await as("super", "aal2")
     await expectOk("insert into public.project_members (project_id, user_id) values ($1, $2)", [P.project, ids.eng1])
     await as("eng1", "aal2")
     P.sheet = (await one("insert into public.blueprints (project_id, title, blueprint_type) values ($1, 'Ground floor', 'architectural') returning id", [P.project])).id

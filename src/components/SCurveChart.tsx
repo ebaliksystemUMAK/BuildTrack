@@ -11,7 +11,7 @@ const PAD = { top: 16, right: 16, bottom: 30, left: 40 }
 const shortDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-PH", { month: "short", day: "numeric" })
 const longDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-PH", { month: "long", day: "numeric", year: "numeric" })
 
-export default function SCurveChart({ pins, start, end, today, compact = false }: { pins: Pick<Pin, "category" | "status" | "due_date" | "verified_at">[]; start: string | null; end: string | null; today: string; compact?: boolean }) {
+export default function SCurveChart({ pins, start, end, today, compact = false }: { pins: Pick<Pin, "category" | "status" | "due_date" | "verified_at" | "tasks">[]; start: string | null; end: string | null; today: string; compact?: boolean }) {
   const data = useMemo(() => sCurve(pins, start, end, today, compact ? 24 : 40), [pins, start, end, today, compact])
   const box = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(640)
@@ -25,7 +25,7 @@ export default function SCurveChart({ pins, start, end, today, compact = false }
     return () => observer.disconnect()
   }, [])
 
-  if (!data) return <p className="text-sm text-fg-muted">No work items yet. The curve appears when the engineer adds work pins with due dates.</p>
+  if (!data) return <p className="text-sm text-fg-muted">No tasks yet. Add tasks inside the work pins to track approved progress.</p>
 
   const { points, todayIndex, total, undated } = data
   const innerW = width - PAD.left - PAD.right
@@ -115,7 +115,7 @@ export default function SCurveChart({ pins, start, end, today, compact = false }
       </div>
 
       <p className="text-xs text-fg-muted">
-        {total} work item{total === 1 ? "" : "s"}.{undated ? ` ${undated} ha${undated === 1 ? "s" : "ve"} no due date yet, so ${undated === 1 ? "it is" : "they are"} not in the planned line. Set due dates on the pins to complete the plan.` : ""}
+        {total} task{total === 1 ? "" : "s"}.{undated ? ` ${undated} ha${undated === 1 ? "s" : "ve"} no due date yet, so ${undated === 1 ? "it is" : "they are"} not in the planned line. Set due dates on the pins to complete the plan.` : ""}
       </p>
       <details className="text-sm">
         <summary className="cursor-pointer text-xs font-bold text-fg-muted hover:text-fg">Show as a table</summary>

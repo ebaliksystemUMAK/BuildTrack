@@ -25,6 +25,36 @@ export function stampFields(stamp?: PhotoStamp | null): Record<string, string | 
   return out
 }
 
+// How a photo was added (20261031120532): the in-app camera, or a file chosen from the device. While the Super Admin has turned
+// photo uploads off, the database refuses "upload" (and any stamp but at_site) for daily reports and field evidence.
+export type CaptureSource = "camera" | "upload"
+export type ProjectSite = { lat: number | null; lng: number | null; radius_m: number }
+
+// Great-circle distance in whole metres, as SQL public.distance_m.
+export function distanceM(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const rad = (deg: number) => (deg * Math.PI) / 180
+  const a = Math.sin(rad(lat2 - lat1) / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(rad(lng2 - lng1) / 2) ** 2
+  return Math.round(2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(a))))
+}
+
+// The place part of SQL stamp_evidence_photo (a photo just taken has a trusted time), so the screen can warn before sending.
+export function siteFlag(stamp: PhotoStamp, site: ProjectSite | null): { flag: "at_site" | "away_from_site" | "no_site_set" | "no_location"; distance_m: number | null } {
+  if (typeof stamp.lat !== "number" || typeof stamp.lng !== "number") return { flag: "no_location", distance_m: null }
+  if (!site || site.lat === null || site.lng === null) return { flag: "no_site_set", distance_m: null }
+  const sent = stampFields(stamp) as { lat: number; lng: number; accuracy_m?: number }
+  const distance = distanceM(sent.lat, sent.lng, site.lat, site.lng)
+  return { flag: distance - Math.min(sent.accuracy_m ?? 0, 100) <= site.radius_m ? "at_site" : "away_from_site", distance_m: distance }
+}
+
+// Uploads off: why the database will refuse this camera photo (same words as enforce_photo_capture_policy), or "" at the site.
+export function sitePhotoProblem(stamp: PhotoStamp, site: ProjectSite | null): string {
+  const { flag, distance_m } = siteFlag(stamp, site)
+  if (flag === "no_location") return "Turn on location: photos must be taken at the project site, and this photo has no position."
+  if (flag === "no_site_set") return "This project has no site location yet, so photos cannot be checked. Ask an Admin or the Project Manager to set it."
+  if (flag === "away_from_site") return `This photo was taken ${metres(distance_m ?? 0)} from the project site. Photos must be taken at the site.`
+  return ""
+}
+
 export const metres = (value: number) => (value < 1000 ? `${value} m` : `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)} km`)
 
 export type StampLabel = { text: string; tone: "good" | "warn" | "bad" | "muted"; detail: string }

@@ -90,7 +90,7 @@ export default function ProjectOverview({ onNavigate }: AdminPageProps) {
         action={
           can("projects.manage") ? (
             <AdminButton icon="users" onClick={() => onNavigate("project-management")}>
-              Edit project / manage access
+              Edit project / assign managers
             </AdminButton>
           ) : undefined
         }
@@ -120,7 +120,7 @@ export default function ProjectOverview({ onNavigate }: AdminPageProps) {
 
         <Panel title={`Team (${team.length})`}>
           {team.length === 0 ? (
-            <p className="text-sm text-fg-muted">Nobody is assigned yet. Add people with Manage access.</p>
+            <p className="text-sm text-fg-muted">Nobody is assigned yet. The project's Project Manager adds its team.</p>
           ) : (
             <ul className="divide-y divide-line">
               {team.map((member) => (

@@ -1,5 +1,6 @@
 import type { Project, ProjectPhase, ProjectStatus } from "./projects"
 import { daysBetween, summarize, type Totals } from "./progress.ts"
+import type { ProgressTask } from "./taskProgress"
 
 // Pure rules of the Project Manager workspace (20261029100000). The database enforces the same rules;
 // supabase/tests/99-…-project-managers.cases.mjs proves them there, scripts/test-project-manager.mjs proves these.
@@ -122,7 +123,7 @@ export function pmAccess(input: { role: string | null | undefined; designation: 
   return { manage: true, note: null }
 }
 
-type DashPin = { id: string; title: string; status: string; category: string; due_date: string | null; blueprint_id: string }
+type DashPin = { id: string; title: string; status: string; category: string; due_date: string | null; blueprint_id: string; tasks?: ProgressTask[] }
 type DashInspection = { id: string; status: string; title: string; target_at?: string | null; requested_at: string }
 type DashDefect = { id: string; status: string; severity: string; title: string; due_date: string | null }
 export type Deadline = { id: string; kind: "work" | "ncr" | "milestone"; title: string; date: string; late: boolean }

@@ -3,8 +3,11 @@ import Modal from "./Modal"
 import { buttonPrimary, buttonSecondary } from "./ui/PageParts"
 import { captureStamp, type PhotoStamp } from "../lib/photoStamp"
 
-// A real video frame is the only photo input; there is no file/gallery fallback.
-export default function DailyReportCamera({ onCapture, onClose }: { onCapture: (file: File, stamp: PhotoStamp) => void; onClose: () => void }) {
+// A real video frame is the only photo input; there is no file/gallery fallback. The time and position are read at the shutter.
+// Used for daily progress reports and, when the Super Admin turns photo uploads off, for every field evidence photo.
+export default function CameraCapture({ onCapture, onClose, title = "Take a daily progress photo", description = "Capture the work with this device’s camera. You can annotate the photo and add a caption before saving it.", fileName = "daily-report" }: {
+  onCapture: (file: File, stamp: PhotoStamp) => void; onClose: () => void; title?: string; description?: string; fileName?: string
+}) {
   const video = useRef<HTMLVideoElement>(null)
   const stream = useRef<MediaStream | null>(null)
   const generation = useRef(0)
@@ -21,7 +24,7 @@ export default function DailyReportCamera({ onCapture, onClose }: { onCapture: (
   }
   const open = async () => {
     release(); setReady(false); setLive(false); setError("")
-    if (!navigator.mediaDevices?.getUserMedia) return setError("A camera requires HTTPS or localhost and a supported browser. Use a device with a camera to add report photos.")
+    if (!navigator.mediaDevices?.getUserMedia) return setError("A camera requires HTTPS or localhost and a supported browser. Use a device with a camera to add photos.")
     const run = generation.current
     try {
       const acquired = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1600 }, height: { ideal: 1200 } } })
@@ -58,13 +61,13 @@ export default function DailyReportCamera({ onCapture, onClose }: { onCapture: (
       if (run !== generation.current) return
       if (!blob) throw new Error("Could not capture the camera image. Retry.")
       release()
-      onCapture(new File([blob], `daily-report-${Date.now()}.jpg`, { type: "image/jpeg" }), stamp)
+      onCapture(new File([blob], `${fileName}-${Date.now()}.jpg`, { type: "image/jpeg" }), stamp)
     } catch (problem) { if (run === generation.current) setError(problem instanceof Error ? problem.message : "Photo capture failed. Retry.") }
     finally { capturing.current = false; setBusy(false) }
   }
-  return <Modal title="Take a daily progress photo" description="Capture the work with this device’s camera. You can annotate the photo and add a caption before saving it." size="xl" onClose={onClose}
+  return <Modal title={title} description={description} size="xl" onClose={onClose}
     footer={<><button type="button" className={buttonSecondary} onClick={onClose}>Cancel camera</button>{error ? <button type="button" className={buttonSecondary} disabled={busy} onClick={() => void open()}>Retry camera</button> : null}<button type="button" className={buttonPrimary} disabled={!ready || !live || busy} onClick={() => void capture()}>{busy ? "Capturing..." : "Capture photo"}</button></>}>
-    {live ? <video ref={video} autoPlay playsInline muted aria-label="Live daily report camera" className="max-h-[60vh] w-full rounded-xl bg-black" onLoadedData={() => setReady(true)} onError={() => { release(); setLive(false); setError("Camera preview failed. Retry opening the camera.") }} /> : !error ? <p role="status" className="text-sm text-fg-muted">Opening camera. Allow camera permission when prompted.</p> : null}
+    {live ? <video ref={video} autoPlay playsInline muted aria-label="Live camera" className="max-h-[60vh] w-full rounded-xl bg-black" onLoadedData={() => setReady(true)} onError={() => { release(); setLive(false); setError("Camera preview failed. Retry opening the camera.") }} /> : !error ? <p role="status" className="text-sm text-fg-muted">Opening camera. Allow camera permission when prompted.</p> : null}
     {error ? <p role="alert" className="mt-3 text-sm text-danger-fg">{error}</p> : null}
   </Modal>
 }

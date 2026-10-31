@@ -40,7 +40,7 @@ export default function QaAttemptHistory({ history, projectId, itemId, currentIn
   if (!rows.length) return null
   return <section className="mt-3 min-w-0 space-y-2" aria-label="QA request history">
     <h4 className="text-sm font-bold">QA requests · original and resubmissions</h4>
-    {!itemId ? <label className="block space-y-1 text-xs font-bold">Filter by checklist name<select value={filter} onChange={event=>setFilter(event.target.value)} className={inputClass} aria-label="Filter QA history by checklist name"><option value="">All checklist names</option>{groups.map(group=><option key={group.key} value={group.key}>{group.name} ({group.rows.length} requests)</option>)}</select></label> : null}
+    {!itemId ? <label className="block space-y-1 text-xs font-bold">Filter by task name<select value={filter} onChange={event=>setFilter(event.target.value)} className={inputClass} aria-label="Filter QA history by task name"><option value="">All task names</option>{groups.map(group=><option key={group.key} value={group.key}>{group.name} ({group.rows.length} requests)</option>)}</select></label> : null}
     {visibleGroups.map(group=><section key={group.key} className="space-y-2 rounded-xl border border-line p-2" aria-label={group.name+" request history"}>
     <h5 className="break-words text-sm font-extrabold text-brand-text">{group.name} <span className="text-xs font-normal text-fg-muted">· {group.rows.length} request(s)</span></h5>
     <ul className="grid min-w-0 gap-2" style={{gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,15rem),1fr))"}}>
@@ -51,22 +51,22 @@ export default function QaAttemptHistory({ history, projectId, itemId, currentIn
           <span className="text-sm font-bold">{labelOf(row,group.key)}</span>
           <span className="text-xs font-bold text-brand-text">{group.name}</span>
           <span className="text-xs text-fg-muted">{formatStamp(row.submitted_at)}</span>
-          <span className="text-xs text-fg-muted">{submittedChecklistItems(row,itemId,group.key).length} item(s) · {row.photos_snapshot.filter(p=>submittedChecklistItems(row,itemId,group.key).some(c=>c.id===p.checklist_item_id)).length} photo(s)</span>
+          <span className="text-xs text-fg-muted">{submittedChecklistItems(row,itemId,group.key).length} task(s) · {row.photos_snapshot.filter(p=>submittedChecklistItems(row,itemId,group.key).some(c=>c.id===p.checklist_item_id)).length} photo(s)</span>
           <span className="text-xs font-bold text-brand-text">View request details →</span>
         </button></li>
       })}
     </ul>
     </section>)}
-    {!visibleGroups.length ? <p role="status" className="text-xs text-fg-muted">No requests match this checklist name.<button type="button" className="ml-1 font-bold underline" onClick={()=>setFilter("")}>Show all</button></p> : null}
+    {!visibleGroups.length ? <p role="status" className="text-xs text-fg-muted">No requests match this task name.<button type="button" className="ml-1 font-bold underline" onClick={()=>setFilter("")}>Show all</button></p> : null}
     {selected ? <Modal title={checklist.map(item=>item.text).join(" / ")+" · "+ref+" · "+labelOf(selected,selectedChecklist)} description={"Submitted "+formatStamp(selected.submitted_at)+" by "+nameOf(selected.submitted_by)} size="2xl" onClose={()=>setSelectedId(null)} footer={<>
       <button type="button" className={buttonSecondary} onClick={()=>setSelectedId(null)}>Close details</button>
       {selected.inspection_id!==currentInspectionId ? <button type="button" className={buttonSecondary} onClick={()=>{setSelectedId(null);onOpen ? onOpen(selected.inspection_id) : followLink(qaRecordPath(profile?.role==="engineer" ? "engineer" : "foreman",projectId,"inspection",selected.inspection_id),projectId)}}>Open inspection</button> : null}
     </>}>
       <div className="min-w-0 space-y-4">
         <p className="rounded-lg bg-surface-muted p-3 text-sm">{inspection ? inspectionStatusLabels[inspection.status] : "Recorded"}. These photos and remarks belong only to this request. Later corrections do not change them.</p>
-        {submittedChecklistItems(selected).length>checklist.length ? <p className="text-xs text-fg-muted">This request also contained other work items. Only this item's remarks and photos are shown here.</p> : null}
+        {submittedChecklistItems(selected).length>checklist.length ? <p className="text-xs text-fg-muted">This request also contained other tasks. Only this item's remarks and photos are shown here.</p> : null}
         {inspection?.reinspection_of ? <p className="text-xs text-fg-muted">Follows {inspectionOf(inspection.reinspection_of) ? refNumber("ir",inspectionOf(inspection.reinspection_of)!.number) : "an earlier inspection"}.</p> : null}
-        <section className="space-y-2" aria-label="Submitted remarks"><h3 className="text-sm font-bold">Checklist and remarks</h3>{checklist.map(c=><div key={c.id} className="rounded-lg border border-line p-3 text-sm"><strong>{c.text}</strong><p className="whitespace-pre-wrap break-words">{c.remark || "No Foreman remark recorded for this request."}</p>{c.remark_at ? <p className="text-xs text-fg-muted">Saved {formatStamp(c.remark_at)}</p> : null}</div>)}</section>
+        <section className="space-y-2" aria-label="Submitted remarks"><h3 className="text-sm font-bold">Tasks and remarks</h3>{checklist.map(c=><div key={c.id} className="rounded-lg border border-line p-3 text-sm"><strong>{c.text}</strong><p className="whitespace-pre-wrap break-words">{c.remark || "No Foreman remark recorded for this request."}</p>{c.remark_at ? <p className="text-xs text-fg-muted">Saved {formatStamp(c.remark_at)}</p> : null}</div>)}</section>
         {attempts.map(a=><p key={a.id} className="text-xs text-fg-muted">Correction holder opened {formatStamp(a.created_at)} · saved {formatStamp(a.updated_at)}</p>)}
         <section aria-label="Submitted photos" className="space-y-2"><h3 className="text-sm font-bold">Photos for {ref}</h3><PhotoGrid bucket="pin-photos" photos={photos.map(p=>({...p,label:ref+" evidence",requestLabel:ref,recordState:"snapshot",uploaderName:nameOf(p.uploaded_by ?? null),checklist:checklist.find(c=>c.id===p.checklist_item_id) ?? null}))} emptyHint="No photos captured in this request." /></section>
       </div>

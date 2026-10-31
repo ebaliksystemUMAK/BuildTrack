@@ -3,7 +3,7 @@ import { validAttendanceDay } from "./foremanAttendanceModel.ts"
 import { scheduleFlagLabel } from "./attendanceScheduleModel.ts"
 import type { DailyStatusRow } from "./attendanceStatusModel.ts"
 
-export type AttendanceReportPeriod = "daily" | "weekly" | "monthly"
+export type AttendanceReportPeriod = "daily" | "weekly" | "monthly" | "custom"
 export type AttendanceReportPerson = { id: string; full_name: string; worker_code: string; trade: string }
 export type AttendanceReportEvent = {
   id: string
@@ -30,9 +30,9 @@ export type AttendanceReportData = {
   worker: AttendanceReportPerson | null
   range: AttendanceReportRange
   events: AttendanceReportEvent[]
-  // Daily time record per worker and day (On time / Late / Absent ...), from attendance_daily_status. Missing when
-  // the database cannot provide it; the report then falls back to the scan summary.
-  days?: DailyStatusRow[]
+  // Complete daily records, including workers without scans. Never substitute a scan-only report.
+  days: DailyStatusRow[]
+  generatedBy: string
   generatedAt: string
 }
 export type AttendanceDailyRow = {
@@ -50,9 +50,34 @@ export type AttendanceDailyRow = {
   departure: string
 }
 
+// Present includes on-time and late arrivals. Late is a subset, not an additional attendance day.
+export function attendanceReportCounts(days: DailyStatusRow[]) {
+  return days.reduce((counts, row) => {
+    if (row.status === "on_time" || row.status === "late" || row.status === "present") counts.present++
+    if (row.status === "absent") counts.absent++
+    if (row.status === "late") counts.late++
+    return counts
+  }, { present: 0, absent: 0, late: 0 })
+}
+
+// Permanent worker IDs keep workers with matching names or codes separate.
+export function attendanceReportWorkers(days: DailyStatusRow[]) {
+  const workers = new Map<string, { workerId: string; name: string; code: string; trade: string; present: number; absent: number; late: number }>()
+  for (const day of days) {
+    let worker = workers.get(day.worker_id)
+    if (!worker) {
+      worker = { workerId: day.worker_id, name: day.full_name, code: day.worker_code, trade: day.trade, present: 0, absent: 0, late: 0 }
+      workers.set(day.worker_id, worker)
+    }
+    const counts = attendanceReportCounts([day])
+    worker.present += counts.present; worker.absent += counts.absent; worker.late += counts.late
+  }
+  return [...workers.values()].sort((a, b) => a.name.localeCompare(b.name) || a.code.localeCompare(b.code) || a.workerId.localeCompare(b.workerId))
+}
+
 const isoDay = (date: Date) => date.toISOString().slice(0, 10)
-export function attendanceReportRange(period: AttendanceReportPeriod, anchor: string, today = attendanceDay()): AttendanceReportRange {
-  if (!["daily", "weekly", "monthly"].includes(period) || !validAttendanceDay(anchor, today)) throw new Error("Choose a valid report period and a date no later than today.")
+export function attendanceReportRange(period: AttendanceReportPeriod, anchor: string, today = attendanceDay(), endDay?: string): AttendanceReportRange {
+  if (!["daily", "weekly", "monthly", "custom"].includes(period) || !validAttendanceDay(anchor, today)) throw new Error("Choose a valid report period and a date no later than today.")
   const start = new Date(`${anchor}T00:00:00Z`), end = new Date(start)
   if (period === "weekly") {
     start.setUTCDate(start.getUTCDate() - (start.getUTCDay() + 6) % 7)
@@ -60,11 +85,30 @@ export function attendanceReportRange(period: AttendanceReportPeriod, anchor: st
   } else if (period === "monthly") {
     start.setUTCDate(1)
     end.setUTCDate(1); end.setUTCMonth(end.getUTCMonth() + 1); end.setUTCDate(0)
+  } else if (period === "custom") {
+    if (!endDay || !validAttendanceDay(endDay, today)) throw new Error("Choose valid From and To dates no later than today.")
+    if (endDay < anchor) throw new Error("The To date must be on or after the From date.")
+    end.setTime(new Date(`${endDay}T00:00:00Z`).getTime())
   }
-  const startDay = isoDay(start), endDay = isoDay(end), throughDay = endDay < today ? endDay : today
+  const startDay = isoDay(start), lastDay = isoDay(end), throughDay = lastDay < today ? lastDay : today
   const until = new Date(`${throughDay}T00:00:00+08:00`)
   until.setTime(until.getTime() + 86400000)
-  return { period, startDay, endDay, throughDay, start: new Date(`${startDay}T00:00:00+08:00`).toISOString(), endExclusive: until.toISOString() }
+  return { period, startDay, endDay: lastDay, throughDay, start: new Date(`${startDay}T00:00:00+08:00`).toISOString(), endExclusive: until.toISOString() }
+}
+
+// attendance_daily_status accepts at most 63 inclusive days per call.
+export function attendanceReportWindows(range: AttendanceReportRange) {
+  const windows: Array<{ startDay: string; endDay: string }> = []
+  const cursor = new Date(`${range.startDay}T00:00:00Z`)
+  while (isoDay(cursor) <= range.throughDay) {
+    const startDay = isoDay(cursor)
+    cursor.setUTCDate(cursor.getUTCDate() + 62)
+    const endDay = isoDay(cursor) < range.throughDay ? isoDay(cursor) : range.throughDay
+    windows.push({ startDay, endDay })
+    cursor.setTime(new Date(`${endDay}T00:00:00Z`).getTime())
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+  return windows
 }
 
 export function attendanceReportSummary(events: AttendanceReportEvent[]) {
@@ -95,4 +139,4 @@ export function attendanceReportSummary(events: AttendanceReportEvent[]) {
 }
 
 export const reportTime = (value: string | null) => value ? attendanceTime(value) : "—"
-export const reportPeriodTitle = (period: AttendanceReportPeriod) => ({ daily: "Daily", weekly: "Weekly", monthly: "Monthly" })[period]
+export const reportPeriodTitle = (period: AttendanceReportPeriod) => ({ daily: "Daily", weekly: "Weekly", monthly: "Monthly", custom: "Date range" })[period]

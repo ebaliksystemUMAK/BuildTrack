@@ -13,7 +13,7 @@ export default function AdminQaChecklists(_: AdminPageProps) {
     <div className="admin-page">
       <PageHead
         eyebrow="Quality assurance"
-        title="Inspection checklists"
+        title="QC Checklist Library"
         description="The company library every project can use. Engineers copy a list into their project to adapt it with the exact clauses of that project's specification. The pass mark, weights and standards are set under System Settings."
       />
       <QaView ws={ws} mode="engineer" tabs={["checklists"]} canEditLibrary={profile?.role === "super_admin"} />

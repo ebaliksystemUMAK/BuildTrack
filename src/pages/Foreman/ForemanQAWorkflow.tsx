@@ -12,7 +12,7 @@ export default function ForemanQAWorkflow(_: ForemanPageProps) {
   return (
     <div className="foreman-page">
       <ProjectContextBar listPath="/foreman/projects" listLabel="My projects" />
-      <PageHead eyebrow="Quality assurance" title="Checklist reference" description="Inspection criteria (measurements, material checks, workmanship requirements) the Engineer inspects your work items against. Use them to self-check. Checklist items (FLOOR, WALL…) are submitted from the work itself or opened through QA requests." />
+      <PageHead eyebrow="Quality assurance" title="QC Checklist reference" description="QC Checklist (measurements, material checks, workmanship requirements) the Engineer inspects your tasks against. Use them to self-check. Tasks (FLOOR, WALL…) are submitted from the work itself or opened through QA requests." />
       {projectId ? <QaView ws={ws} mode="foreman" tabs={["checklists"]} /> : null}
     </div>
   )

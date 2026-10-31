@@ -67,7 +67,7 @@ export default function ReportModal({ pin: sourcePin, onClose, onSaved }: { pin:
         <ProgressTracker status={pin.status} />
         {pin.description ? <p className="whitespace-pre-wrap text-sm">{pin.description}</p> : null}
         <section>
-          <h3 className="mb-2 text-xs font-extrabold uppercase tracking-wider text-fg-muted">Checklist</h3>
+          <h3 className="mb-2 text-xs font-extrabold uppercase tracking-wider text-fg-muted">Tasks &amp; QC</h3>
           <PinChecklist pin={pin} canEdit={false} canTick={!locked && pin.assigned_to === profile?.id} notice={pin.assigned_to !== profile?.id ? "This work is not assigned to you. The engineer must assign it to you before you can upload photos." : locked ? "Awaiting Engineer inspection. Photos can be added again if the work is sent back." : ""} onPinChanged={onSaved} submissionNote={note} />
         </section>
         {!locked ? (

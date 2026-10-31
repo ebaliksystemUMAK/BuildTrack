@@ -31,6 +31,7 @@ export default async function (ctx) {
     P.one = (await one("insert into public.projects (code, name, status) values ('PM-1', 'Managed tower', 'active') returning id")).id
     P.two = (await one("insert into public.projects (code, name, status) values ('PM-2', 'Other site', 'active') returning id")).id
     P.three = (await one("insert into public.projects (code, name) values ('PM-3', 'Unmanaged site') returning id")).id
+    await as("super", "aal2") // Initial team fixture; Admin manager assignment is tested separately.
     await expectOk("insert into public.project_members (project_id, user_id) values ($1, $2)", [P.one, ids.pmEng])
     await expectOk("select public.set_blueprint_access($1, $2, '{\"architectural\":\"assigned\"}')", [P.one, ids.pmEng])
   })
@@ -70,7 +71,7 @@ export default async function (ctx) {
     assert.equal(await count("select count(*) n from public.get_project_managers(null)"), 2, "own project's primary and backup")
     await expectFail("select * from public.get_project_audit_log($1)", [P.two], /cannot read the history/)
     await expectFail("select public.log_project_export($1, false, 1)", [P.two], /Missing permission/)
-    await expectFail("select public.set_blueprint_access($1, $2, '{\"architectural\":\"view\"}')", [P.three, ids.pmEng], /Only an Admin/)
+    await expectFail("select public.set_blueprint_access($1, $2, '{\"architectural\":\"view\"}')", [P.three, ids.pmEng], /Project Managers/)
     await expectFail("insert into public.project_members (project_id, user_id) values ($1, $2)", [P.two, ids.pmFore], /row-level security/)
     assert.equal((await db.query("update public.projects set location = 'x' where id = $1 returning id", [P.two])).rows.length, 0)
     await expectOk("select public.log_project_export($1, false, 1)", [P.one])
@@ -247,7 +248,7 @@ export default async function (ctx) {
     assert.equal(await count("select count(*) n from public.projects where id = $1 and archived_at is not null", [P.one]), 1, "still readable")
     await expectFail("update public.projects set location = 'Pasig' where id = $1", [P.one], /archived/)
     await expectFail("insert into public.project_members (project_id, user_id) values ($1, $2)", [P.one, ids.pmClient], /row-level security/)
-    await expectFail("select public.set_blueprint_access($1, $2, '{\"architectural\":\"view\"}')", [P.one, ids.pmFore2], /Only an Admin/)
+    await expectFail("select public.set_blueprint_access($1, $2, '{\"architectural\":\"view\"}')", [P.one, ids.pmFore2], /Project Managers/)
     await expectFail("insert into public.blueprints (project_id, title, blueprint_type) values ($1, 'Archived upload', 'architectural')", [P.one], /row-level security/)
     await expectFail("select public.assign_work_item($1, null)", [pin.id], /Project Manager/)
     await expectOk("select public.log_project_export($1, false, 1)", [P.one])
@@ -313,13 +314,16 @@ export default async function (ctx) {
   await test("PM: existing roles keep their rules — Engineers still assign their work, Clients and Engineers cannot manage projects", async () => {
     await as("pmEng")
     assert.equal((await db.query("update public.projects set location = 'Engineer edit' where id = $1 returning id", [P.one])).rows.length, 0)
-    await expectFail("select public.set_blueprint_access($1, $2, '{\"architectural\":\"view\"}')", [P.one, ids.pmFore2], /Only an Admin/)
+    await expectFail("select public.set_blueprint_access($1, $2, '{\"architectural\":\"view\"}')", [P.one, ids.pmFore2], /Project Managers/)
     await expectFail("insert into public.project_members (project_id, user_id) values ($1, $2)", [P.one, ids.pmClient], /row-level security/)
     assert.equal(await count("select count(*) n from public.attendance_concerns"), 0)
     await as("client1")
     await expectFail("select public.assign_work_item($1, null)", [pin.id], /Project Manager/)
     await as("admin", "aal2")
+    await expectFail("select public.assign_work_item($1, null)", [pin.id], /Project Manager/)
+    await as("super", "aal2")
     await expectOk("select public.assign_work_item($1, null)", [pin.id])
+    await as("admin", "aal2")
     await expectOk("update public.projects set name = 'Managed tower (renamed)' where id = $1", [P.one])
   })
 }

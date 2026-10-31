@@ -1,7 +1,7 @@
 // Tests for 0005 (fix + hardening) and 0006 (project leads, scope, team API). Called by run-sql-tests.mjs.
 export default async function ({ db, ids, as, asOwner, test, expectOk, expectFail, count }) {
   const newProject = async (code, extra = "") => {
-    await as("admin", "aal2")
+    await as(extra ? "super" : "admin", "aal2")
     const { rows } = await db.query(
       `insert into public.projects (code, name${extra ? ", " + extra.split("|")[0] : ""}) values ($1, 'Test ${code}'${extra ? ", " + extra.split("|")[1] : ""}) returning id`,
       [code],
@@ -38,7 +38,7 @@ export default async function ({ db, ids, as, asOwner, test, expectOk, expectFai
   })
 
   await test("Wrong role as lead is rejected (foreman as engineer, client as foreman)", async () => {
-    await as("admin", "aal2")
+    await as("super", "aal2")
     await expectFail(`insert into public.projects (code, name, lead_engineer_id) values ('BAD-1', 'Valid name', '${ids.fore1}')`, [], /engineer in charge/)
     await expectFail(`insert into public.projects (code, name, lead_foreman_id) values ('BAD-2', 'Valid name', '${ids.client1}')`, [], /foreman in charge/)
     await expectFail(`insert into public.projects (code, name, lead_engineer_id) values ('BAD-3', 'Valid name', '${ids.pending1}')`, [], /engineer in charge/)
@@ -57,7 +57,7 @@ export default async function ({ db, ids, as, asOwner, test, expectOk, expectFai
   })
 
   await test("Changing the engineer in charge adds the new one to the team", async () => {
-    await as("admin", "aal2")
+    await as("super", "aal2")
     await expectOk("update public.projects set lead_engineer_id = $1 where id = $2", [ids.eng2, ids.lead1])
     await asOwner()
     const n = await count("select count(*) n from public.project_members where project_id = $1 and user_id = $2", [ids.lead1, ids.eng2])
@@ -65,7 +65,7 @@ export default async function ({ db, ids, as, asOwner, test, expectOk, expectFai
   })
 
   await test("Removing the lead from the team clears the lead field", async () => {
-    await as("admin", "aal2")
+    await as("super", "aal2")
     await expectOk("delete from public.project_members where project_id = $1 and user_id = $2", [ids.lead1, ids.eng2])
     await asOwner()
     const { rows } = await db.query("select lead_engineer_id from public.projects where id = $1", [ids.lead1])

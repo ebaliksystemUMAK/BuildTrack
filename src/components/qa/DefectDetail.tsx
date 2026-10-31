@@ -155,7 +155,11 @@ export default function DefectDetail({
       if (run === inspectionRun.current) { inspectionPending.current = false; setBusy(false) }
     }
   }
-  const openItem = (id: string) => followLink(workItemPath(canVerify || profile?.role === "engineer" ? "engineer" : "foreman", defect.project_id, id, canVerify || profile?.role === "engineer" ? undefined : "issues"), defect.project_id)
+  const openItem = (id: string) => {
+    const engineer = canVerify || profile?.role === "engineer"
+    closeWindow()
+    followLink(workItemPath(engineer ? "engineer" : "foreman", defect.project_id, id, engineer ? undefined : "issues", engineer ? undefined : "corrections"), defect.project_id)
+  }
   const refresh = async () => {
     await Promise.all([onChanged(), reloadEvents()])
   }
@@ -212,10 +216,10 @@ export default function DefectDetail({
           <SeverityChip severity={defect.severity} />
           <Chip tone={dueTone[due.state]}>{dueText(defect, today)}</Chip>
           {defect.inspection_id && onOpenInspection ? <button type="button" onClick={() => onOpenInspection(defect.inspection_id as string)} className="text-xs font-bold text-brand-text underline">View the inspection</button> : null}
-          {workItems.map((row) => <button key={row.id} type="button" className="text-xs font-bold text-brand-text underline" onClick={() => openItem(row.id)}>Open work item: {row.text}</button>)}
+          {workItems.map((row) => <button key={row.id} type="button" className="text-xs font-bold text-brand-text underline" onClick={() => openItem(row.id)}>Open task: {row.text}</button>)}
           {defect.pin_id && !viaPackage && !onPlan ? <OpenOnBlueprint projectId={defect.project_id} pinId={defect.pin_id} section="issues" className="text-xs font-bold text-brand-text underline" /> : null}
         </div>
-        {defect.checklist_name ? <p className="text-xs font-semibold text-fg-muted">Raised on checklist item: {defect.checklist_name}{defect.checklist_item_id ? "" : " (item since removed from the checklist)"}</p> : !defect.pin_id ? <p className="text-xs font-semibold text-fg-muted">Project-wide NCR (not linked to one pin)</p> : null}
+        {defect.checklist_name ? <p className="text-xs font-semibold text-fg-muted">Raised on task: {defect.checklist_name}{defect.checklist_item_id ? "" : " (task since removed from this pin)"}</p> : !defect.pin_id ? <p className="text-xs font-semibold text-fg-muted">Project-wide NCR (not linked to one pin)</p> : null}
 
         {editing ? (
           <div className="space-y-3 rounded-xl border border-brand p-3">
@@ -245,13 +249,6 @@ export default function DefectDetail({
         )}
 
         <LinkedClientReportEvidence projectId={defect.project_id} defectId={defect.id} />
-        {viaPackage && canWork && assigned && (defect.status === "open" || defect.status === "in_progress") ? (
-          <div role="status" className="rounded-xl border-2 border-brand/60 bg-brand-soft/40 p-3 text-sm">
-            <p className="font-bold">Correct this NCR from its work item</p>
-            <p className="mt-1 text-fg-muted">One correction form re-submits {workItems.map((row) => row.text).join(", ")} for inspection and sends this NCR for verification with the same remarks and photos. You do not fill in a separate NCR form.</p>
-            <div className="mt-2 flex flex-wrap gap-2">{workItems.map((row) => <button key={row.id} type="button" className={buttonPrimary + " !py-1.5 !text-xs"} onClick={() => openItem(row.id)}>Open the correction form: {row.text}</button>)}</div>
-          </div>
-        ) : null}
         <section aria-label="Corrective and preventive action" className="rounded-xl border border-line p-3">
           <h3 className="text-xs font-extrabold uppercase tracking-wider text-fg-muted">Contractor's response (corrective and preventive action)</h3>
           {working ? (
@@ -291,7 +288,7 @@ export default function DefectDetail({
             <h3 className="text-sm font-extrabold">Verify the corrected work</h3>
             <p className="mt-1 text-xs text-fg-muted">Inspect the work and the photos. Close the NCR if it now meets the requirement, or send it back with what is still wrong.</p>
             {closeProblem ? <p role="status" className="mt-2 text-xs font-semibold text-amber-800 dark:text-amber-300">{closeProblem}{correctionInspection?.error ? <button type="button" className="ml-1 underline" onClick={() => void correctionInspection.reload()}>Retry</button> : null}</p> : null}
-            {correctionInspection?.ready ? <p className="mt-2 text-xs text-fg-muted">This finding has a signed-off Pass. Other findings may still be unresolved; closing this NCR does not complete the checklist.</p> : null}
+            {correctionInspection?.ready ? <p className="mt-2 text-xs text-fg-muted">This finding has a signed-off Pass. Other findings may still be unresolved; closing this NCR does not complete the task.</p> : null}
             {correctionInspection?.id && onOpenInspection ? <button type="button" className="mt-2 text-xs font-bold text-brand-text underline" onClick={() => onOpenInspection(correctionInspection.id!)}>Open linked reinspection {refNumber("ir", correctionInspection.number ?? 0)}</button> : null}
             <label className="sr-only" htmlFor="d-note">Verification note</label>
             <textarea id="d-note" rows={2} maxLength={1000} className={`${inputClass} mt-2`} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Verification note (at least 5 characters)" />

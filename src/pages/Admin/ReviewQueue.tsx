@@ -9,10 +9,11 @@ import { idTypeLabel, identityActions, maskedId, type Verification } from "../..
 import { supabase } from "../../lib/supabase"
 import { timeAgo } from "../../lib/notifications"
 import { useToast } from "../../lib/toast"
+import type { ApprovalRole } from "../../lib/access"
+import RegistrationApproval from "./RegistrationApproval"
 
 const secondary = "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-semibold text-fg shadow-sm hover:border-brand/50 hover:text-brand-text disabled:opacity-60"
 const primary = "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-[#9e1f93] to-[#b4329f] px-4 py-2 text-sm font-bold text-white shadow-[0_8px_18px_-10px_rgba(158,31,147,0.85)] hover:from-[#8a1a80] hover:to-[#a52a92] disabled:opacity-60"
-type Requested = "engineer" | "foreman" | "client"
 
 type Item =
   | { kind: "registration"; key: string; at: string; user: Profile }
@@ -42,9 +43,9 @@ function Row({ label, children, flag }: { label: string; children: React.ReactNo
 
 const norm = (value: string | null | undefined) => (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "")
 
-// Split view for decisions: waiting registrations and identity checks on the left, the person's details and the decision on the right.
-// Keys: J / K move through the list, A approves, R jumps to the rejection reason.
-export default function ReviewQueue({ users, onChanged, onDecideRegistration }: { users: Profile[]; onChanged: () => Promise<void> | void; onDecideRegistration: (user: Profile, action: "approve" | "reject", role: Requested, note?: string) => Promise<void> }) {
+// Decisions list: waiting registrations and identity checks; clicking one opens its details and the decision in a window.
+// Keys (while the details are open): J / K next / previous, A approves an ID, R jumps to the rejection reason.
+export default function ReviewQueue({ users, onChanged, onDecideRegistration }: { users: Profile[]; onChanged: () => Promise<void> | void; onDecideRegistration: (user: Profile, action: "approve" | "reject", role: ApprovalRole, note?: string) => Promise<void> }) {
   const toast = useToast()
   const confirm = useConfirm()
   const [verifications, setVerifications] = useState<Verification[]>([])
@@ -74,7 +75,9 @@ export default function ReviewQueue({ users, onChanged, onDecideRegistration }: 
     return list.sort((a, b) => a.at.localeCompare(b.at)) // oldest first: the longest wait is decided first
   }, [users, verifications, showDecided, byId])
 
-  const current = items.find((item) => item.key === selected) ?? items[0] ?? null
+  // Nothing is open until someone is clicked; a decided item that leaves the list closes its details.
+  const current = items.find((item) => item.key === selected) ?? null
+  const index = current ? items.indexOf(current) : -1
 
   // Opening someone's documents is written to the audit log (once per item per session).
   useEffect(() => {
@@ -86,10 +89,9 @@ export default function ReviewQueue({ users, onChanged, onDecideRegistration }: 
   useEffect(() => setReason(""), [current?.key])
 
   const move = useCallback((by: number) => {
-    if (!items.length) return
-    const index = Math.max(0, items.findIndex((item) => item.key === current?.key))
+    if (index < 0) return
     setSelected(items[Math.min(items.length - 1, Math.max(0, index + by))].key)
-  }, [items, current?.key])
+  }, [items, index])
 
   const decideIdentity = useCallback(async (approve: boolean) => {
     if (current?.kind !== "identity" || current.verification.status !== "submitted") return
@@ -112,7 +114,7 @@ export default function ReviewQueue({ users, onChanged, onDecideRegistration }: 
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
-      if (zoom || event.ctrlKey || event.metaKey || event.altKey) return
+      if (!current || zoom || event.ctrlKey || event.metaKey || event.altKey) return
       if (event.key === "j") move(1)
       else if (event.key === "k") move(-1)
       else if (event.key === "a" && current?.kind === "identity") void decideIdentity(true)
@@ -136,73 +138,94 @@ export default function ReviewQueue({ users, onChanged, onDecideRegistration }: 
   const waitingRegistrations = users.filter((u) => u.status === "pending").length
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[22rem_1fr]" role="region" aria-label="Review queue">
-      <aside className="rounded-2xl border border-line bg-surface">
-        <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
-          <div><h2 className="text-sm font-extrabold">Waiting for you</h2><p className="text-xs text-fg-muted">{waitingRegistrations} registration{waitingRegistrations === 1 ? "" : "s"} • {waitingIdentity} ID check{waitingIdentity === 1 ? "" : "s"}</p></div>
-          <label className="flex cursor-pointer items-center gap-1.5 text-xs font-semibold"><input type="checkbox" checked={showDecided} onChange={(event) => setShowDecided(event.target.checked)} /> Decided</label>
-        </div>
-        {items.length === 0 ? (
-          <p className="p-6 text-center text-sm text-fg-muted">Nothing is waiting. New registrations and ID checks appear here and you get a notification.</p>
-        ) : (
-          <ul className="max-h-[70vh] divide-y divide-line overflow-y-auto" aria-label="Queue">
-            {items.map((item) => {
-              const active = item.key === current?.key
-              const name = item.kind === "registration" ? item.user.full_name || item.user.email : item.verification.legal_name
-              return (
-                <li key={item.key}>
-                  <button type="button" onClick={() => setSelected(item.key)} aria-current={active ? "true" : undefined} className={`flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-surface-muted ${active ? "bg-brand-soft" : ""}`}>
-                    <span className={`mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-full text-xs font-extrabold text-white ${item.kind === "identity" ? "bg-[#F18B00] !text-black" : "bg-brand"}`} aria-hidden="true">{item.kind === "identity" ? "ID" : "NEW"}</span>
-                    <span className="min-w-0 flex-1">
+    <section className="rounded-2xl border border-line bg-surface" role="region" aria-label="Review queue">
+      <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
+        <div><h2 className="text-sm font-extrabold">Waiting for you</h2><p className="text-xs text-fg-muted">{waitingRegistrations} registration{waitingRegistrations === 1 ? "" : "s"} • {waitingIdentity} ID check{waitingIdentity === 1 ? "" : "s"}</p></div>
+        <label className="flex cursor-pointer items-center gap-1.5 text-xs font-semibold"><input type="checkbox" checked={showDecided} onChange={(event) => setShowDecided(event.target.checked)} /> Decided</label>
+      </div>
+      {items.length === 0 ? (
+        <p className="p-6 text-center text-sm text-fg-muted">Nothing is waiting. New registrations and ID checks appear here and you get a notification.</p>
+      ) : (
+        <ul className="divide-y divide-line" aria-label="Queue">
+          {items.map((item) => {
+            const name = item.kind === "registration" ? item.user.full_name || item.user.email : item.verification.legal_name
+            const email = item.user?.email ?? "Account removed"
+            const detail = item.kind === "registration" ? (item.user.requested_role ? `Asked for ${roleLabel[item.user.requested_role]}` : "Details not sent yet") : `${idTypeLabel(item.verification.id_type)}${item.verification.status !== "submitted" ? ` • ${item.verification.status}` : ""}`
+            const kind = item.kind === "registration" ? "Registration" : "ID check"
+            return (
+              <li key={item.key}>
+                <button type="button" onClick={() => setSelected(item.key)} aria-haspopup="dialog" className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-surface-muted">
+                  <span className={`flex h-9 w-9 flex-none items-center justify-center rounded-full text-xs font-extrabold text-white ${item.kind === "identity" ? "bg-[#F18B00] !text-black" : "bg-brand"}`} aria-hidden="true">{item.kind === "identity" ? "ID" : "NEW"}</span>
+                  <span className="min-w-0 flex-1 sm:grid sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] sm:items-center sm:gap-4">
+                    <span className="block min-w-0">
                       <span className="block truncate text-sm font-extrabold">{name}</span>
-                      <span className="block truncate text-xs text-fg-muted">{item.kind === "registration" ? (item.user.requested_role ? `Asked for ${roleLabel[item.user.requested_role]}` : "Details not sent yet") : `${idTypeLabel(item.verification.id_type)}${item.verification.status !== "submitted" ? ` • ${item.verification.status}` : ""}`}</span>
+                      <span className="block truncate text-xs text-fg-muted">{email}</span>
                     </span>
-                    <span className="flex-none text-[11px] text-fg-muted">{timeAgo(item.at)}</span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-        <p className="border-t border-line px-4 py-2 text-[11px] text-fg-muted">Keys: <kbd className="rounded border border-line px-1">J</kbd> / <kbd className="rounded border border-line px-1">K</kbd> move, <kbd className="rounded border border-line px-1">A</kbd> approve an ID, <kbd className="rounded border border-line px-1">R</kbd> reason to reject</p>
-      </aside>
+                    <span className="block min-w-0">
+                      <span className="block truncate text-xs font-extrabold uppercase tracking-wider text-brand-text">{kind}</span>
+                      <span className="block truncate text-xs text-fg-muted">{detail}</span>
+                    </span>
+                  </span>
+                  <span className="flex-none text-[11px] text-fg-muted">{timeAgo(item.at)}</span>
+                  <span className="hidden flex-none text-xs font-bold text-brand-text sm:inline">View details ›</span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      <p className="border-t border-line px-4 py-2 text-[11px] text-fg-muted">Click someone to open their details. Inside: <kbd className="rounded border border-line px-1">J</kbd> / <kbd className="rounded border border-line px-1">K</kbd> next / previous, <kbd className="rounded border border-line px-1">A</kbd> approve an ID, <kbd className="rounded border border-line px-1">R</kbd> reason to reject</p>
 
-      <section className="min-w-0 rounded-2xl border border-line bg-surface p-5" aria-live="polite">
-        {!current ? (
-          <p className="py-16 text-center text-sm text-fg-muted">Choose someone from the list.</p>
-        ) : current.kind === "registration" ? (
-          <RegistrationPane user={current.user} busy={busy} onDecide={async (action, role, note) => { setBusy(true); await onDecideRegistration(current.user, action, role, note); setBusy(false) }} />
-        ) : (
-          <IdentityPane
-            item={current}
-            reason={reason}
-            setReason={setReason}
-            reasonBox={reasonBox}
-            busy={busy}
-            onZoom={(url, title) => setZoom({ url, title })}
-            onApprove={() => void decideIdentity(true)}
-            onReject={() => void decideIdentity(false)}
-            onDelete={() => void deleteImages(current.verification)}
-          />
-        )}
-      </section>
+      {current ? (
+        <Modal
+          title={current.kind === "registration" ? "Registration details" : "ID check details"}
+          size={current.kind === "registration" ? "lg" : "xl"}
+          onClose={() => setSelected(null)}
+          footer={
+            <>
+              <span className="mr-auto text-xs text-fg-muted">{index + 1} of {items.length}</span>
+              <button type="button" className={secondary} disabled={index <= 0} onClick={() => move(-1)}>Previous</button>
+              <button type="button" className={secondary} disabled={index >= items.length - 1} onClick={() => move(1)}>Next</button>
+              <button type="button" className={secondary} onClick={() => setSelected(null)}>Close</button>
+            </>
+          }
+        >
+          <div aria-live="polite">
+            {current.kind === "registration" ? (
+              <RegistrationPane key={current.key} user={current.user} busy={busy} onDecide={async (action, role, note) => { setBusy(true); await onDecideRegistration(current.user, action, role, note); setBusy(false) }} />
+            ) : (
+              <IdentityPane
+                item={current}
+                reason={reason}
+                setReason={setReason}
+                reasonBox={reasonBox}
+                busy={busy}
+                onZoom={(url, title) => setZoom({ url, title })}
+                onApprove={() => void decideIdentity(true)}
+                onReject={() => void decideIdentity(false)}
+                onDelete={() => void deleteImages(current.verification)}
+              />
+            )}
+          </div>
+        </Modal>
+      ) : null}
 
       {zoom ? (
         <Modal title={zoom.title} size="xl" onClose={() => setZoom(null)} footer={<button type="button" className={secondary} onClick={() => setZoom(null)}>Close</button>}>
           <img src={zoom.url} alt={zoom.title} className="mx-auto max-h-[70vh] w-auto max-w-full rounded-lg" />
         </Modal>
       ) : null}
-    </div>
+    </section>
   )
 }
 
-function RegistrationPane({ user, busy, onDecide }: { user: Profile; busy: boolean; onDecide: (action: "approve" | "reject", role: Requested, note?: string) => Promise<void> }) {
+function RegistrationPane({ user, busy, onDecide }: { user: Profile; busy: boolean; onDecide: (action: "approve" | "reject", role: ApprovalRole, note?: string) => Promise<void> }) {
   const ready = Boolean(user.registration_completed_at)
   const [reason, setReason] = useState("")
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div><p className="text-xs font-extrabold uppercase tracking-wider text-brand-text">Registration</p><h2 className="text-xl font-extrabold">{user.full_name || user.email}</h2><p className="text-sm text-fg-muted">{user.email} • Admin approval required</p></div>
+        <div><h3 className="text-xl font-extrabold">{user.full_name || user.email}</h3><p className="text-sm text-fg-muted">{user.email} • Admin approval required</p></div>
         <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-extrabold text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">Pending</span>
       </div>
       <dl className="mt-4 divide-y divide-line">
@@ -215,10 +238,10 @@ function RegistrationPane({ user, busy, onDecide }: { user: Profile; busy: boole
       </dl>
       {ready ? (
         <>
-          <div className="mt-5 flex flex-wrap gap-2">
-            {(["engineer", "foreman", "client"] as Requested[]).sort((a, b) => Number(b === user.requested_role) - Number(a === user.requested_role)).map((role) => (
-              <button key={role} type="button" disabled={busy} className={role === user.requested_role ? primary : secondary} onClick={() => void onDecide("approve", role)}>Approve as {roleLabel[role]}</button>
-            ))}
+          <div className="mt-5">
+            <RegistrationApproval userId={user.id} requested={user.requested_role ?? null} busy={busy} onApprove={(role) => void onDecide("approve", role)} />
+          </div>
+          <div className="mt-5 border-t border-line pt-4">
             <button type="button" disabled={busy || reason.trim().length < 5} className={secondary + " !text-danger-fg"} onClick={() => void onDecide("reject", "client", reason)}>Reject</button>
           </div>
           <label className="mt-4 block text-xs font-extrabold uppercase tracking-wider text-fg-muted">Reason required to reject<textarea rows={2} maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Explain what needs to change or why this registration cannot be approved." className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm font-normal normal-case tracking-normal text-fg" /></label>
@@ -248,7 +271,7 @@ function IdentityPane({ item, reason, setReason, reasonBox, busy, onZoom, onAppr
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div><p className="text-xs font-extrabold uppercase tracking-wider text-brand-text">Identity check</p><h2 className="text-xl font-extrabold">{v.legal_name}</h2><p className="text-sm text-fg-muted">{item.user?.email ?? "Account removed"} • sent {formatDate(v.submitted_at)} {formatTime(v.submitted_at)}</p></div>
+        <div><h3 className="text-xl font-extrabold">{v.legal_name}</h3><p className="text-sm text-fg-muted">{item.user?.email ?? "Account removed"} • sent {formatDate(v.submitted_at)} {formatTime(v.submitted_at)}</p></div>
         <span className={`rounded-full px-2.5 py-1 text-xs font-extrabold ${v.status === "submitted" ? "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200" : v.status === "approved" ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200" : "bg-gray-200 text-gray-700 dark:bg-gray-700/60 dark:text-gray-200"}`}>{v.status === "submitted" ? "Waiting" : v.status}</span>
       </div>
 

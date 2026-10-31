@@ -7,7 +7,7 @@ export default async function ({ db, ids, as, asOwner, test, expectOk, expectFai
   // Fixtures: foreman fore1 joins P1; fore2 is a foreman on P1 too (for "assigned to someone else"); fore3 is not on P1.
   await addUser("fore2", "foreman")
   await addUser("fore3", "foreman")
-  await as("admin", "aal2")
+  await as("super", "aal2") // Team fixture; regular Admins appoint Project Managers.
   await expectOk("insert into public.project_members (project_id, user_id) values ($1, $2), ($1, $3)", [P1, ids.fore1, ids.fore2])
 
   await as("eng1", "aal2")

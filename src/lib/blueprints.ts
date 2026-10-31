@@ -7,6 +7,8 @@ import { supabase } from "./supabase"
 import type { StampFlag } from "./photoStamp"
 import type { IssueMarkup } from "./issueMarkup"
 import { fetchAll } from "./paging"
+import { fetchProgressPins } from "./progressData"
+import type { ProgressTask } from "./taskProgress"
 import { byColumn, byProject, useLiveReload } from "./realtime"
 
 export type PinStatus = "not_started" | "in_progress" | "for_review" | "issue" | "verified"
@@ -46,6 +48,7 @@ export type Blueprint = {
 
 export type Pin = {
   id: string
+  tasks?: ProgressTask[]
   qa_template_id?: string | null
   qa_approved_by?: string | null
   project_id: string
@@ -320,7 +323,7 @@ export function usePins(blueprintId: string | null) {
 
 // All pins of a project (used for the sheet strip counts and the pin list; switching sheets needs no refetch). Every row is read
 // (paged), so progress never stops at 1,000 pins. `live` reloads on database changes; the editor leaves it off (optimistic edits).
-export function useProjectPins(projectId: string | null, live = false) {
+export function useProjectPins(projectId: string | null, live = false, withTasks = false) {
   const [pins, setPins] = useState<Pin[]>([])
   const [loading, setLoading] = useState(Boolean(projectId))
   const [error, setError] = useState("")
@@ -333,12 +336,13 @@ export function useProjectPins(projectId: string | null, live = false) {
       setLoading(false)
       return
     }
-    const { data, error: loadError } = await fetchAll<Pin>((from, to) => supabase.from("pins").select("*").eq("project_id", projectId).order("created_at", { ascending: true }).order("id").range(from, to))
+    const page = (from: number, to: number) => supabase.from("pins").select("*").eq("project_id", projectId).order("created_at", { ascending: true }).order("id").range(from, to)
+    const { data, error: loadError } = await (withTasks ? fetchProgressPins<Pin>(page, projectId) : fetchAll<Pin>(page))
     if(current!==sequence.current) return
-    setError(loadError ? "Could not load pins. Check your connection and try again." : "")
+    setError(loadError ? `Could not load ${withTasks ? "pins and task progress" : "pins"}. Check your connection and try again.` : "")
     setPins(data.map((pin) => ({ ...pin, x: Number(pin.x), y: Number(pin.y) })))
     setLoading(false)
-  }, [projectId])
+  }, [projectId, withTasks])
 
   useEffect(() => {
     setPins([])
@@ -347,7 +351,7 @@ export function useProjectPins(projectId: string | null, live = false) {
     void reload()
     return () => {sequence.current++}
   }, [reload, projectId])
-  useLiveReload(live ? byProject("pins", projectId) : [], reload)
+  useLiveReload(live ? [...byProject("pins", projectId), ...(withTasks ? byProject("pin_checklist_items", projectId) : [])] : [], reload)
 
   return { pins, setPins, loading, error, reload }
 }
@@ -391,7 +395,7 @@ export function useChecklist(pinId: string | null) {
     }
     const { data, error: loadError } = await supabase.from("pin_checklist_items").select("*").eq("pin_id", pinId).order("position", { ascending: true })
     if (run !== sequence.current) return
-    setError(loadError ? "Could not load the checklist. Refresh and retry before submitting or reviewing." : "")
+    setError(loadError ? "Could not load the tasks. Refresh and retry before submitting or reviewing." : "")
     setItems((data as ChecklistItem[] | null) ?? [])
     setLoading(false)
   }, [pinId])

@@ -13,6 +13,10 @@ type FormFieldProps = {
   minLength?: number
   disabled?: boolean
   onChange?: (value: string) => void
+  // Optional: a controlled value (e.g. a phone number cleaned while typing), the phone keypad and a length limit.
+  value?: string
+  inputMode?: "numeric" | "tel" | "email" | "text"
+  maxLength?: number
 }
 
 export default function FormField({
@@ -25,6 +29,9 @@ export default function FormField({
   minLength,
   disabled,
   onChange,
+  value,
+  inputMode,
+  maxLength,
 }: FormFieldProps) {
   const [showPassword, setShowPassword] = useState(false)
   const isPassword = type === "password"
@@ -41,6 +48,9 @@ export default function FormField({
           autoComplete={autoComplete}
           minLength={minLength}
           disabled={disabled}
+          value={value}
+          inputMode={inputMode}
+          maxLength={maxLength}
           onChange={onChange ? (event) => onChange(event.target.value) : undefined}
           required
         />

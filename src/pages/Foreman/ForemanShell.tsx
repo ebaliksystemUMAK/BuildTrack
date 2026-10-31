@@ -17,7 +17,7 @@ const labels: Record<ForemanPageKey, { label: string; icon: AdminIconName }> = {
   "photo-documentation": { label: "Photo Documentation", icon: "camera" },
   "quality-control": { label: "QA Requests", icon: "clipboard" },
   issues: { label: "Corrections", icon: "edit" },
-  "qa-workflow": { label: "Checklist Reference", icon: "check" },
+  "qa-workflow": { label: "QC Checklist Reference", icon: "check" },
   attendance: { label: "Workforce Management", icon: "users" },
 }
 

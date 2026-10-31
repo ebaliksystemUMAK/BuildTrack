@@ -16,7 +16,7 @@ import type { ForemanPageProps } from "./types"
 
 const tabHint: Record<PhotoTab, string> = {
   daily: "Photos attached to your daily progress reports.",
-  checklist: "Evidence photos of the work items (FLOOR, WALL…) submitted for QA.",
+  checklist: "Evidence photos of the tasks (FLOOR, WALL…) submitted for QA Review.",
 }
 const pill = (active: boolean) => `rounded-lg px-3 py-1.5 text-sm font-bold transition ${active ? "bg-brand text-white shadow-sm" : "text-fg-muted hover:bg-surface-muted hover:text-fg"}`
 const select = `${inputClass} mt-1 !py-1.5`
@@ -87,7 +87,7 @@ export default function ForemanPhotoDocumentation({ onNavigate }: ForemanPagePro
 
   return <div className="foreman-page">
     <ProjectContextBar listPath="/foreman/projects" listLabel="My projects" />
-    <PageHead eyebrow="Evidence" title="Photo documentation" description="Daily report and work item photos of this project, by date, sheet, pin and checklist item. Open a photo to see its details and linked work."
+    <PageHead eyebrow="Evidence" title="Photo documentation" description="Daily report and task photos of this project, by date, sheet, pin and task. Open a photo to see its details and linked work."
       actions={<button type="button" className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand-hover" onClick={() => onNavigate("dashboard")}>Go to my work</button>} />
     {projectId ? <>
       <div className="mb-3 space-y-3 rounded-2xl border border-line bg-surface p-3 shadow-sm">

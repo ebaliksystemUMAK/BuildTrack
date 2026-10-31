@@ -86,7 +86,7 @@ export default function ProjectBackup(_: AdminPageProps) {
 
   return (
     <div className="admin-page">
-      <PageIntro eyebrow="Administration" title="Full backup and export" description="Download everything about one project in a single file: plan sheets and revisions, pins with their timeline and checklists, drawings, daily reports and client questions. Keep the file somewhere safe and private." />
+      <PageIntro eyebrow="Administration" title="Full backup and export" description="Download everything about one project in a single file: plan sheets and revisions, pins with their timelines and tasks, QC checklists, drawings, daily reports and client questions. Keep the file somewhere safe and private." />
       <Panel title="Create a backup">
         {loading ? (
           <SkeletonCardGrid count={1} label="Loading projects" />

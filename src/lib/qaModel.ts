@@ -152,10 +152,10 @@ export const defaultDueDate = (severity: QaSeverity, today: string): string => n
 // Check that a checklist is worth saving before it is sent to the database (the database checks again).
 export type DraftItem = { text: string; severity: QaSeverity; kind: "check" | "measure"; unit: string; min_value: string; max_value: string; reference: string; acceptance_criteria?: string; evidence_requirement?: string; requires_photo: boolean; hold_point: boolean }
 
-export function checklistProblem(name: string, items: DraftItem[]): string {
-  if (name.trim().length < 3) return "Give the checklist a name (at least 3 characters)."
+export function checklistProblem(name: string, items: DraftItem[], nameLabel = "QC checklist"): string {
+  if (name.trim().length < 3) return `Give the ${nameLabel} a name (at least 3 characters).`
   if (!items.length) return "Add at least one item."
-  if (items.length > 60) return "A checklist can have at most 60 items."
+  if (items.length > 60) return "A QC checklist can have at most 60 items."
   for (const [index, item] of items.entries()) {
     const label = `Item ${index + 1}`
     if (item.text.trim().length < 3) return `${label}: describe what is checked.`

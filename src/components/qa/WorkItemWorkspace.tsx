@@ -27,9 +27,9 @@ import { defectStatusLabels, defectTone, dueText, inspectionStatusLabels, inspec
 import { useSettings } from "../../lib/settings"
 import { supabase } from "../../lib/supabase"
 import { useDefectHistory, useWorkItem } from "../../lib/workItem"
-import { completionProblem, connectedHistory, irRef, ncrRef, pinLevelDefects, type SubmissionRef } from "../../lib/workItemModel"
+import { completionProblem, connectedHistory, irRef, ncrRef, pinLevelDefects, readWorkItemTab, type SubmissionRef, type WorkItemTab } from "../../lib/workItemModel"
 
-type Tab = "inspection" | "corrections" | "evidence" | "history"
+type Tab = WorkItemTab
 const tabNames: Record<Tab, string> = { inspection: "Inspection", corrections: "Corrections & NCRs", evidence: "Evidence", history: "Attempts & history" }
 const heading = "mb-2 text-xs font-extrabold uppercase tracking-wider text-fg-muted"
 const resultTone: Record<string, string> = { pass: "bg-green-100 text-green-900 dark:bg-green-900/40 dark:text-green-100", fail: "bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-100", na: "bg-surface-muted text-fg-muted", pending: "bg-surface-muted text-fg-muted" }
@@ -48,7 +48,7 @@ export default function WorkItemWorkspace({ itemId, onClose, onChanged, fromPlan
   const { project } = useProject(pin?.project_id ?? null)
   const { team } = useProjectTeam(pin?.project_id ?? null)
   const { settings } = useSettings()
-  const [tab, setTab] = useState<Tab | null>(null)
+  const [tab, setTab] = useState<Tab | null>(() => typeof window === "undefined" ? null : readWorkItemTab(window.location.search, itemId))
   const [busy, setBusy] = useState(false)
   const pending = useRef(false)
   const [inspectionOpen, setInspectionOpen] = useState<string | null>(null)
@@ -57,7 +57,28 @@ export default function WorkItemWorkspace({ itemId, onClose, onChanged, fromPlan
   const [editingCriteria, setEditingCriteria] = useState(false)
   const draftRemark = useRef<string | null>(null)
   const { templates } = useTemplates(pin?.project_id ?? null)
-  useEffect(() => { draftRemark.current = null; setTab(null); setEditingCriteria(false) }, [itemId])
+  useEffect(() => {
+    draftRemark.current = null
+    setTab(readWorkItemTab(window.location.search, itemId))
+    setInspectionOpen(null)
+    setDefectOpen(null)
+    setReturning(false)
+    setEditingCriteria(false)
+  }, [itemId])
+  // A link back to this same task must still dismiss its child dialogs and select the requested section.
+  useEffect(() => {
+    const navigate = () => {
+      const requested = readWorkItemTab(window.location.search, itemId)
+      if (!requested) return
+      setInspectionOpen(null)
+      setDefectOpen(null)
+      setReturning(false)
+      setEditingCriteria(false)
+      setTab(requested)
+    }
+    window.addEventListener("popstate", navigate)
+    return () => window.removeEventListener("popstate", navigate)
+  }, [itemId])
 
   const nameOf = (id: string | null) => (id ? team.find((member) => member.user_id === id)?.full_name ?? "Someone on the team" : "Unassigned")
   // Per-type access (20261028130000): with View only on this plan's type the work item is readable, without action buttons.
@@ -102,12 +123,12 @@ export default function WorkItemWorkspace({ itemId, onClose, onChanged, fromPlan
   }
 
   if (data.missing) {
-    return <Modal title="Work item not found" onClose={onClose} footer={<button type="button" className={buttonSecondary} onClick={onClose}>Close</button>}>
-      <p className="text-sm">This work item was removed, or it is not part of a project you can open.</p>
+    return <Modal title="Task not found" onClose={onClose} footer={<button type="button" className={buttonSecondary} onClick={onClose}>Close</button>}>
+      <p className="text-sm">This task was removed, or it is not part of a project you can open.</p>
     </Modal>
   }
   if (!item || !pin || !view || !stage) {
-    return <Modal title="Opening the work item" size="2xl" onClose={onClose}><SkeletonList rows={4} label="Loading the work item" /></Modal>
+    return <Modal title="Opening the task" size="2xl" onClose={onClose}><SkeletonList rows={4} label="Loading the task" /></Modal>
   }
 
   const name = item.text
@@ -120,7 +141,7 @@ export default function WorkItemWorkspace({ itemId, onClose, onChanged, fromPlan
   const submitFirst = async () => {
     const problem = await qa.preflight(item.id).catch((error: Error) => error.message)
     if (problem) return toast.error("QA request not sent", problem)
-    if (!(await confirm({ title: `Submit ${name} for QA?`, message: `${pin.title} → ${name}. The Engineer inspects it against the approved criteria. Its photos and remark are locked while the request is open.`, confirmLabel: "Submit for inspection" }))) return
+    if (!(await confirm({ title: `Submit ${name} for QA Review?`, message: `${pin.title} → ${name}. The Engineer inspects it against the approved criteria. Its photos and remark are locked while the request is open.`, confirmLabel: "Submit for QA Review" }))) return
     await run(async () => {
       if (draftRemark.current !== null && draftRemark.current.trim() !== (item.remark ?? "")) {
         const { data: rows, error } = await supabase.from("pin_checklist_items").update({ remark: draftRemark.current.trim() || null }).eq("id", item.id).select("id")
@@ -133,15 +154,15 @@ export default function WorkItemWorkspace({ itemId, onClose, onChanged, fromPlan
     if (await run(() => qaActions.beginCorrection(item.id), "Could not start the correction", "Correction started", "Describe the fix, add new photos and choose the NCRs it answers.")) setTab("corrections")
   }
   const complete = async () => {
-    if (completionBlock) return toast.error("Checklist cannot be completed", completionBlock)
-    if (!(await confirm({ title: `Complete ${name}?`, message: `The inspection passed and every NCR linked to ${name} is closed. This completes the checklist item. The work pin completes when every item is completed and no NCR or inspection remains open.`, confirmLabel: "Complete checklist" }))) return
-    await run(() => qaActions.completeItem(item.id), "Checklist not completed", `${name} completed`)
+    if (completionBlock) return toast.error("Task cannot be completed", completionBlock)
+    if (!(await confirm({ title: `Complete ${name}?`, message: `The inspection passed and every NCR linked to ${name} is closed. This completes the task. The work pin completes when every item is completed and no NCR or inspection remains open.`, confirmLabel: "Complete task" }))) return
+    await run(() => qaActions.completeItem(item.id), "Task not completed", `${name} completed`)
   }
 
   const primary = (() => {
     if (foreman) {
       if (view.action === "add_evidence") return <button type="button" className={buttonPrimary} onClick={() => setTab("evidence")}>Add photos</button>
-      if (view.action === "submit") return <button type="button" className={buttonPrimary} disabled={busy} onClick={() => void submitFirst()}>Submit {name} for QA</button>
+      if (view.action === "submit") return <button type="button" className={buttonPrimary} disabled={busy} onClick={() => void submitFirst()}>Submit {name} for QA Review</button>
       if (view.action === "start_correction") return <button type="button" className={buttonPrimary} disabled={busy} onClick={() => void startCorrection()}>Start correction</button>
       if (view.action === "submit_correction") return tab === "corrections"
         ? <button type="submit" form={formId} className={buttonPrimary} disabled={busy}>{busy ? "Sending…" : "Submit correction & request reinspection"}</button>
@@ -159,21 +180,21 @@ export default function WorkItemWorkspace({ itemId, onClose, onChanged, fromPlan
     {!fromPlan ? <OpenOnBlueprint projectId={pin.project_id} pinId={pin.id} sheetId={pin.blueprint_id} section="checklist" /> : null}
     {showReturnAction ? <button type="button" className={buttonSecondary} disabled={busy} onClick={() => setReturning(true)}>{item.review_status === "verified" ? `Reopen ${name}` : `Return ${name}`}</button> : null}
     {primary}
-    {engineer && item.review_status === "for_review" && current?.status === "passed" ? <button type="button" className={buttonPrimary} disabled={busy || Boolean(completionBlock)} title={completionBlock || undefined} onClick={() => void complete()}>Complete checklist</button> : null}
+    {engineer && item.review_status === "for_review" && current?.status === "passed" ? <button type="button" className={buttonPrimary} disabled={busy || Boolean(completionBlock)} title={completionBlock || undefined} onClick={() => void complete()}>Complete task</button> : null}
   </>
 
   return (
-    <Modal title={`${pin.title} → ${name}`} description={`Inspection criteria: ${data.templateName ?? "not approved yet"} · Foreman: ${nameOf(pin.assigned_to)}`} size="2xl" onClose={busy ? () => undefined : onClose} footer={footer}>
+    <Modal title={`${pin.title} → ${name}`} description={`QC Checklist: ${data.templateName ?? "not approved yet"} · Foreman: ${nameOf(pin.assigned_to)}`} size="2xl" onClose={busy ? () => undefined : onClose} footer={footer}>
       <div className="min-w-0 space-y-4">
-        {viewOnly ? <p role="status" className="rounded-lg border border-line bg-surface-muted px-3 py-2 text-sm text-fg"><strong>View only.</strong> You can read this work item; people with Assigned work access to {typeLabel ?? "this"} plans act on it.</p> : null}
+        {viewOnly ? <p role="status" className="rounded-lg border border-line bg-surface-muted px-3 py-2 text-sm text-fg"><strong>View only.</strong> You can read this task; people with Assigned work access to {typeLabel ?? "this"} plans act on it.</p> : null}
         <NextActionCard view={view} responsible={responsible}>
-          {engineer && !stage.attempts.length && !stage.open && pin.status !== "verified" ? <button type="button" className={buttonSecondary} onClick={() => setEditingCriteria(true)}>{item.qa_template_id ? "Edit item & criteria" : "Add criteria to this item"}</button> : null}
+          {engineer && !stage.attempts.length && !stage.open && pin.status !== "verified" ? <button type="button" className={buttonSecondary} onClick={() => setEditingCriteria(true)}>{item.qa_template_id ? "Edit task & QC checklist" : "Add QC checklist to this task"}</button> : null}
         </NextActionCard>
         <StageRail stage={view.stage} completed={pin.status === "verified"} />
-        {engineer && item.review_status === "for_review" && current?.status === "passed" && completionBlock ? <p role="status" className="rounded-lg bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-950 dark:bg-amber-900/40 dark:text-amber-100">Cannot complete checklist: {completionBlock}</p> : null}
+        {engineer && item.review_status === "for_review" && current?.status === "passed" && completionBlock ? <p role="status" className="rounded-lg bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-950 dark:bg-amber-900/40 dark:text-amber-100">Cannot complete task: {completionBlock}</p> : null}
         {data.error ? <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-fg">{data.error}</p> : null}
 
-        <div className="flex flex-wrap gap-1 border-b border-line pb-2" role="tablist" aria-label="Work item sections">
+        <div className="flex flex-wrap gap-1 border-b border-line pb-2" role="tablist" aria-label="Task sections">
           {(Object.keys(tabNames) as Tab[]).map((key) => (
             <button key={key} type="button" role="tab" id={`${formId}-tab-${key}`} aria-selected={tab === key} aria-controls={`${formId}-panel-${key}`} onClick={() => setTab(key)} className={`rounded-lg px-3.5 py-1.5 text-sm font-bold ${tab === key ? "bg-brand text-white" : "text-fg-muted hover:bg-surface-muted"}`}>
               {tabNames[key]}{key === "corrections" && openNcrs ? <span className={`ml-1.5 rounded-full px-1.5 text-[11px] ${tab === key ? "bg-white/25" : "bg-surface-muted"}`}>{openNcrs}</span> : null}
@@ -189,7 +210,7 @@ export default function WorkItemWorkspace({ itemId, onClose, onChanged, fromPlan
         <section hidden={tab !== "corrections"} role="tabpanel" id={`${formId}-panel-corrections`} aria-labelledby={`${formId}-tab-corrections`} className="space-y-4">
           <div>
             <h3 className={heading}>NCRs linked to {name}</h3>
-            {history.loading ? <p role="status" className="text-sm text-fg-muted">Loading corrections and NCRs…</p> : data.error ? <p role="alert" className="text-sm text-danger-fg">NCR information is unavailable. Reload the work item before reviewing corrections.</p> : !ncrs.length ? <div role="status" className="space-y-1 rounded-xl border border-line bg-surface-muted p-4 text-sm">
+            {history.loading ? <p role="status" className="text-sm text-fg-muted">Loading corrections and NCRs…</p> : data.error ? <p role="alert" className="text-sm text-danger-fg">NCR information is unavailable. Reload the task before reviewing corrections.</p> : !ncrs.length ? <div role="status" className="space-y-1 rounded-xl border border-line bg-surface-muted p-4 text-sm">
               <p className="font-bold">No NCR recorded for {name}.</p>
               <p className="text-fg-muted">{current?.status === "passed" && view.stage !== "correction" ? "The current inspection passed without a linked NCR. No NCR correction is required." : "NCRs appear here when a failed inspection criterion or a recorded defect is linked to this item."}</p>
             </div> : <>
@@ -208,7 +229,7 @@ export default function WorkItemWorkspace({ itemId, onClose, onChanged, fromPlan
 
         <section hidden={tab !== "evidence"} role="tabpanel" id={`${formId}-panel-evidence`} aria-labelledby={`${formId}-tab-evidence`} className="space-y-4">
           {stage.attempts.length > 0 || history.loading || history.error ? <SubmittedEvidence key={`${pin.id}:${item.id}`} itemId={item.id} pinId={pin.id} submissions={history.submissions} inspections={history.inspections} loading={history.loading} error={history.error} nameOf={nameOf} /> : null}
-          {!stage.attempts.length ? <div><h3 className={heading}>Inspection criteria for {name}</h3>{template ? <ul className="space-y-2">{template.qa_template_items.map(row => <li key={row.id} className="rounded-lg border border-line p-3 text-sm"><strong>{row.text}</strong>{row.reference ? <p className="mt-1 text-xs text-fg-muted">Reference: {row.reference}</p> : null}<QaRequirements item={row} /></li>)}</ul> : <p className="text-sm text-fg-muted">The Engineer must add the criteria to this item.</p>}</div> : null}
+          {!stage.attempts.length ? <div><h3 className={heading}>QC Checklist for {name}</h3>{template ? <ul className="space-y-2">{template.qa_template_items.map(row => <li key={row.id} className="rounded-lg border border-line p-3 text-sm"><strong>{row.text}</strong>{row.reference ? <p className="mt-1 text-xs text-fg-muted">Reference: {row.reference}</p> : null}<QaRequirements item={row} /></li>)}</ul> : <p className="text-sm text-fg-muted">The Engineer must add the criteria to this item.</p>}</div> : null}
           <EvidenceCompare itemId={item.id} label={`${pin.title} → ${name}`} attempts={stage.attempts.map((row) => row.submission as unknown as { photos_snapshot: PinPhoto[] })} draftPhotos={draft ? photos.filter((photo) => photo.qa_attempt_id === draft.id) : []} role={profile?.role} />
           {!stage.attempts.length ? <InitialEvidence item={item} pin={pin} canWork={foreman && !stage.open && item.review_status !== "for_review" && item.review_status !== "verified" && pin.status !== "verified"} meId={profile?.id ?? ""} onRemarkChange={value => { draftRemark.current = value }} onChanged={data.reload} />
             : draft ? <div><h3 className={heading}>Correction photos (next request)</h3><PinPhotos pin={pin} checklistItemId={item.id} attemptId={draft.id} canAdd={false} canRemoveAny={false} meId={profile?.id ?? ""} columns={3} /><p className="mt-1 text-xs text-fg-muted">Add or remove them in the correction form under Corrections &amp; NCRs.</p></div>
@@ -252,7 +273,7 @@ function CurrentInspection({ inspection, attemptLabel, nameOf, onOpen }: { inspe
         <button type="button" className={buttonSecondary + " ml-auto !py-1 !text-xs"} onClick={onOpen}>Open inspection record</button>
       </div>
       {inspection.summary ? <p className="rounded-lg bg-surface-muted px-3 py-2 text-sm"><strong>Inspector's summary:</strong> {inspection.summary}</p> : null}
-      <h3 className={heading}>Inspection criteria{done ? " and results" : ""}</h3>
+      <h3 className={heading}>QC Checklist{done ? " and results" : ""}</h3>
       {loading ? <SkeletonList rows={3} label="Loading the criteria" /> : (
         <ol className="space-y-1.5">
           {items.map((row) => (
@@ -320,7 +341,7 @@ function InitialEvidence({ item, pin, canWork, meId, onRemarkChange, onChanged }
     {canWork ? <div>
       <label className="block text-[11px] font-bold uppercase tracking-wider text-fg-muted" htmlFor={`remark-${item.id}`}>Remark</label>
       <textarea id={`remark-${item.id}`} className={field} rows={2} maxLength={1000} value={remark} onChange={(event) => { setRemark(event.target.value); onRemarkChange(event.target.value) }} placeholder="What was done or measured" />
-      <p className="mt-1 text-xs text-fg-muted">Your remark is saved when you submit for QA. You can also save it before submitting.</p>
+      <p className="mt-1 text-xs text-fg-muted">Your remark is saved when you submit for QA Review. You can also save it before submitting.</p>
       <button type="button" disabled={saving || remark.trim() === (item.remark ?? "")} onClick={() => void save()} className={buttonSecondary + " mt-1 !py-1 !text-xs"}>{saving ? "Saving…" : "Save remark"}</button>
     </div> : item.remark ? <p className="whitespace-pre-wrap text-sm"><strong>Remark:</strong> {item.remark}</p> : null}
   </div>
@@ -337,7 +358,7 @@ function ConnectedHistory({ inspections, events, ncrs, nameOf }: { inspections: 
   if (!entries.length) return null
   return <section aria-label="Connected history" className="space-y-2">
     <h3 className={heading}>Connected history (inspections and NCRs)</h3>
-    <LimitedTimeline entries={entries} entryKey={(row) => row.key} label="Work item history" renderEntry={(row) => <><strong className="text-xs">{formatStamp(row.at)} · {row.ref} · {nameOf(row.actor)}</strong><p className="whitespace-pre-wrap text-xs">{row.text}</p></>} />
+    <LimitedTimeline entries={entries} entryKey={(row) => row.key} label="Task history" renderEntry={(row) => <><strong className="text-xs">{formatStamp(row.at)} · {row.ref} · {nameOf(row.actor)}</strong><p className="whitespace-pre-wrap text-xs">{row.text}</p></>} />
   </section>
 }
 

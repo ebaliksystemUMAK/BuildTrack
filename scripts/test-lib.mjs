@@ -17,14 +17,18 @@ import { angleFromCenter, arrowHeadPx, cloudPath, constrainAngle, dimensionTickP
 import { buildPdf } from "../src/lib/pdf.ts"
 import { symbolByKey, symbolGroups, symbolLibrary } from "../src/lib/symbols.ts"
 import { addDays, byZone, csvEscape, daysBetween, isDueSoon, isOverdue, projectHealth, sCurve, scheduleElapsed, summarize, toCsv } from "../src/lib/progress.ts"
+import { taskProgress } from "../src/lib/taskProgress.ts"
 import { fetchAll } from "../src/lib/paging.ts"
 import { canSearch, hitPath, searchPattern } from "../src/lib/projectSearchModel.ts"
-import { metres, photoEligible, photoPreviewBlocked, stampFields, stampLabel, stampSummary } from "../src/lib/photoStamp.ts"
+import { distanceM, metres, photoEligible, photoPreviewBlocked, siteFlag, sitePhotoProblem, stampFields, stampLabel, stampSummary } from "../src/lib/photoStamp.ts"
 import { buildWeekly, headline, periodPresets, sCurveSvg, weeklyReportHtml } from "../src/lib/weeklyReport.ts"
 import { escapeHtml, reportHtml } from "../src/lib/printReport.ts"
 import { reportableDates } from "../src/lib/reportFormat.ts"
 import { buildZip, crc32, safeEntryName, textBytes } from "../src/lib/zipWriter.ts"
 import { parseSettings, defaultSettings } from "../src/lib/settingsModel.ts"
+import { cameraOnlyFor, fieldUploads, photoRuleLabels } from "../src/lib/photoPolicyModel.ts"
+import { editorGuide, guideFor, pageGuides } from "../src/lib/pageGuides.ts"
+import { approvedInPeriod, periodEnd, periodProgress } from "../src/lib/periodProgress.ts"
 import { inspectionReportHtml } from "../src/lib/qaPrint.ts"
 import { issuePhotoProblem, issueTab, markupBox, markupCenter, markupProblem, moveMarkup, withRotation, zonePlanPath } from "../src/lib/issueMarkup.ts"
 import { issueChecklistIndex, issueChecklistKey, issueChecklistLabel, issueChecklistOptions, issueChecklistSelectionProblem, WHOLE_PIN_CHECKLIST } from "../src/lib/issueChecklist.ts"
@@ -36,6 +40,8 @@ import { canFormat, decorations, displayLines, labelToSize, mergeFormat, resolve
 import { capsulePlacement, rotatedBounds } from "../src/lib/capsule.ts"
 import { ageOn, detailsProblem, fileProblem, idTypeLabel, idTypes, maskedId } from "../src/lib/identityModel.ts"
 import { PRIVACY_VERSION, privacyScopes } from "../src/lib/privacy.ts"
+import { PASSWORD_MIN_LENGTH, passwordChecks, passwordIssue } from "../src/lib/passwordPolicy.ts"
+import { PHONE_DIGITS, phoneDigits, phoneIssue } from "../src/lib/phoneNumber.ts"
 import { absoluteLink, appBase, buildEmail } from "../supabase/functions/_shared/emailModel.ts"
 import { defectBreakdown, defectTrend, fixStageText, pinQualityWarning, qaBadge, checklistProblem, defaultDueDate, dueState, dueText, measureVerdict, previewScore, refNumber, toleranceText } from "../src/lib/qaModel.ts"
 import { canMoveLayer, layerChanges, reorderIds, sortByLayer } from "../src/lib/layers.ts"
@@ -532,7 +538,27 @@ test("overdue / due soon use calendar dates and ignore verified pins and notes",
   assert.equal(daysBetween("2026-02-27", "2026-03-02"), 3)
 })
 
-test("summarize counts work pins only and rounds the verified share", () => {
+const progressTask = (id, pin_id, approved = false, verified_at = null) => ({ id, pin_id, text: `Task ${id}`, done: approved, review_status: approved ? "verified" : "not_submitted", verified_at })
+
+test("Task progress counts QA-approved tasks, including partial pins, and excludes notes and empty pins", () => {
+  const tasks = [progressTask("a", "pin", true), progressTask("b", "pin", true), progressTask("c", "pin", true), { ...progressTask("d", "pin"), done: true, review_status: "for_review" }]
+  assert.deepEqual(taskProgress(tasks), { approved: 3, total: 4, percent: 75 })
+  assert.deepEqual(taskProgress([]), { approved: 0, total: 0, percent: 0 })
+  const pins = [
+    { status: "in_progress", category: "progress", due_date: null, tasks },
+    { status: "verified", category: "quality", due_date: null, tasks: [progressTask("e", "other", true)] },
+    { status: "verified", category: "note", due_date: null, tasks: [progressTask("note", "note", true)] },
+    { status: "verified", category: "progress", due_date: null, tasks: [] },
+  ]
+  const totals = summarize(pins, "2026-10-31")
+  assert.equal(totals.percentVerified, 80, "Rollups count 4/5 tasks, rather than averaging pin percentages")
+  assert.equal(totals.approvedTasks, 4)
+  assert.equal(totals.totalTasks, 5)
+  assert.equal(summarize([{ status: "verified", category: "progress", due_date: null }], "2026-10-31").percentVerified, 0, "Pin status alone cannot earn task progress")
+  assert.equal(taskProgress([{ done: false, review_status: "verified" }]).approved, 0, "QC must also be done")
+})
+
+test("summarize keeps pin status counts separate from the approved task share", () => {
   const pins = [
     { status: "verified", category: "progress", due_date: null },
     { status: "verified", category: "quality", due_date: "2026-01-01" },
@@ -541,7 +567,7 @@ test("summarize counts work pins only and rounds the verified share", () => {
     { status: "not_started", category: "progress", due_date: null },
     { status: "not_started", category: "note", due_date: null },
   ]
-  const totals = summarize(pins, "2026-10-11")
+  const totals = summarize(pins.map((pin, i) => ({ ...pin, tasks: [progressTask(String(i), String(i), pin.status === "verified")] })), "2026-10-11")
   assert.equal(totals.total, 5)
   assert.equal(totals.verified, 2)
   assert.equal(totals.percentVerified, 40)
@@ -555,7 +581,7 @@ test("byZone groups pins per sheet and puts the most behind first", () => {
     { blueprint_id: "a", status: "verified", category: "progress", due_date: null },
     { blueprint_id: "b", status: "issue", category: "progress", due_date: null },
   ]
-  const rows = byZone(sheets, pins, "2026-10-11")
+  const rows = byZone(sheets, pins.map((pin, i) => ({ ...pin, tasks: [progressTask(String(i), String(i), pin.status === "verified")] })), "2026-10-11")
   assert.deepEqual(rows.map((row) => row.blueprintId), ["b", "a"])
   assert.equal(rows[1].totals.percentVerified, 100)
 })
@@ -670,6 +696,101 @@ test("parseSettings reads the stored values and falls back to defaults for anyth
   assert.equal(parsed.inactiveDays, 45)
   const bad = parseSettings([{ key: "qa.acceptance_threshold", value: "high" }, { key: "qa.weights", value: { critical: 1 } }, { key: "work.hours", value: { start: 7, end: 9, days: [] } }, { key: "access.inactive_days", value: 2 }])
   assert.deepEqual(bad, defaultSettings)
+  // Photo uploads (20261031120532): allowed unless the stored value is exactly false, like SQL photo_uploads_allowed().
+  assert.equal(defaultSettings.allowDeviceUpload, true)
+  assert.equal(parseSettings([{ key: "photos.allow_device_upload", value: false }]).allowDeviceUpload, false)
+  for (const value of [true, "false", 0, null]) assert.equal(parseSettings([{ key: "photos.allow_device_upload", value }]).allowDeviceUpload, true)
+})
+
+test("Progress made in a period: approval dates (Manila), tasks that existed by the end, change from the day before", () => {
+  const t = (id, approved, verified_at = null, created_at = "2026-09-01T00:00:00Z") => ({ id, pin_id: "p", text: id, done: approved, review_status: approved ? "verified" : "submitted", verified_at, created_at })
+  const tasks = [
+    t("sept", true, "2026-09-20T02:00:00Z"),
+    t("oct-early", true, "2026-09-30T17:30:00Z"), // 1 Oct 01:30 in Manila
+    t("oct-late", true, "2026-10-31T10:00:00Z"),
+    t("nov", true, "2026-11-01T01:00:00Z", "2026-10-15T00:00:00Z"),
+    t("open", false),
+    t("new-in-nov", false, null, "2026-11-01T02:00:00Z"),
+    t("withdrawn", false, "2026-10-10T02:00:00Z"), // approval later withdrawn: counts nowhere
+  ]
+  const october = { from: "2026-10-01", to: "2026-10-31" }
+  const result = periodProgress(tasks, october, "2026-11-01")
+  assert.deepEqual(result, { end: "2026-10-31", approvedInPeriod: 2, approvedAtStart: 1, tasksAtStart: 5, approvedAtEnd: 3, tasksAtEnd: 6, percentAtStart: 20, percentAtEnd: 50, change: 30 })
+  assert.deepEqual(approvedInPeriod(tasks, october, "2026-11-01").map(row => [row.task.id, row.day]), [["oct-late", "2026-10-31"], ["oct-early", "2026-10-01"]])
+  // A running period ends today; a future one has nothing yet and keeps the progress of the day before it.
+  assert.equal(periodEnd({ from: "2026-11-01", to: "2026-11-30" }, "2026-11-01"), "2026-11-01")
+  assert.equal(periodEnd({ from: "2026-12-01", to: "2026-12-31" }, "2026-11-01"), "2026-11-30")
+  const future = periodProgress(tasks, { from: "2026-12-01", to: "2026-12-31" }, "2026-11-01")
+  assert.equal(future.approvedInPeriod, 0); assert.equal(future.change, 0)
+  // An open start measures from the beginning; approved tasks without a date count only today.
+  const legacy = [t("dated", true, "2026-10-05T00:00:00Z"), { id: "old", pin_id: "p", text: "old", done: true, review_status: "verified", verified_at: null }]
+  assert.deepEqual(periodProgress(legacy, { from: "", to: "2026-10-31" }, "2026-11-01"), { end: "2026-10-31", approvedInPeriod: 1, approvedAtStart: 0, tasksAtStart: 0, approvedAtEnd: 1, tasksAtEnd: 2, percentAtStart: 0, percentAtEnd: 50, change: 50 })
+  assert.equal(periodProgress(legacy, { from: "2026-11-01", to: "" }, "2026-11-01").approvedAtEnd, 2, "today, the undated approval counts")
+})
+
+test("Page guides: every workspace page has a complete guide; unknown pages and the editor get one too", () => {
+  const expected = {
+    admin: ["dashboard", "project-management", "user-management", "invites", "access-review", "audit-log", "biometrics", "qa-checklists", "settings", "backup"],
+    manager: ["projects", "dashboard", "details", "team", "blueprints", "calendar", "quality", "attendance", "reports", "audit"],
+    engineer: ["projects", "dashboard", "calendar", "project-blueprint", "annotation", "qa", "checklists", "report-issue", "progress", "assignments", "reports"],
+    foreman: ["projects", "dashboard", "calendar", "daily-work", "daily-report", "photo-documentation", "quality-control", "issues", "qa-workflow", "attendance"],
+    client: ["overview", "calendar", "blueprint", "ticket", "site-logs", "communication"],
+    user: ["home"],
+  }
+  const complete = (guide, where) => {
+    assert.ok(guide.title.trim() && guide.purpose.trim().endsWith("."), `${where}: title and a full-sentence purpose`)
+    assert.ok(guide.steps.length >= 1 && guide.steps.length <= 6, `${where}: 1 to 6 steps`)
+    for (const line of [...guide.steps, ...(guide.tips ?? [])]) assert.ok(line.trim().length > 10 && /[.!?]$/.test(line.trim()), `${where}: "${line}" is a sentence`)
+  }
+  for (const [persona, pages] of Object.entries(expected)) for (const page of pages) {
+    assert.ok(pageGuides[persona][page], `${persona}/${page} has a guide`)
+    complete(guideFor(persona, page), `${persona}/${page}`)
+  }
+  for (const [persona, guides] of Object.entries(pageGuides)) for (const [page, guide] of Object.entries(guides)) complete(guide, `${persona}/${page}`)
+  assert.equal(guideFor("engineer", "no-such-page").title, "Page guide")
+  assert.equal(guideFor("client", "calendar").purpose.includes("inspection"), false, "the client calendar guide mentions no QA records")
+  for (const [role, canEdit, title] of [["engineer", true, "Plan editor"], ["engineer", false, "Plan viewer"], ["foreman", false, "Plan editor"], ["client", false, "Plan viewer"], ["admin", false, "Plan viewer"]]) {
+    const guide = editorGuide(role, canEdit)
+    assert.equal(guide.title, title); complete(guide, `editor/${role}`)
+  }
+})
+
+test("Photo rules: a person's own choice wins over the company switch, as SQL enforce_photo_capture_policy", () => {
+  // No choice of their own: field photos follow the switch; QA photos only for a Foreman; unknown switch = not camera-only.
+  assert.equal(cameraOnlyFor("field", true, null, "foreman"), false)
+  assert.equal(cameraOnlyFor("field", false, null, "engineer"), true)
+  assert.equal(cameraOnlyFor("field", null, null, "foreman"), false)
+  assert.equal(cameraOnlyFor("qa", false, null, "foreman"), true)
+  assert.equal(cameraOnlyFor("qa", false, null, "engineer"), false, "an Engineer's inspection photos ignore the switch")
+  // Own choice: Allow uploads beats the switch being off; Camera only beats it being on, also for an Engineer's QA photos.
+  for (const kind of ["field", "qa"]) {
+    assert.equal(cameraOnlyFor(kind, false, "allow", "foreman"), false)
+    assert.equal(cameraOnlyFor(kind, true, "camera_only", "engineer"), true)
+    assert.equal(cameraOnlyFor(kind, null, "camera_only", "foreman"), true)
+  }
+  // The Upload button on field photos: shown only when it is known to be accepted.
+  assert.equal(fieldUploads(true, null), true); assert.equal(fieldUploads(false, null), false); assert.equal(fieldUploads(null, null), null)
+  assert.equal(fieldUploads(false, "allow"), true); assert.equal(fieldUploads(true, "camera_only"), false); assert.equal(fieldUploads(null, "allow"), true)
+  assert.deepEqual(Object.keys(photoRuleLabels), ["company", "allow", "camera_only"])
+})
+
+test("Camera-only photos: the site check mirrors SQL stamp_evidence_photo / enforce_photo_capture_policy", () => {
+  const site = { lat: 14.676, lng: 120.983, radius_m: 150 }
+  const near = distanceM(14.676, 120.983, 14.677, 120.983)
+  assert.ok(near >= 109 && near <= 113, "0.001 degree of latitude is about 111 m, as SQL distance_m")
+  assert.equal(distanceM(14.676, 120.983, 14.676, 120.983), 0)
+  const at = (lat, lng, accuracy_m) => ({ taken_at: "2026-10-31T01:00:00.000Z", lat, lng, accuracy_m })
+  assert.deepEqual(siteFlag(at(14.676, 120.983, 12), site), { flag: "at_site", distance_m: 0 })
+  const far = siteFlag(at(14.678, 120.983, 10), site)
+  assert.equal(far.flag, "away_from_site"); assert.ok(far.distance_m >= 215 && far.distance_m <= 228)
+  assert.equal(siteFlag(at(14.678, 120.983, 100), site).flag, "at_site", "a 100 m reading is forgiven up to its accuracy")
+  assert.equal(siteFlag(at(14.7, 120.983, 5000), site).flag, "away_from_site", "forgiveness is capped at 100 m")
+  assert.deepEqual(siteFlag({ taken_at: "2026-10-31T01:00:00.000Z" }, site), { flag: "no_location", distance_m: null })
+  assert.deepEqual(siteFlag(at(14.676, 120.983, 5), { lat: null, lng: null, radius_m: 150 }), { flag: "no_site_set", distance_m: null })
+  assert.equal(sitePhotoProblem(at(14.676, 120.983, 12), site), "")
+  assert.match(sitePhotoProblem({ taken_at: "x" }, site), /^Turn on location/)
+  assert.match(sitePhotoProblem(at(14.676, 120.983, 5), { lat: null, lng: null, radius_m: 150 }), /no site location yet/)
+  assert.match(sitePhotoProblem(at(14.7, 120.983, 8), site), /^This photo was taken 2\.\d km from the project site\. Photos must be taken at the site\.$/)
 })
 
 test("offline queue rules: only a lost connection is retried, oldest work goes first, back-off is capped", () => {
@@ -917,7 +1038,7 @@ test("privacy notice: every scope says what is collected, why, who sees it and h
 
 // ---- S-curve (planned vs verified) ----
 {
-  const pin = (category, status, due_date, verified_at = null) => ({ category, status, due_date, verified_at })
+  const pin = (category, status, due_date, verified_at = null) => ({ category, status, due_date, verified_at, tasks: [progressTask("one", "pin", status === "verified", verified_at)] })
   const pins = [
     pin("progress", "verified", "2026-01-10", "2026-01-09T03:00:00Z"),
     pin("progress", "verified", "2026-01-20", "2026-01-25T03:00:00Z"),
@@ -976,9 +1097,28 @@ test("privacy notice: every scope says what is collected, why, who sees it and h
 }
 
 // ---- Weekly report ----
+test("Weekly report and S-curve count approved tasks inside an unfinished pin on their own Manila approval dates", () => {
+  const pins = [{ id: "laundry", title: "Laundry", blueprint_id: "sheet", category: "progress", status: "in_progress", due_date: "2026-10-31", verified_at: null, assigned_to: null, tasks: [
+    progressTask("floor", "laundry", true, "2026-10-28T02:00:00Z"),
+    progressTask("wall", "laundry", true, "2026-10-29T16:30:00Z"),
+    progressTask("ceiling", "laundry", true, "2026-10-30T17:00:00Z"),
+    { ...progressTask("paint", "laundry"), done: true, review_status: "for_review" },
+  ] }]
+  const summary = buildWeekly({ from: "2026-10-30", to: "2026-10-31", today: "2026-10-31", projectStart: "2026-10-28", projectEnd: "2026-11-01", pins, logs: [], questions: [] })
+  assert.equal(summary.total, 4)
+  assert.equal(summary.progress.atStart, 25)
+  assert.equal(summary.progress.now, 75)
+  assert.deepEqual(summary.verifiedThisPeriod.map(row => [row.id, row.date]), [["wall", "2026-10-30"], ["ceiling", "2026-10-31"]])
+  assert.equal(summary.curve.points[summary.curve.todayIndex].verified, 75)
+  const previous = buildWeekly({ from: "2026-10-30", to: "2026-10-30", today: "2026-10-31", projectStart: null, projectEnd: null, pins, logs: [], questions: [] })
+  assert.equal(previous.progress.now, 50)
+  assert.deepEqual(previous.verifiedThisPeriod.map(row => row.id), ["wall"])
+  assert.equal(summarize(pins, "2026-10-31").percentVerified, summary.progress.now)
+})
+
 {
   // Period Mon 2026-03-02 .. Sun 2026-03-08; "today" is Wed 2026-03-04 (inside the period). 10 work items + 1 note.
-  const pin = (id, over = {}) => ({ id, title: "Item " + id, blueprint_id: "b1", category: "progress", status: "not_started", due_date: null, verified_at: null, assigned_to: null, ...over })
+  const pin = (id, over = {}) => ({ id, title: "Item " + id, blueprint_id: "b1", category: "progress", status: "not_started", due_date: null, verified_at: null, assigned_to: null, tasks: [progressTask(id, id, over.status === "verified", over.verified_at ?? null)], ...over })
   const pins = [
     pin("a", { status: "verified", due_date: "2026-02-20", verified_at: "2026-02-25T03:00:00Z" }), // before the period
     pin("b", { status: "verified", due_date: "2026-03-03", verified_at: "2026-03-03T02:00:00Z" }), // inside
@@ -1173,8 +1313,8 @@ test("QA confirmation invokes submission once after explicit approval", () => {
 })
 test("QA confirmation distinguishes partial work from complete work without inventing standards", () => {
   assert.match(qaSubmissionMessage(1,3), /partial submission \(1\/3/)
-  assert.doesNotMatch(qaSubmissionMessage(1,3), /all required checklist items are completed/)
-  assert.match(qaSubmissionMessage(3,3), /all required checklist items are completed/)
+  assert.doesNotMatch(qaSubmissionMessage(1,3), /all required tasks are completed/)
+  assert.match(qaSubmissionMessage(3,3), /all required tasks are completed/)
   assert.match(qaSubmissionMessage(3,3), /approved drawings and project specifications/)
 })
 test("Correction evidence keeps the new draft photos apart from the earlier request", () => {
@@ -1208,7 +1348,7 @@ test("Manual checklist completion waits for passed QA and closed linked NCRs (sa
   assert.equal(completionProblem(ready),"")
   assert.match(completionProblem({...ready,open:true}),/pending QA/)
   assert.match(completionProblem({...ready,inspectionStatus:"failed"}),/must pass/)
-  assert.match(completionProblem({...ready,openItemNcrs:2}),/Close the 2 open NCRs linked to this work item/)
+  assert.match(completionProblem({...ready,openItemNcrs:2}),/Close the 2 open NCRs linked to this task/)
   assert.match(completionProblem({...ready,error:"Unavailable"}),/unavailable/)
   assert.match(completionProblem({...ready,loading:true}),/Checking/)
 })
@@ -1250,7 +1390,7 @@ test("Every work item stage names the responsible person, the blocker and one ne
   assert.equal(workItemStage({...base,current:{number:4,status:"requested"}}).owner,"Engineer")
   assert.equal(workItemStage({...base,current:{number:4,status:"in_progress"}}).stage,"inspecting")
   const fresh={...base,item:{id:"wall",text:"WALL",done:false,review_status:"not_submitted"},attempts:0,current:null}
-  assert.equal(workItemStage({...fresh,eligiblePhotos:0}).next,"Foreman adds photos of WALL, then submits for QA.")
+  assert.equal(workItemStage({...fresh,eligiblePhotos:0}).next,"Foreman adds photos of WALL, then submits for QA Review.")
   assert.equal(workItemStage(fresh).action,"submit")
   assert.equal(workItemStage({...fresh,item:{...fresh.item,done:true}}).action,"submit")
   assert.equal(workItemStage({...fresh,item:{...fresh.item,done:true},criteriaApproved:false}).owner,"Engineer")
@@ -1381,7 +1521,7 @@ test("Calendar filter: presets are Manila days, weeks run Monday to Sunday, mont
   assert.equal(presetOf({from:"2026-10-19",to:"2026-10-25"},pastPresets,"2026-10-22"),"thisWeek")
   assert.equal(presetOf({from:"2026-10-20",to:"2026-10-25"},pastPresets,"2026-10-22"),"custom")
   assert.equal(presetOf(presetRange("next30","2026-10-22"),pastPresets,"2026-10-22"),"custom","past presets never offer future windows")
-  assert.equal(presetOf(presetRange("next30","2026-10-22"),schedulePresets,"2026-10-22"),"next30")
+  assert.equal(presetOf(presetRange("today","2026-10-22"),schedulePresets,"2026-10-22"),"today"); assert.equal(presetOf(presetRange("next30","2026-10-22"),schedulePresets,"2026-10-22"),"custom","due dates offer no 30-day windows; such dates show as Custom")
 })
 test("Calendar filter: timestamps count on their Manila day, due dates as written; records without a date only show unfiltered", () => {
   assert.equal(manilaDayOf("2026-10-21T16:30:00Z"),"2026-10-22","00:30 Manila is the next day");assert.equal(manilaDayOf("2026-10-21T15:59:00Z"),"2026-10-21")
@@ -1517,9 +1657,33 @@ test("Pin picker: location records need a pin of this project; Project-wide only
   assert.equal(problem({ sheetId: "", pinId: "n", itemId: "" }), "Choose a work pin from this project.")
   assert.equal(problem({ sheetId: "o", pinId: "p1", itemId: "" }), "The chosen pin is not on the chosen sheet.")
   assert.equal(problem({ sheetId: "s1", pinId: "p1", itemId: "i1" }), "")
-  assert.equal(problem({ sheetId: "s1", pinId: "p1", itemId: "zz" }), "Choose a checklist item of this work pin.")
-  assert.equal(problem({ sheetId: "s1", pinId: "p1", itemId: "i1" }, { itemsLoading: true }), "Loading this pin's checklist…")
+  assert.equal(problem({ sheetId: "s1", pinId: "p1", itemId: "zz" }), "Choose a task of this work pin.")
+  assert.equal(problem({ sheetId: "s1", pinId: "p1", itemId: "i1" }, { itemsLoading: true }), "Loading this pin's tasks…")
   assert.equal(problem({ sheetId: "s1", pinId: "p1", itemId: "" }, { itemsLoading: true }), "", "a whole-pin record need not wait")
-  assert.equal(problem({ sheetId: "s1", pinId: "p1", itemId: "" }, { itemsError: "offline", waitForChecklist: true }), "Could not load this pin's checklist. Retry before saving.", "forms that offer the item wait for the checklist")
+  assert.equal(problem({ sheetId: "s1", pinId: "p1", itemId: "" }, { itemsError: "offline", waitForChecklist: true }), "Could not load this pin's tasks. Retry before saving.", "forms that offer the item wait for the checklist")
+})
+test("Register phone: numbers only while typing or pasting, exactly 11 digits", () => {
+  assert.equal(PHONE_DIGITS, 11)
+  assert.equal(phoneDigits("0912a345-6789"), "09123456789", "letters and symbols are dropped")
+  assert.equal(phoneDigits("+63 912 345 6789"), "63912345678", "a pasted number keeps only its first 11 digits")
+  assert.equal(phoneDigits("091234567890123"), "09123456789")
+  assert.equal(phoneIssue("09123456789"), "")
+  for (const bad of ["", "0912345678", "091234567890", "0912345678a", "+6391234567", "0912 345 678"]) assert.match(phoneIssue(bad), /11-digit phone number using numbers only/)
+})
+
+test("Register password: 12+ characters with lowercase, uppercase, a number and a special character", () => {
+  assert.equal(PASSWORD_MIN_LENGTH, 12)
+  assert.equal(passwordIssue("Valencia#2026"), "")
+  assert.equal(passwordIssue("Abcdefgh#1x"), "Password needs at least 12 characters.", "11 characters is too short")
+  assert.equal(passwordIssue("abcdefgh#123"), "Password needs an uppercase letter.")
+  assert.equal(passwordIssue("ABCDEFGH#123"), "Password needs a lowercase letter.")
+  assert.equal(passwordIssue("Abcdefghij#k"), "Password needs a number.")
+  assert.equal(passwordIssue("Abcdefghij12"), "Password needs a special character.")
+  assert.equal(passwordIssue("Abcdefghij 12"), "Password needs a special character.", "a space is not a special character")
+  assert.equal(passwordIssue("Abcdefghij12é"), "Password needs a special character.", "only ASCII symbols count")
+  for (const symbol of "!@#$%^&*()_+-=[]{};':\"|<>?,./`~\\") assert.equal(passwordIssue(`Abcdefghij1${symbol}`), "", `symbol ${symbol}`)
+  assert.equal(passwordIssue("abc"), "Password needs at least 12 characters, an uppercase letter, a number and a special character.")
+  assert.deepEqual(passwordChecks("aB1!").map((check) => check.met), [false, true, true, true, true])
+  assert.deepEqual(passwordChecks("").map((check) => check.key), ["length", "lower", "upper", "number", "special"])
 })
 console.log(`\n${passed} passed${process.exitCode ? ", some FAILED" : ""}`)

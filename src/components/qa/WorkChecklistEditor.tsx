@@ -16,7 +16,7 @@ export default function WorkChecklistEditor({ pin, item, onClose, onSaved }: { p
   const { templates, loading, error } = useTemplates(pin.project_id)
   const selected = templates.find(row => row.id === item?.qa_template_id)
   return loading || error || item?.qa_template_id && !selected
-    ? <Modal title="Checklist criteria" onClose={onClose}><p role="status">{error || (loading ? "Loading criteria…" : "The saved criteria could not be loaded. Close and try again.")}</p></Modal>
+    ? <Modal title="QC criteria" onClose={onClose}><p role="status">{error || (loading ? "Loading criteria…" : "The saved criteria could not be loaded. Close and try again.")}</p></Modal>
     : <Editor pin={pin} item={item} templates={templates} selected={selected} onClose={onClose} onSaved={onSaved} />
 }
 
@@ -30,7 +30,7 @@ function Editor({ pin, item, templates, selected, onClose, onSaved }: { pin: Pin
   const choices = pickableChecklists(templates, pin.project_id)
   const [busy, setBusy] = useState(false)
   const pending = useRef(false)
-  const problem = checklistProblem(name, criteria) || (name.trim().length > 200 ? "Keep the name under 200 characters." : "") || (criteria.some(row => (row.acceptance_criteria?.trim().length ?? 0) < 5) ? "Enter a specific passing requirement for every criterion." : "")
+  const problem = checklistProblem(name, criteria, "task") || (name.trim().length > 200 ? "Keep the name under 200 characters." : "") || (criteria.some(row => (row.acceptance_criteria?.trim().length ?? 0) < 5) ? "Enter a specific passing requirement for every criterion." : "")
   const patch = (index: number, change: Partial<DraftItem>) => setCriteria(rows => rows.map((row, at) => at === index ? { ...row, ...change } : row))
   const save = async () => {
     if (pending.current || problem) return
@@ -46,22 +46,22 @@ function Editor({ pin, item, templates, selected, onClose, onSaved }: { pin: Pin
       }
       if (error) throw error
       await onSaved()
-      toast.success("Checklist item and criteria saved", "The Foreman can add evidence and submit directly for QA.")
+      toast.success("Task and QC criteria saved", "The Foreman can add evidence and submit directly for QA Review.")
       onClose()
-    } catch (error) { toast.error("Checklist not saved", (error as Error).message) }
+    } catch (error) { toast.error("Task not saved", (error as Error).message) }
     finally { pending.current = false; setBusy(false) }
   }
-  return <Modal title={item ? `Edit ${item.text} and criteria` : "Add checklist item and criteria"} size="lg" onClose={busy ? () => undefined : onClose}
+  return <Modal title={item ? `Edit ${item.text} and QC criteria` : "Add task and QC criteria"} size="lg" onClose={busy ? () => undefined : onClose}
     description="Define the checks now. The Foreman adds photos and submits; no Ready tick or separate criteria approval."
-    footer={<>{problem ? <p role="status" className="mr-auto text-xs text-danger-fg">{problem}</p> : null}<button type="button" className={buttonSecondary} disabled={busy} onClick={onClose}>Cancel</button><button type="button" className={buttonPrimary} disabled={busy || Boolean(problem)} onClick={() => void save()}>{busy ? "Saving…" : "Save item and criteria"}</button></>}>
+    footer={<>{problem ? <p role="status" className="mr-auto text-xs text-danger-fg">{problem}</p> : null}<button type="button" className={buttonSecondary} disabled={busy} onClick={onClose}>Cancel</button><button type="button" className={buttonPrimary} disabled={busy || Boolean(problem)} onClick={() => void save()}>{busy ? "Saving…" : "Save task and QC criteria"}</button></>}>
     <div className="space-y-4">
-      <label className="block text-sm font-bold">Checklist item name<input className={inputClass + " mt-1"} value={name} maxLength={200} onChange={event => setName(event.target.value)} placeholder="For example: FLOOR" /></label>
-      <label className="block text-sm">Copy criteria from a checklist added to this project (optional)
+      <label className="block text-sm font-bold">Task name<input className={inputClass + " mt-1"} value={name} maxLength={200} onChange={event => setName(event.target.value)} placeholder="For example: FLOOR" /></label>
+      <label className="block text-sm">Copy criteria from a QC checklist added to this project (optional)
         <select className={inputClass + " mt-1"} defaultValue="" disabled={!choices.length} onChange={event => { const template = choices.find(row => row.id === event.target.value); if (template) { setCriteria(fromTemplate(template)); setStandards(template.standards) } }}>
-          <option value="" disabled>{choices.length ? "Select only an applicable checklist" : "No checklist added to this project yet"}</option>{choices.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
+          <option value="" disabled>{choices.length ? "Select only an applicable QC checklist" : "No QC checklist added to this project yet"}</option>{choices.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
         </select>
       </label>
-      <p className="text-xs text-fg-muted">{choices.length ? "Only checklists added in Checklist configuration are listed. " : "Add the project's checklists in Checklist configuration, or write the criteria below. "}Use the approved project specification for test conditions and limits. Copying a checklist does not confirm that it applies to this item.</p>
+      <p className="text-xs text-fg-muted">{choices.length ? "Only checklists added under QC Checklists are listed. " : "Add checklists under QC Checklists, or write the criteria below. "}Use the approved project specification for test conditions and limits. Copying a QC checklist does not confirm that it applies to this task.</p>
       <ChecklistDocumentation standards={standards} items={criteria} />
       {standards.length ? <button type="button" className="inline-flex min-h-6 items-center" onClick={() => setStandards([])}><span className="text-xs font-bold text-brand-text hover:underline">Remove the cited standards from this item</span></button> : null}
       {criteria.map((row, index) => <fieldset key={index} className="space-y-2 rounded-xl border border-line p-3">

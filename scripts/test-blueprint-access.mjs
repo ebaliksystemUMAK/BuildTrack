@@ -73,7 +73,7 @@ test("access editor: only the types this project uses (plans or remaining grants
   assert.deepEqual(accessColumns([], []), [])
   assert.equal(accessSummary({ architectural: "assigned", electrical: "view" }), "Assigned work: Architectural · View only: Electrical")
   assert.equal(accessSummary({}), "No blueprint access yet")
-  assert.match(downgradeWarning("foreman", "electrical", "assigned", "view"), /open Electrical work items are unassigned/)
+  assert.match(downgradeWarning("foreman", "electrical", "assigned", "view"), /open Electrical work pins are unassigned/)
   assert.match(downgradeWarning("engineer", "architectural", "assigned", "none"), /inspect or verify.*hidden/s)
   assert.match(downgradeWarning("engineer", "architectural", "view", "none"), /hidden/)
   assert.equal(downgradeWarning("engineer", "architectural", "none", "assigned"), null)

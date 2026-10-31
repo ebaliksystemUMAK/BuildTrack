@@ -5,6 +5,7 @@ import AdminIcon, { type AdminIconName } from "./AdminIcon"
 import type { AdminPageProps } from "./types"
 import { activityLabel, formatDate, formatTime, roleLabel, useActivity, useDecisionCounts, useUserStats } from "../../lib/admin"
 import { useAuth } from "../../lib/auth"
+import { useProjectManagers } from "../../lib/projectManagers"
 import { openProject, phaseLabels, useProjects } from "../../lib/projects"
 import { supabase } from "../../lib/supabase"
 import ProjectHealth from "./ProjectHealth"
@@ -17,6 +18,7 @@ const dash = "—"
 
 export default function AdminDashboard({ onNavigate }: AdminPageProps) {
   const { can, profile } = useAuth()
+  const { managers } = useProjectManagers(can("projects.manage") ? "all" : null)
   const { projects, loading: projectsLoading, error: projectsError } = useProjects()
   const { stats, error: statsError } = useUserStats(can("users.view"))
   const { rows: activity, loading: activityLoading, error: activityError } = useActivity(null, 12)
@@ -70,7 +72,7 @@ export default function AdminDashboard({ onNavigate }: AdminPageProps) {
   const firstProject = projects.find((project) => project.status !== "completed" && project.status !== "cancelled") ?? projects[0]
   const setupSteps = [
     { key: "project", title: "Create the first project", text: "Give it a code, a name, the client and the dates. Everything else hangs on a project.", done: projects.length > 0, action: { label: "New project", run: () => onNavigate("project-management") } },
-    { key: "team", title: "Add the people who work on it", text: "Assign an engineer, a foreman and the client. People only ever see the projects they are added to.", done: Boolean(firstProject && ((memberCounts?.get(firstProject.id) ?? 0) > 0 || firstProject.lead_engineer_id)), action: { label: "Manage access", run: () => onNavigate("project-management") } },
+    { key: "team", title: "Assign the Project Manager", text: "Assign a primary Project Manager. They add the Engineers, Foremen and Clients and set their blueprint access.", done: Boolean(firstProject && managers.some(manager => manager.project_id === firstProject.id && manager.designation === "primary" && manager.active)), action: { label: "Assign managers", run: () => onNavigate("project-management") } },
     { key: "invite", title: "Let the team sign up", text: "Pre-approve their emails or create an invitation code, so each person gets the right role the moment they join.", done: (stats?.engineers ?? 0) + (stats?.foremen ?? 0) + (stats?.clients ?? 0) > 0, action: { label: "Invitation codes", run: () => onNavigate("invites") } },
   ]
 

@@ -3,6 +3,10 @@ import type { Discipline } from "./projects"
 import { supabase } from "./supabase"
 
 export type RequestedRole = "engineer" | "foreman" | "client"
+// Roles an Admin may give when approving a registration (admin-users "approve"); Project Manager is given by an Admin only,
+// it is never requested. Admin roles stay with the Super Admin and are not offered here.
+export const approvalRoles = ["engineer", "foreman", "client", "project_manager"] as const
+export type ApprovalRole = (typeof approvalRoles)[number]
 export type RequestStatus = "pending" | "approved" | "rejected" | "cancelled"
 
 export type AccessRequest = {
