@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { PrivacyNoticeModal } from "../PrivacyNotice"
 import MyDataModal from "../MyDataModal"
 import NotificationBell from "../NotificationBell"
+import { FeatureLockNotice } from "../SiteStatusNotice"
 import AdminIcon, { type AdminIconName } from "../../pages/Admin/AdminIcon"
 import CommandPalette, { type PaletteAction, type PaletteSearch } from "./CommandPalette"
 import { PageGuideButton, PageGuideModal } from "./PageGuide"
@@ -21,13 +22,14 @@ export type ShellPersona = "admin" | "manager" | "engineer" | "foreman" | "clien
 
 const roleName: Record<AppRole, string> = { super_admin: "Super Admin", admin: "Administrator", project_manager: "Project Manager", engineer: "Engineer", foreman: "Foreman", client: "Client", user: "Basic account" }
 const COLLAPSE_KEY = "buildtrack.sidebar.collapsed"
+const HIDDEN_KEY = "buildtrack.sidebar.hidden"
 
 const initials = (value: string) => value.split(/\s+|@/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "BT"
 
-function usePersistedCollapse(): [boolean, (value: boolean) => void] {
+function usePersistedCollapse(key: string = COLLAPSE_KEY): [boolean, (value: boolean) => void] {
   const [collapsed, setCollapsed] = useState(() => {
     try {
-      return localStorage.getItem(COLLAPSE_KEY) === "1"
+      return localStorage.getItem(key) === "1"
     } catch {
       return false
     }
@@ -35,7 +37,7 @@ function usePersistedCollapse(): [boolean, (value: boolean) => void] {
   const update = (value: boolean) => {
     setCollapsed(value)
     try {
-      localStorage.setItem(COLLAPSE_KEY, value ? "1" : "0")
+      localStorage.setItem(key, value ? "1" : "0")
     } catch {
       // The choice just is not remembered.
     }
@@ -149,6 +151,8 @@ export default function AppShell({
   const { profile, signOut } = useAuth()
   const { mode, setMode } = useTheme()
   const [collapsed, setCollapsed] = usePersistedCollapse()
+  // The whole sidebar can slide away like a drawer on a computer (the top bar button brings it back); "collapsed" is the narrower icons-only rail.
+  const [hidden, setHidden] = usePersistedCollapse(HIDDEN_KEY)
   const [drawer, setDrawer] = useState(false)
   const [palette, setPalette] = useState(false)
   const [privacy, setPrivacy] = useState(false)
@@ -194,7 +198,7 @@ export default function AppShell({
   )
 
   const tabs = mobileTabs.map((key) => all.find((item) => item.key === key)).filter((item): item is ShellNavItem => Boolean(item))
-  const side = collapsed ? "4.75rem" : "17rem"
+  const side = hidden ? "0rem" : collapsed ? "4.75rem" : "17rem"
 
   const projectHeader = (compact: boolean) => (onAllProjects && project ? (
     compact ? (
@@ -253,7 +257,7 @@ export default function AppShell({
     </div>
   )
 
-  const footer = (compact: boolean) => (
+  const footer = (compact: boolean, withRailControls = false) => (
     <div className="space-y-3 border-t border-white/10 p-3">
       {project !== undefined && !onAllProjects ? (
         compact ? (
@@ -269,6 +273,12 @@ export default function AppShell({
         <Avatar size={36} />
         {!compact ? <div className="min-w-0 flex-1 leading-tight"><p className="truncate text-[13px] font-bold text-white">{profile?.full_name || profile?.email}</p><p className="truncate text-[11px] text-white/60">{workspace}</p></div> : null}
       </div>
+      {withRailControls ? (
+        <div className={`flex gap-2 ${compact ? "flex-col items-center" : ""}`}>
+          <button type="button" onClick={() => setCollapsed(!collapsed)} aria-pressed={collapsed} title={collapsed ? "Show the full menu" : "Show icons only"} aria-label={collapsed ? "Show the full menu" : "Show icons only"} className="inline-flex min-h-8 flex-1 items-center justify-center rounded-lg border border-white/15 px-2 text-[11px] font-bold text-white/80 hover:bg-white/10">{compact ? "»" : "Icons only"}</button>
+          <button type="button" onClick={() => setHidden(true)} title="Hide the menu" aria-label="Hide the menu" className="inline-flex min-h-8 flex-1 items-center justify-center rounded-lg border border-white/15 px-2 text-[11px] font-bold text-white/80 hover:bg-white/10">{compact ? "«" : "Hide menu"}</button>
+        </div>
+      ) : null}
     </div>
   )
 
@@ -279,11 +289,11 @@ export default function AppShell({
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-lg focus:bg-brand focus:px-4 focus:py-2 focus:text-sm focus:font-bold focus:text-white">Skip to content</a>
 
       {/* Desktop rail */}
-      <aside aria-label="Sidebar" className={`fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-white/10 text-white transition-[width] duration-200 lg:flex ${railClasses}`} style={{ width: side }}>
+      <aside aria-label="Sidebar" aria-hidden={hidden} inert={hidden} className={`fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-white/10 text-white transition-[width,transform] duration-200 lg:flex ${railClasses} ${hidden ? "pointer-events-none -translate-x-full" : "translate-x-0"}`} style={{ width: hidden ? "17rem" : side }}>
         {brand(collapsed)}
         {projectHeader(collapsed)}
         {nav(collapsed)}
-        {footer(collapsed)}
+        {footer(collapsed, true)}
       </aside>
 
       {/* Phone drawer */}
@@ -300,7 +310,7 @@ export default function AppShell({
       <div className="min-w-0 overflow-x-clip lg:pl-[var(--bt-side)] lg:transition-[padding] lg:duration-200">
         <header className="bt-topbar sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-line bg-surface/85 px-3 backdrop-blur-xl sm:px-5 lg:px-8">
           <button type="button" onClick={() => setDrawer(true)} aria-label="Open menu" className="grid h-10 w-10 place-items-center rounded-xl hover:bg-surface-muted lg:hidden"><span className="h-5 w-5 [&>svg]:h-5 [&>svg]:w-5"><AdminIcon name="menu" /></span></button>
-          <button type="button" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? "Expand the sidebar" : "Collapse the sidebar"} aria-pressed={collapsed} className="hidden h-10 w-10 place-items-center rounded-xl text-fg-muted hover:bg-surface-muted hover:text-fg lg:grid"><span className="h-5 w-5 [&>svg]:h-5 [&>svg]:w-5"><AdminIcon name="panel" /></span></button>
+          <button type="button" onClick={() => setHidden(!hidden)} aria-label={hidden ? "Show the menu" : "Hide the menu"} aria-pressed={hidden} title={hidden ? "Show the menu" : "Hide the menu"} className="hidden h-10 w-10 place-items-center rounded-xl text-fg-muted hover:bg-surface-muted hover:text-fg lg:grid"><span className="h-5 w-5 [&>svg]:h-5 [&>svg]:w-5"><AdminIcon name="panel" /></span></button>
           <div className="min-w-0 flex-1 leading-tight">
             <p className="bt-persona-text truncate text-[11px] font-extrabold uppercase tracking-wider">{onAllProjects && project ? `${workspace} · ${project.code}` : workspace}</p>
             <p className="truncate text-base font-extrabold sm:text-lg">{current?.label ?? "BuildTrack"}</p>
@@ -319,6 +329,7 @@ export default function AppShell({
 
         <main id="main" tabIndex={-1} className="px-[clamp(12px,2vw,32px)] pb-28 pt-5 outline-none lg:pb-10">
           {banner}
+          <FeatureLockNotice persona={persona} page={active} />
           {children}
         </main>
       </div>

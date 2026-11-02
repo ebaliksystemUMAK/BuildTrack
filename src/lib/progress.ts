@@ -103,6 +103,18 @@ export function downloadCsv(filename: string, csv: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+export function downloadText(filename: string, text: string, type = "application/json") {
+  const blob = new Blob([text], { type: `${type};charset=utf-8` })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 // ---------- S-curve (planned vs verified, cumulative) ----------
 // Planned: share of tasks due by each date, inheriting the due date on their pin.
 // Verified: share of approved tasks, dated by each task's Engineer approval.

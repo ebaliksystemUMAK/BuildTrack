@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react"
+import ErrorBoundary from "../../components/ErrorBoundary"
 import GetStarted from "../../components/GetStarted"
 import { AdminButton, PageIntro, Panel, StatusBadge } from "./AdminShell"
 import AdminIcon, { type AdminIconName } from "./AdminIcon"
 import type { AdminPageProps } from "./types"
 import { activityLabel, formatDate, formatTime, roleLabel, useActivity, useDecisionCounts, useUserStats } from "../../lib/admin"
 import { useAuth } from "../../lib/auth"
+import { projectsWithoutPrimaryManager } from "../../lib/attentionStore"
 import { useProjectManagers } from "../../lib/projectManagers"
 import { openProject, phaseLabels, useProjects } from "../../lib/projects"
 import { supabase } from "../../lib/supabase"
@@ -18,7 +20,7 @@ const dash = "—"
 
 export default function AdminDashboard({ onNavigate }: AdminPageProps) {
   const { can, profile } = useAuth()
-  const { managers } = useProjectManagers(can("projects.manage") ? "all" : null)
+  const { managers, loading: managersLoading, error: managersError } = useProjectManagers(can("projects.manage") ? "all" : null)
   const { projects, loading: projectsLoading, error: projectsError } = useProjects()
   const { stats, error: statsError } = useUserStats(can("users.view"))
   const { rows: activity, loading: activityLoading, error: activityError } = useActivity(null, 12)
@@ -42,6 +44,10 @@ export default function AdminDashboard({ onNavigate }: AdminPageProps) {
   const byStatus = (status: string) => projects.filter((project) => project.status === status).length
   const userValue = (value: number | undefined) => (value === undefined ? dash : String(value))
 
+  // The Admin appoints the primary Project Manager; until then nobody can manage the project team (shown only once the managers have loaded).
+  const managersKnown = !projectsHidden && !managersLoading && !managersError
+  const withoutManager = useMemo(() => (managersKnown ? projectsWithoutPrimaryManager(projects, managers) : []), [managersKnown, projects, managers])
+
   const kpis: Kpi[] = [
     { label: "Total Projects", value: projectsHidden ? dash : String(projects.length), note: "All statuses", icon: "building", tone: "info" },
     { label: "Active Projects", value: projectsHidden ? dash : String(byStatus("active")), note: `${byStatus("planning")} planning • ${byStatus("on_hold")} on hold`, icon: "building", tone: "success" },
@@ -49,6 +55,9 @@ export default function AdminDashboard({ onNavigate }: AdminPageProps) {
     { label: "Engineers / Foremen", value: stats ? `${stats.engineers} / ${stats.foremen}` : dash, note: can("users.view") ? "Active accounts (admins not counted)" : "Needs the View users permission", icon: "users", tone: "info" },
     { label: "Clients", value: userValue(stats?.clients), note: can("users.view") ? "Active client accounts" : "Needs the View users permission", icon: "users", tone: "info" },
     { label: "Access Requests", value: userValue(stats?.pending), note: stats && stats.pending > 0 ? "Waiting for your review" : "Nobody waiting", icon: "history", tone: stats && stats.pending > 0 ? "warning" : "success" },
+    { label: "Suspended Accounts", value: userValue(stats?.suspended), note: can("users.view") ? (stats?.suspended ? "Cannot sign in until enabled" : "None suspended") : "Needs the View users permission", icon: "users", tone: "info" },
+    { label: "Basic Accounts", value: userValue(stats?.basic), note: can("users.view") ? "Signed up, no role yet" : "Needs the View users permission", icon: "users", tone: "info" },
+    { label: "Without a Project Manager", value: managersKnown ? String(withoutManager.length) : dash, note: managersKnown ? (withoutManager.length ? "Open projects to assign" : "Every open project has one") : "Needs the Projects permission", icon: "building", tone: managersKnown && withoutManager.length ? "warning" : "success" },
   ]
 
   // Projects that still need someone in charge or a team.
@@ -62,10 +71,11 @@ export default function AdminDashboard({ onNavigate }: AdminPageProps) {
           if (!project.lead_engineer_id) issues.push("No engineer in charge")
           if (!project.lead_foreman_id) issues.push("No foreman in charge")
           if (memberCounts && !memberCounts.get(project.id)) issues.push("No team assigned")
+          if (managersKnown && withoutManager.some((open) => open.id === project.id)) issues.push("No Project Manager")
           return { project, issues }
         })
         .filter((entry) => entry.issues.length > 0),
-    [projects, memberCounts],
+    [projects, memberCounts, managersKnown, withoutManager],
   )
 
   // First-run checklist for a new system: only for admins who manage projects, and gone once everything is in place.
@@ -145,7 +155,7 @@ export default function AdminDashboard({ onNavigate }: AdminPageProps) {
         ))}
       </div>
 
-      {can("projects.manage") && !projectsLoading && !projectsError ? <ProjectHealth projects={projects} /> : null}
+      {can("projects.manage") && !projectsLoading && !projectsError ? <ErrorBoundary compact label="Project health"><ProjectHealth projects={projects} /></ErrorBoundary> : null}
 
       <Panel
         title="Projects needing attention"
@@ -158,7 +168,7 @@ export default function AdminDashboard({ onNavigate }: AdminPageProps) {
         ) : projects.length === 0 ? (
           <p className="text-sm text-fg-muted">No projects yet. Create the first one in Project Management.</p>
         ) : attention.length === 0 ? (
-          <p className="text-sm text-fg-muted">Every open project has a person in charge, an engineer, a foreman and a team.</p>
+          <p className="text-sm text-fg-muted">{managersKnown ? "Every open project has a Project Manager, a person in charge, an engineer, a foreman and a team." : "Every open project has a person in charge, an engineer, a foreman and a team."}</p>
         ) : (
           <ul className="divide-y divide-line">
             {attention.map(({ project, issues }) => (

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react"
+import ErrorBoundary from "../../components/ErrorBoundary"
 import { AdminButton, PageIntro, Panel } from "./AdminShell"
 import PermissionMatrix from "./PermissionMatrix"
 import ReviewQueue from "./ReviewQueue"
 import DataRequestsPanel from "./DataRequestsPanel"
+import DeleteAccountModal from "./DeleteAccountModal"
 import type { AdminPageProps } from "./types"
 import Modal from "../../components/Modal"
 import DataConfirmModal from "../../components/PrivacyNotice"
@@ -95,6 +97,8 @@ export default function UserManagement({ onNavigate }: AdminPageProps) {
   const [edit, setEdit] = useState<Profile | null>(null)
   const [create, setCreate] = useState(false)
   const [permsFor, setPermsFor] = useState<Profile | null>(null)
+  const [suspendFor, setSuspendFor] = useState<Profile | null>(null)
+  const [deleteFor, setDeleteFor] = useState<Profile | null>(null)
   const [whitelist, setWhitelist] = useState<WhitelistRow[]>([])
   const [addWhitelist, setAddWhitelist] = useState(false)
 
@@ -134,7 +138,7 @@ export default function UserManagement({ onNavigate }: AdminPageProps) {
   const visible = useMemo(
     () =>
       users.filter((user) => {
-        const text = `${user.full_name ?? ""} ${user.email} ${user.company ?? ""}`.toLowerCase()
+        const text = `${user.full_name ?? ""} ${user.email} ${user.company ?? ""} ${user.phone ?? ""} ${user.position ?? ""}`.toLowerCase()
         return text.includes(query.toLowerCase()) && (roleFilter === "all" || user.role === roleFilter) && (statusFilter === "all" || user.status === statusFilter)
       }),
     [users, query, roleFilter, statusFilter],
@@ -161,15 +165,25 @@ export default function UserManagement({ onNavigate }: AdminPageProps) {
     }
     const ok = action === "approve"
       ? await confirm({ title: `Approve ${who} as ${roleLabel[role]}?`, message: "They get access to this role right away and are notified.", confirmLabel: "Approve" })
-      : await confirm({ title: `Reject ${who}?`, message: "Their sessions end now and they will not be able to use the system. You can reconsider later.", confirmLabel: "Reject", tone: "danger" })
+      : await confirm({ title: `Reject ${who}?`, message: "They will not be able to sign in or use the system. You can reconsider later.", confirmLabel: "Reject", tone: "danger" })
     if (!ok) return
     if (await call({ action, id: user.id, role, note: note.trim() }, action === "approve" ? "User approved" : "User rejected")) setDetails(null)
   }
 
+  // Enabling asks for a confirmation; suspending first asks for a written reason (kept in the audit log and sent to the person), then confirms.
   const toggleEnabled = async (user: Profile) => {
-    const enabling = user.status === "disabled"
-    if (!enabling && !(await confirm({ title: `Suspend ${user.full_name || user.email}?`, message: "Their sessions end now and they cannot sign in or see any data until you enable the account again.", confirmLabel: "Suspend", tone: "danger" }))) return
-    if (await call({ action: "set_enabled", id: user.id, enabled: enabling }, enabling ? "Account enabled" : "Account suspended and signed out")) setDetails(null)
+    if (user.status !== "disabled") {
+      setDetails(null)
+      setSuspendFor(user)
+      return
+    }
+    if (!(await confirm({ title: `Enable ${user.full_name || user.email}?`, message: `They can sign in again as ${user.role ? roleLabel[user.role] : "a basic user"} with the access they had, and a notice is saved for them.`, confirmLabel: "Enable account" }))) return
+    if (await call({ action: "set_enabled", id: user.id, enabled: true }, "Account enabled")) setDetails(null)
+  }
+
+  const suspend = async (user: Profile, reason: string) => {
+    if (!(await confirm({ title: `Suspend ${user.full_name || user.email}?`, message: "They cannot sign in or use any data until an administrator enables the account again. Your reason is recorded in the audit log and saved as a notice for them.", confirmLabel: "Suspend", tone: "danger" }))) return
+    if (await call({ action: "set_enabled", id: user.id, enabled: false, reason }, "Account suspended")) setSuspendFor(null)
   }
 
   const removeWhitelist = async (entry: WhitelistRow) => {
@@ -235,15 +249,15 @@ export default function UserManagement({ onNavigate }: AdminPageProps) {
         </div>
       ) : null}
 
-      {tab === "permissions" && isSuper ? <PermissionMatrix admins={users.filter((user) => user.role === "admin")} onSaved={load} /> : null}
-      {tab === "queue" ? <DataRequestsPanel users={users} onChanged={load} /> : null}
-      {tab === "queue" ? <ReviewQueue users={users} onChanged={load} onDecideRegistration={decideRegistration} /> : null}
+      {tab === "permissions" && isSuper ? <ErrorBoundary compact label="The permission list"><PermissionMatrix admins={users.filter((user) => user.role === "admin")} onSaved={load} /></ErrorBoundary> : null}
+      {tab === "queue" ? <ErrorBoundary compact label="Data deletion requests"><DataRequestsPanel users={users} onChanged={load} /></ErrorBoundary> : null}
+      {tab === "queue" ? <ErrorBoundary compact label="The review queue"><ReviewQueue users={users} onChanged={load} onDecideRegistration={decideRegistration} /></ErrorBoundary> : null}
 
       {tab === "users" ? (
         <>
           <Panel className="admin-toolbar-panel">
             <label className="admin-search">
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name, email or company..." aria-label="Search users" />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, email, company, phone or job title..." aria-label="Search users" />
             </label>
             <select className={field + " mt-0 w-auto"} value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} aria-label="Filter by role">
               <option value="all">All roles</option>
@@ -367,6 +381,8 @@ export default function UserManagement({ onNavigate }: AdminPageProps) {
           requests={requests.filter((r) => r.user_id === details.id)}
           canEdit={can("users.edit") && canManage(details)}
           canDisable={can("users.disable") && canManage(details) && (details.status === "active" || details.status === "disabled")}
+          canDelete={isSuper && canManage(details) && details.role !== "super_admin" && !details.email.endsWith("@erased.invalid")}
+          onDelete={() => { const target = details; setDetails(null); setDeleteFor(target) }}
           canImpersonate={can("users.impersonate") && details.status === "active" && details.id !== me?.id && details.role !== "super_admin" && details.role !== "admin"}
           canApproveLegacy={can("users.approve") && canManage(details) && details.status === "pending"}
           canReopen={can("users.approve") && canManage(details) && details.status === "rejected"}
@@ -415,6 +431,8 @@ export default function UserManagement({ onNavigate }: AdminPageProps) {
         if (await call({ action: "create", ...body }, "User created")) setCreate(false)
       }} /> : null}
       {dataAsk ? <DataConfirmModal title={dataAsk.title} description={dataAsk.description} scope={dataAsk.scope} rows={dataAsk.rows} confirmLabel={dataAsk.confirmLabel} onConfirm={() => answerData(true)} onClose={() => answerData(false)} /> : null}
+      {suspendFor ? <SuspendModal user={suspendFor} onClose={() => setSuspendFor(null)} onSuspend={(reason) => suspend(suspendFor, reason)} /> : null}
+      {deleteFor ? <DeleteAccountModal user={deleteFor} onClose={() => setDeleteFor(null)} onDone={() => { setDeleteFor(null); void load() }} /> : null}
       {permsFor ? <PermissionsModal user={permsFor} onClose={() => setPermsFor(null)} onSave={async (permissions) => {
         if (!(await confirm({ title: `Save permissions for ${permsFor.full_name || permsFor.email}?`, message: `${permissions.length} permission${permissions.length === 1 ? "" : "s"} will apply immediately.`, confirmLabel: "Save permissions", tone: "danger" }))) return
         if (await call({ action: "set_permissions", id: permsFor.id, permissions }, "Permissions saved")) setPermsFor(null)
@@ -454,13 +472,42 @@ export default function UserManagement({ onNavigate }: AdminPageProps) {
   )
 }
 
+function SuspendModal({ user, onClose, onSuspend }: { user: Profile; onClose: () => void; onSuspend: (reason: string) => Promise<void> }) {
+  const [reason, setReason] = useState("")
+  const [busy, setBusy] = useState(false)
+  const clean = reason.replace(/\s+/g, " ").trim()
+  const ready = clean.length >= 5
+  const who = user.full_name || user.email
+  return (
+    <Modal
+      title={`Suspend ${who}`}
+      description={user.email}
+      size="md"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className={secondary} onClick={onClose} disabled={busy}>Cancel</button>
+          <button type="button" className={secondary + " !border-danger-fg !text-danger-fg"} disabled={!ready || busy} onClick={async () => { setBusy(true); await onSuspend(clean); setBusy(false) }}>Suspend account</button>
+        </>
+      }
+    >
+      <p className="text-sm text-fg-muted">A suspended person cannot sign in or see any data. Their records stay in the system and you can enable the account again at any time.</p>
+      <label className="mt-4 block text-sm font-bold" htmlFor="suspend-reason">Reason (required)</label>
+      <textarea id="suspend-reason" className={field + " min-h-24"} value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} placeholder="For example: left the company, shared login, request of the project owner" aria-describedby="suspend-reason-help" />
+      <p id="suspend-reason-help" className={`mt-1 text-xs ${ready || !reason ? "text-fg-muted" : "text-danger-fg"}`}>{ready || !reason ? `${clean.length}/500. Saved in the audit log and in the notice sent to ${who}.` : "Write at least 5 characters."}</p>
+    </Modal>
+  )
+}
+
 function UserDetailsModal({
-  user, requests, canEdit, canDisable, canImpersonate, canApproveLegacy, canReopen, canPermissions, onClose, onEdit, onToggle, onLoginAs, onPermissions, onLegacyDecision, onReopen,
+  user, requests, canEdit, canDisable, canDelete, canImpersonate, canApproveLegacy, canReopen, canPermissions, onClose, onEdit, onToggle, onDelete, onLoginAs, onPermissions, onLegacyDecision, onReopen,
 }: {
   user: Profile
   requests: RequestRow[]
   canEdit: boolean
   canDisable: boolean
+  canDelete: boolean
+  onDelete: () => void
   canImpersonate: boolean
   canApproveLegacy: boolean
   canReopen: boolean
@@ -487,6 +534,7 @@ function UserDetailsModal({
           {canImpersonate ? <button type="button" className={secondary} onClick={onLoginAs}>Log in as</button> : null}
           {canReopen ? <button type="button" className={secondary} onClick={() => void onReopen()}>Reconsider</button> : null}
           {canDisable ? <button type="button" className={secondary + (user.status === "active" ? " !text-danger-fg" : "")} onClick={onToggle}>{user.status === "disabled" ? "Re-enable account" : "Suspend account"}</button> : null}
+          {canDelete ? <button type="button" className={secondary + " !border-danger-fg !text-danger-fg"} onClick={onDelete}>Delete account</button> : null}
           {canEdit ? <button type="button" className={primary} onClick={onEdit}>Edit user</button> : <button type="button" className={secondary} onClick={onClose}>Close</button>}
         </>
       }

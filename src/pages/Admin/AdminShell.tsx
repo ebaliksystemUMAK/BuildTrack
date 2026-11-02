@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { createContext, useContext, type ReactNode } from "react"
 import SampleNotice from "../../components/SampleNotice"
 import AppShell, { type ShellNavGroup } from "../../components/shell/AppShell"
 import { useReviewCount } from "../../lib/admin"
@@ -23,10 +23,30 @@ export const pageTitles: Record<AdminPageKey, string> = {
   "audit-log": "Company Audit Log",
   settings: "System Settings",
   "access-review": "Global Access Review",
+  communications: "Announcements & Messages",
+  "system-control": "System Control",
+  "access-messages": "Access & Messages",
+  "records-audit": "Company Records and Audits",
+  "system-logs": "System Logs",
+  "system-health": "System Health",
+  "site-controls": "Site Controls",
+  records: "Records",
   backup: "Full Backup & Export",
   "qa-checklists": "Company QC Checklist Library",
 }
 
+const PM_WORKSPACE_LINK = "pm-workspace"
+// The older addresses still open (their content moved into tabs of another page) and light up the entry that now holds them.
+const MENU_ENTRY_OF: Partial<Record<AdminPageKey, AdminPageKey>> = {
+  "system-health": "system-control",
+  "site-controls": "system-control",
+  invites: "access-messages",
+  "access-review": "access-messages",
+  communications: "access-messages",
+  "audit-log": "records-audit",
+  records: "records-audit",
+  "qa-checklists": "settings",
+}
 const navItems: Array<{
   key: AdminPageKey
   label: string
@@ -37,6 +57,14 @@ const navItems: Array<{
   { key: "invites", label: "Invitations", icon: "users" },
   { key: "audit-log", label: "Company audit log", icon: "history" },
   { key: "access-review", label: "Global access review", icon: "users" },
+  { key: "communications", label: "Announcements & messages", icon: "history" },
+  { key: "access-messages", label: "Access & messages", icon: "users" },
+  { key: "records-audit", label: "Company Records and Audits", icon: "history" },
+  { key: "system-control", label: "System Control", icon: "grid" },
+  { key: "system-logs", label: "System Logs", icon: "history" },
+  { key: "system-health", label: "System health", icon: "chart" },
+  { key: "site-controls", label: "Site controls", icon: "grid" },
+  { key: "records", label: "Records", icon: "grid" },
   { key: "biometrics", label: "Biometric management", icon: "fingerprint" },
   { key: "project-management", label: "All projects", icon: "building" },
   { key: "project-overview", label: "Project Overview", icon: "building" },
@@ -45,10 +73,13 @@ const navItems: Array<{
   { key: "blueprint-version", label: "Version Control", icon: "history" },
   { key: "qa-checklists", label: "QC checklist library", icon: "blueprint" },
   { key: "backup", label: "Full backup & export", icon: "history" },
-  { key: "settings", label: "System settings", icon: "grid" },
+  { key: "settings", label: "Company Configuration", icon: "grid" },
 ]
 
 const samplePages: AdminPageKey[] = []
+
+// The pages of the Admin menu, in order, for the Role access overview in System Control.
+export const adminMenuPages = ["dashboard", "project-management", "user-management", "access-messages", "records-audit", "biometrics", "settings", "system-control", "system-logs", "backup"].map((key) => ({ key, label: navItems.find((item) => item.key === key)?.label ?? key }))
 
 // Which admin function unlocks which page. Pages not listed are open to every admin.
 export const adminPagePermission: Partial<Record<AdminPageKey, AdminPermission>> = {
@@ -56,6 +87,7 @@ export const adminPagePermission: Partial<Record<AdminPageKey, AdminPermission>>
   invites: "users.approve",
   "audit-log": "users.view",
   "access-review": "users.view",
+  communications: "users.edit",
   backup: "projects.manage",
   biometrics: "biometrics.manage",
   "project-management": "projects.manage",
@@ -175,6 +207,10 @@ export function Panel({
   )
 }
 
+// A page shown as a tab of another page (Access & messages, Company Records and Audits, System Logs, Company Configuration) keeps its whole header, description and
+// buttons, but as a compact sub-heading, so the page still has exactly one main heading.
+export const EmbeddedPageContext = createContext(false)
+
 export function PageIntro({
   eyebrow,
   title,
@@ -186,6 +222,18 @@ export function PageIntro({
   description?: string
   action?: ReactNode
 }) {
+  const embedded = useContext(EmbeddedPageContext)
+  if (embedded) {
+    return (
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-extrabold text-fg">{title}</h2>
+          {description ? <p className="mt-1 max-w-3xl text-sm text-fg-muted">{description}</p> : null}
+        </div>
+        {action}
+      </div>
+    )
+  }
   return (
     <div className="admin-page-intro">
       <div>
@@ -282,8 +330,10 @@ export default function AdminShell({
   const reviewCount = useReviewCount(can("users.approve"))
 
   const visible = navItems.filter((item) => {
-    if (item.key === "biometrics" && profile?.role === "super_admin") return false
+    if ((item.key === "system-control" || item.key === "system-logs" || item.key === "system-health" || item.key === "site-controls" || item.key === "records") && profile?.role !== "super_admin") return false // Super Admin only (the database checks it again)
     if (["project-overview", "blueprint-mapping", "blueprint-progress", "blueprint-version"].includes(item.key)) return false
+    if (item.key === "access-messages") return can("users.approve") || can("users.view") || can("users.edit") // its tabs each need their own permission
+    if (item.key === "records-audit") return can("users.view") || profile?.role === "super_admin"
     const need = adminPagePermission[item.key]
     return !need || can(need)
   })
@@ -295,17 +345,27 @@ export default function AdminShell({
   const groups = [
     group("Overview", ["dashboard"]),
     group("Projects", ["project-management"]),
-    group("People & access", ["user-management", "invites", "access-review", "audit-log"]),
-    group("Company", ["biometrics", "qa-checklists", "settings", "backup"]),
+    group("People & access", ["user-management", "access-messages"]),
+    group("Company", ["records-audit", "biometrics", "settings"]),
+    group("System", ["system-control", "system-logs", "backup"]),
   ].filter((entry) => entry.items.length)
+  // Super Admin has every workspace: a link into the Project Manager workspace (changes there stay with the assigned Project Manager; the database re-checks every one).
+  if (profile?.role === "super_admin") groups.find((entry) => entry.label === "Projects")?.items.push({ key: PM_WORKSPACE_LINK, label: "Project Manager workspace", icon: "building" })
 
   return (
     <AppShell
       persona="admin"
       workspace="Control center"
       groups={groups}
-      active={activePage}
-      onNavigate={(key) => onNavigate(key as AdminPageKey)}
+      active={MENU_ENTRY_OF[activePage] ?? activePage}
+      onNavigate={(key) => {
+        if (key === PM_WORKSPACE_LINK) {
+          window.history.pushState({}, "", "/pm/projects")
+          window.dispatchEvent(new PopStateEvent("popstate"))
+          return
+        }
+        onNavigate(key as AdminPageKey)
+      }}
       project={project ? { code: project.code, name: project.name, sub: phaseLabels[project.phase] } : null}
       projectEmpty="All projects (pick one in All projects)"
       mobileTabs={["dashboard", "user-management", "project-management", "audit-log"]}

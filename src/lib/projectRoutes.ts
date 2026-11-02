@@ -26,7 +26,7 @@ export type FieldRole = "engineer" | "foreman" | "pm"
 export const FIELD_PROJECT_LIST = "projects"
 
 // Project Manager workspace pages (/pm/<page>?project=<id>).
-export const PM_WORKSPACE_ROLES = ["project_manager"] as const
+export const PM_WORKSPACE_ROLES = ["project_manager", "super_admin"] as const // Super Admin has every workspace; its changes there are still decided by the database
 export const PM_PAGES = ["projects", "dashboard", "details", "team", "blueprints", "calendar", "quality", "attendance", "reports", "audit"] as const
 export type PmPage = (typeof PM_PAGES)[number]
 export const isPmPage = (value: string): value is PmPage => (PM_PAGES as readonly string[]).includes(value)

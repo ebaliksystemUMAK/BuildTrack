@@ -104,3 +104,63 @@ export function auditDetailsText(entry: AuditEntry) {
   const details = auditDetails(entry)
   return [...details.context, ...details.fields].map(field => `${field.label}: ${field.before !== undefined ? `${field.before} → ` : ""}${field.value}`).join("\n") || details.summary
 }
+
+// ---------- Export (CSV / JSON) ----------
+// One authorized dataset (the get_audit_log rows the page already shows), reduced to an allow-list of columns. Nothing else from the row is exported.
+export type AuditExportRow = { created_at: string; actor_name: string; actor_email: string | null; action: string; target_name: string | null; summary: string | null }
+export type AuditExportRecord = { when_utc: string; who: string; email: string; action: string; action_code: string; about: string; details: string }
+export type AuditExportScope = "loaded" | "filtered"
+export const AUDIT_CSV_HEADER = ["When (UTC)", "Who", "Email", "Action", "About", "Details"]
+export const AUDIT_EXPORT_MAX = 5000
+const CELL_LIMIT = 30000 // spreadsheets cut a cell at 32,767 characters
+
+const shorten = (text: string) => text.length > CELL_LIMIT ? text.slice(0, CELL_LIMIT) + " … (shortened)" : text
+
+export function auditExportRecords(rows: AuditExportRow[], labelOf: (action: string) => string): AuditExportRecord[] {
+  return rows.map(row => ({
+    when_utc: row.created_at,
+    who: row.actor_name,
+    email: row.actor_email ?? "",
+    action: labelOf(row.action),
+    action_code: row.action,
+    about: auditDetails(row).about,
+    details: shorten(auditDetailsText(row)), // already without password / token / hash / ID-number style fields
+  }))
+}
+
+// Same order as AUDIT_CSV_HEADER. Formula protection happens in the shared CSV helper (toCsv / csvEscape).
+export const auditCsvRows = (records: AuditExportRecord[]) => records.map(record => [record.when_utc, record.who, record.email, record.action, record.about, record.details])
+
+export type AuditFilters = { search: string; action: string; from: string; to: string }
+
+export function auditJson(records: AuditExportRecord[], meta: { scope: AuditExportScope; filters: AuditFilters; truncated: boolean; exportedAt: string }) {
+  return JSON.stringify({
+    exported_at: meta.exportedAt,
+    scope: meta.scope === "loaded" ? "Only the entries loaded on the page" : "Every entry matching the filters",
+    filters: { search: meta.filters.search.trim() || null, action: meta.filters.action || null, from_date_manila: meta.filters.from || null, to_date_manila: meta.filters.to || null },
+    count: records.length,
+    truncated: meta.truncated,
+    max_rows: meta.scope === "filtered" ? AUDIT_EXPORT_MAX : null,
+    entries: records,
+  }, null, 2)
+}
+
+export function auditExportName(scope: AuditExportScope, format: "csv" | "json", manilaDate: string, truncated = false) {
+  return `audit-log-${scope === "loaded" ? "loaded" : "filtered"}${truncated ? "-newest-" + AUDIT_EXPORT_MAX : ""}-${manilaDate}.${format}`
+}
+
+// Reads every page of the filtered log (newest first) up to `max` rows. Rows are de-duplicated by id so a new entry arriving between pages cannot repeat one.
+export async function collectAuditPages<T extends { id: number | string }>(fetchPage: (offset: number, limit: number) => Promise<T[]>, options: { pageSize?: number; max?: number } = {}): Promise<{ rows: T[]; truncated: boolean }> {
+  const pageSize = options.pageSize ?? 500
+  const max = options.max ?? AUDIT_EXPORT_MAX
+  const seen = new Set<number | string>()
+  const rows: T[] = []
+  let offset = 0
+  while (true) {
+    const page = await fetchPage(offset, pageSize)
+    for (const row of page) if (!seen.has(row.id)) { seen.add(row.id); rows.push(row) }
+    if (page.length < pageSize) return { rows, truncated: false }
+    if (rows.length >= max) return { rows: rows.slice(0, max), truncated: true }
+    offset += pageSize
+  }
+}

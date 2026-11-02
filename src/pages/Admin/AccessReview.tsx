@@ -60,7 +60,7 @@ export default function AccessReview(_: AdminPageProps) {
     setBusy(true)
     let done = 0
     for (const id of ids) {
-      const { error: callError } = await invokeFunction("admin-users", { action: "set_enabled", id, enabled: false })
+      const { error: callError } = await invokeFunction("admin-users", { action: "set_enabled", id, enabled: false, reason: `No sign-in for ${days} days (access review)` })
       if (callError) {
         toast.error(`Stopped at ${names.get(id) ?? "an account"}`, callError)
         break

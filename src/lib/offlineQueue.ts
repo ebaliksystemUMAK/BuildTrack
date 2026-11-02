@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { stampFields } from "./photoStamp"
-import { MAX_ATTEMPTS, backoffSeconds, kindLabel, sendOrder, summarizeQueue, verdictFor, type QueueItem, type QueueKind } from "./offlineModel"
+import { MAX_ATTEMPTS, PAUSE_RETRY_SECONDS, backoffSeconds, kindLabel, sendOrder, summarizeQueue, verdictFor, type QueueItem, type QueueKind } from "./offlineModel"
 import { supabase } from "./supabase"
 
 // Work saved on this device while there is no signal (a foreman on a basement slab, a site with a weak connection). It is kept in
@@ -116,6 +116,10 @@ export function flushQueue(userId: string): Promise<{ sent: number; failed: numb
         sent += 1
       } else if (verdict === "retry") {
         await saveItem({ ...item, attempts, error: failure?.message, nextAt: Date.now() + backoffSeconds(attempts) * 1000 })
+        break
+      } else if (verdict === "paused") {
+        // Saving is paused by an administrator: the item is kept untouched (attempts not used up, order kept) and tried again later. Later items wait too.
+        await saveItem({ ...item, error: failure?.message, nextAt: Date.now() + PAUSE_RETRY_SECONDS * 1000 })
         break
       } else {
         await saveItem({ ...item, attempts, status: "failed", error: failure?.message })

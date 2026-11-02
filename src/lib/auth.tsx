@@ -4,11 +4,15 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
 import type { Session } from "@supabase/supabase-js"
 import { invokeFunction } from "./functions"
+import { setLoginNotice } from "./oauthIntent"
+import { beginRecovery } from "./passwordRecovery"
+import { FORCED_LOGOUT_NOTICE, shouldForceSignOut } from "./siteStatusModel"
 import { supabase } from "./supabase"
 
 export type AppRole = "super_admin" | "admin" | "project_manager" | "engineer" | "foreman" | "client" | "user"
@@ -41,8 +45,10 @@ export type Profile = {
   requested_role: "engineer" | "foreman" | "client" | null
   signup_provider: "email" | "google" | "admin" | null
   registration_completed_at: string | null
+  email_verified_at?: string | null
   identity_status: "unverified" | "pending" | "verified" | "rejected"
   identity_verified_at: string | null
+  force_logout_at?: string | null
   created_at: string
 }
 
@@ -129,7 +135,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await loadProfile(data.session?.user.id ?? null)
       if (active) setLoading(false)
     })
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, next) => {
+      if (event === "PASSWORD_RECOVERY") beginRecovery() // a reset link was opened: choose a new password before anything else
       setSession(next)
       // Defer: calling supabase inside this callback can deadlock the auth lock.
       setTimeout(() => void loadProfile(next?.user.id ?? null), 0)
@@ -155,6 +162,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("focus", refresh)
     }
   }, [userId, loadProfile])
+
+  // A Super Admin can sign non-admin accounts out (database function force_logout). The saved sign-in is already gone; this signs the open page out within
+  // about 30 seconds (the profile is re-read above) instead of waiting for the next token refresh. Local sign-out only: nothing on the device is erased, so
+  // anything saved offline stays in this device's queue and is sent after the same person signs in again.
+  const forced = useRef(false)
+  useEffect(() => {
+    if (forced.current || !session || !profile) return
+    if (!shouldForceSignOut(profile.force_logout_at, session.user.last_sign_in_at)) return
+    forced.current = true
+    setLoginNotice(FORCED_LOGOUT_NOTICE)
+    void supabase.auth.signOut({ scope: "local" }).finally(() => window.location.assign("/login"))
+  }, [session, profile])
 
   const signOut = useCallback(async () => {
     sessionStorage.removeItem(IMPERSONATION_KEY)

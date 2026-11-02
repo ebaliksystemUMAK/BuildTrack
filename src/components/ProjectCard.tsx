@@ -72,7 +72,7 @@ export default function ProjectCard({
           <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusColor[project.status]}`}>
             {statusLabels[project.status]}
           </span>
-          {project.archived_at ? <span className="rounded-full border border-line bg-surface-muted px-2 py-0.5 text-xs font-semibold text-fg-muted">Archived</span> : null}
+          {project.archived_at ? <span className="rounded-full border border-line bg-surface-muted px-2 py-0.5 text-xs font-semibold text-fg-muted" title={`Archived on ${new Date(project.archived_at).toLocaleDateString("en-PH")}. Kept with all its records; read-only for Project Managers.`}>Archived {new Date(project.archived_at).toLocaleDateString("en-PH", { day: "numeric", month: "short" })}</span> : null}
           {people ? (
             <div className="flex -space-x-2" title={`${people.length} people with access`}>
               {shown.map((person) => (

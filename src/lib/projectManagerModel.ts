@@ -118,6 +118,7 @@ export const statusNeedsConfirm = (before: ProjectStatus, after: ProjectStatus) 
 // Only assigned Project Managers run operations in this workspace, while the project is not archived.
 // Company administration has its own workspace; the database re-checks every change.
 export function pmAccess(input: { role: string | null | undefined; designation: ManagerSlot | null; archived: boolean }): { manage: boolean; note: string | null } {
+  if (input.role === "super_admin") return { manage: false, note: "Super Admin view: this project is run by its assigned Project Manager. Use the Admin pages for company-level changes." }
   if (input.role !== "project_manager" || !input.designation) return { manage: false, note: "You do not manage this project." }
   if (input.archived) return { manage: false, note: "This project is archived and read-only. Ask an Admin to restore it." }
   return { manage: true, note: null }

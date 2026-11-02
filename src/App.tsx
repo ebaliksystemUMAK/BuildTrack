@@ -12,6 +12,8 @@ const BiometricAttendancePage = lazy(() => import("./pages/Attendance/BiometricA
 const PinLink = lazy(() => import("./pages/Public/PinLink"))
 const LoginPage = lazy(() => import("./pages/Auth/LoginPage"))
 const RegisterPage = lazy(() => import("./pages/Auth/RegisterPage"))
+const ForgotPasswordPage = lazy(() => import("./pages/Auth/ForgotPasswordPage"))
+const ResetPasswordPage = lazy(() => import("./pages/Auth/ResetPasswordPage"))
 import AdminShell from "./pages/Admin/AdminShell"
 const AdminDashboard = lazy(() => import("./pages/Admin/AdminDashboard"))
 const UserManagement = lazy(() => import("./pages/Admin/UserManagement"))
@@ -27,6 +29,12 @@ const AuditLog = lazy(() => import("./pages/Admin/AuditLog"))
 const SystemSettings = lazy(() => import("./pages/Admin/SystemSettings"))
 const AdminQaChecklists = lazy(() => import("./pages/Admin/AdminQaChecklists"))
 const AccessReview = lazy(() => import("./pages/Admin/AccessReview"))
+const Communications = lazy(() => import("./pages/Admin/Communications"))
+const SystemControl = lazy(() => import("./pages/Admin/SystemControl"))
+const AccessMessages = lazy(() => import("./pages/Admin/AccessMessages"))
+const RecordsAudit = lazy(() => import("./pages/Admin/RecordsAudit"))
+const SystemLogs = lazy(() => import("./pages/Admin/SystemLogs"))
+const RecordsAdmin = lazy(() => import("./pages/Admin/Records"))
 const ProjectBackup = lazy(() => import("./pages/Admin/ProjectBackup"))
 import type { AdminPageKey } from "./pages/Admin/types"
 import PmShell from "./pages/ProjectManager/PmShell"
@@ -80,7 +88,7 @@ const withLoading = (node: ReactNode) => (
   <Suspense fallback={<div className="p-6"><SkeletonCardGrid count={3} label="Loading the page" /></div>}>{node}</Suspense>
 )
 
-export type Page = "home" | "valencia" | "login" | "register" | "pin-link" | "attendance" | `admin/${AdminPageKey}` | `pm/${PmPageKey}` | `engineer/${EngineerPageKey}` | `foreman/${ForemanPageKey}` | `client/${ClientPageKey}` | `user/${UserPageKey}`
+export type Page = "home" | "valencia" | "login" | "register" | "forgot-password" | "reset-password" | "pin-link" | "attendance" | `admin/${AdminPageKey}` | `pm/${PmPageKey}` | `engineer/${EngineerPageKey}` | `foreman/${ForemanPageKey}` | `client/${ClientPageKey}` | `user/${UserPageKey}`
 
 function pageFromPath(): Page {
   const publicPath = window.location.pathname.replace(/\/$/, "") || "/"
@@ -112,6 +120,14 @@ function pageFromPath(): Page {
       "audit-log",
       "settings",
       "access-review",
+      "communications",
+      "access-messages",
+      "records-audit",
+      "system-logs",
+      "system-control",
+      "system-health",
+      "site-controls",
+      "records",
       "backup",
       "qa-checklists",
       "calendar",
@@ -195,6 +211,8 @@ function pageFromPath(): Page {
   if (window.location.pathname === "/attendance") return "attendance"
   if (window.location.pathname === "/login") return "login"
   if (window.location.pathname === "/register") return "register"
+  if (window.location.pathname === "/forgot-password") return "forgot-password"
+  if (window.location.pathname === "/reset-password") return "reset-password"
   if (window.location.pathname.replace(/\/$/, "") === "/valencia") return "valencia"
   return "home"
 }
@@ -302,6 +320,8 @@ export default class App extends Component<Record<string, never>, AppState> {
       return withLoading(<LoginPage navigate={this.navigate} />)
     if (this.state.page === "register")
       return withLoading(<RegisterPage navigate={this.navigate} />)
+    if (this.state.page === "forgot-password") return withLoading(<ForgotPasswordPage navigate={this.navigate} />)
+    if (this.state.page === "reset-password") return withLoading(<ResetPasswordPage navigate={this.navigate} />)
     if (this.state.page.startsWith("admin/")) {
       const activePage = this.state.page.replace("admin/", "") as AdminPageKey
       const pageProps = { onNavigate: this.navigateAdmin }
@@ -315,12 +335,20 @@ export default class App extends Component<Record<string, never>, AppState> {
         "blueprint-progress": <BlueprintProgressTracking {...pageProps} />,
         "blueprint-version": <BlueprintVersionControl {...pageProps} />,
         "project-overview": <ProjectOverview {...pageProps} />,
-        invites: <InviteCodes {...pageProps} />,
-        "audit-log": <AuditLog {...pageProps} />,
+        "access-messages": <AccessMessages {...pageProps} />,
+        "records-audit": <RecordsAudit {...pageProps} />,
+        "system-logs": <SystemLogs {...pageProps} />,
+        invites: <AccessMessages {...pageProps} initialTab="invitations" />, // the older addresses open the tab that now holds them
+        "audit-log": <RecordsAudit {...pageProps} initialTab="audit" />,
         settings: <SystemSettings {...pageProps} />,
-        "access-review": <AccessReview {...pageProps} />,
+        "access-review": <AccessMessages {...pageProps} initialTab="access" />,
+        communications: <AccessMessages {...pageProps} initialTab="messages" />,
+        "system-control": <SystemControl {...pageProps} />,
+        "system-health": <SystemControl {...pageProps} initialTab="health" />, // the older addresses open the matching tab
+        "site-controls": <SystemControl {...pageProps} initialTab="maintenance" />,
+        records: <RecordsAudit {...pageProps} initialTab="records" />,
         backup: <ProjectBackup {...pageProps} />,
-        "qa-checklists": <AdminQaChecklists {...pageProps} />,
+        "qa-checklists": <SystemSettings {...pageProps} initialTab="qc" />,
         calendar: <ProjectCalendarPage role="admin" />,
       }[activePage]
       return (

@@ -3,8 +3,8 @@ import Modal from "../../components/Modal"
 import { EmptyState, buttonSecondary, inputClass } from "../../components/ui/PageParts"
 import { SkeletonRows } from "../../components/ui/Skeleton"
 import { activityLabel, formatDate, formatTime } from "../../lib/admin"
-import { auditDetails, auditDetailsText } from "../../lib/auditLogModel"
-import { downloadCsv, toCsv } from "../../lib/progress"
+import { AUDIT_CSV_HEADER, AUDIT_EXPORT_MAX, auditCsvRows, auditDetails, auditExportName, auditExportRecords, auditJson, collectAuditPages, type AuditExportScope } from "../../lib/auditLogModel"
+import { downloadCsv, downloadText, toCsv } from "../../lib/progress"
 import { supabase } from "../../lib/supabase"
 import { useToast } from "../../lib/toast"
 import { PageIntro, Panel } from "./AdminShell"
@@ -13,9 +13,12 @@ import type { AdminPageProps } from "./types"
 type Row = { id: number; created_at: string; actor_name: string; actor_email: string | null; action: string; target_name: string | null; summary: string | null }
 
 const PAGE = 100
+const manilaDay = (date = new Date()) => date.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+const fromIso = (day: string) => (day ? new Date(`${day}T00:00:00+08:00`).toISOString() : null)
+const toIso = (day: string) => (day ? new Date(new Date(`${day}T00:00:00+08:00`).getTime() + 86_400_000).toISOString() : null)
 const knownActions = ["profile.status_changed", "profile.role_changed", "oauth.enroll", "oauth.blocked", "registration.submitted", "whitelist.apply", "whitelist.add", "whitelist.remove", "access.approve", "access.reject", "user.reopen", "user.create", "user.update", "user.promote_admin", "user.approve", "user.reject", "user.enable", "user.disable", "user.impersonate", "user.set_permissions", "settings.update", "project.export", "invite.create", "invite.disable", "invite.enable", "invite.redeem", "projects.insert", "projects.update", "projects.delete", "project_members.insert", "project_members.update", "project_members.delete"]
 
-knownActions.push("photos.account_rule", "pins.insert", "pins.update", "pins.delete", "pin_checklist_items.insert", "pin_checklist_items.update", "pin_checklist_items.delete", "qa_work_attempts.insert", "qa_work_attempts.update", "pin_qa_submissions.insert", "daily_report_photos.insert", "daily_report_photos.delete", "blueprints.insert", "blueprints.update", "blueprints.delete")
+knownActions.push("announcement.publish", "announcement.update", "announcement.disable", "message.send", "email.test", "maintenance.on", "maintenance.update", "maintenance.off", "feature.lock", "feature.update", "feature.unlock", "user.force_logout", "project.archived", "project.restored", "project.removed", "project.recovered", "project.purged", "record.removed", "record.restored", "photos.account_rule", "pins.insert", "pins.update", "pins.delete", "pin_checklist_items.insert", "pin_checklist_items.update", "pin_checklist_items.delete", "qa_work_attempts.insert", "qa_work_attempts.update", "pin_qa_submissions.insert", "daily_report_photos.insert", "daily_report_photos.delete", "blueprints.insert", "blueprints.update", "blueprints.delete")
 
 // Who did what and when. Needs the "View users" permission (checked again by the database).
 export default function AuditLog(_: AdminPageProps) {
@@ -29,6 +32,8 @@ export default function AuditLog(_: AdminPageProps) {
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
   const [selected, setSelected] = useState<Row | null>(null)
+  const [format, setFormat] = useState<"csv" | "json">("csv")
+  const [exporting, setExporting] = useState(false)
   const request = useRef(0)
   const selectedDetails = selected ? auditDetails(selected) : null
 
@@ -40,8 +45,8 @@ export default function AuditLog(_: AdminPageProps) {
         const { data, error: rpcError } = await supabase.rpc("get_audit_log", {
           p_search: search.trim() || null,
           p_action: action || null,
-          p_from: from ? new Date(`${from}T00:00:00+08:00`).toISOString() : null,
-          p_to: to ? new Date(new Date(`${to}T00:00:00+08:00`).getTime() + 86_400_000).toISOString() : null,
+          p_from: fromIso(from),
+          p_to: toIso(to),
           p_limit: PAGE,
           p_offset: offset,
         })
@@ -70,14 +75,51 @@ export default function AuditLog(_: AdminPageProps) {
     return () => { ++request.current; window.clearTimeout(timer) }
   }, [load])
 
-  const exportCsv = () => {
-    downloadCsv(`audit-log-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(["When (UTC)", "Who", "Email", "Action", "About", "Details"], rows.map((row) => [row.created_at, row.actor_name, row.actor_email ?? "", activityLabel(row.action), auditDetails(row).about, auditDetailsText(row)])))
-    toast.success("Exported", `${rows.length} rows`)
+  // Both exports use the same authorized get_audit_log rows and the same allow-listed columns. "loaded" = what is on screen;
+  // "filtered" = every entry for the current filters, read page by page (newest first, at most AUDIT_EXPORT_MAX).
+  const save = (list: Row[], scope: AuditExportScope, truncated: boolean) => {
+    const records = auditExportRecords(list, activityLabel)
+    const name = auditExportName(scope, format, manilaDay(), truncated)
+    if (format === "csv") downloadCsv(name, toCsv(AUDIT_CSV_HEADER, auditCsvRows(records)))
+    else downloadText(name, auditJson(records, { scope, filters: { search, action, from, to }, truncated, exportedAt: new Date().toISOString() }), "application/json")
+    if (truncated) toast.success(`Exported the newest ${records.length.toLocaleString()} matching entries`, "There are more. Narrow the dates to export the rest.")
+    else toast.success("Exported", scope === "loaded" ? `${records.length} loaded entries` : `${records.length} entries matching your filters`)
+  }
+
+  const exportLoaded = () => save(rows, "loaded", false)
+
+  const exportAll = async () => {
+    setExporting(true)
+    // Entries added while the export runs are left out, so a page boundary can never repeat or skip a row.
+    const started = new Date()
+    const filterEnd = toIso(to)
+    const end = filterEnd && new Date(filterEnd) < started ? filterEnd : started.toISOString()
+    try {
+      const result = await collectAuditPages<Row>(async (offset, limit) => {
+        const { data, error: rpcError } = await supabase.rpc("get_audit_log", { p_search: search.trim() || null, p_action: action || null, p_from: fromIso(from), p_to: end, p_limit: limit, p_offset: offset })
+        if (rpcError) throw new Error(rpcError.message)
+        return (data as Row[] | null) ?? []
+      })
+      save(result.rows, "filtered", result.truncated)
+    } catch (caught) {
+      toast.error("Could not export", /permission/i.test(String((caught as Error).message)) ? "You need the View users permission." : "Check your connection and try again.")
+    } finally {
+      setExporting(false)
+    }
   }
 
   return (
     <div className="admin-page">
-      <PageIntro eyebrow="Security" title="Audit log" description="Recorded account and project activity. Open an entry to see its full details. Entries cannot be edited." action={<button type="button" className={buttonSecondary} onClick={exportCsv} disabled={!rows.length || loading}>Export loaded entries (CSV)</button>} />
+      <PageIntro eyebrow="Security" title="Audit log" description="Recorded account and project activity. Open an entry to see its full details. Entries cannot be edited." action={
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <select value={format} onChange={(event) => setFormat(event.target.value === "json" ? "json" : "csv")} className={`${inputClass} !w-auto`} aria-label="Export format">
+            <option value="csv">CSV</option>
+            <option value="json">JSON</option>
+          </select>
+          <button type="button" className={buttonSecondary} onClick={exportLoaded} disabled={!rows.length || loading || exporting}>{`Export loaded entries (${format.toUpperCase()})`}</button>
+          <button type="button" className={buttonSecondary} onClick={() => void exportAll()} disabled={loading || exporting || !!error}>{exporting ? "Exporting..." : `Export all matching (${format.toUpperCase()})`}</button>
+        </div>
+      } />
       <Panel>
         <div className="mb-4 flex flex-wrap items-end gap-3">
           <label className="text-xs font-bold uppercase tracking-wider text-fg-muted">Search
@@ -97,6 +139,7 @@ export default function AuditLog(_: AdminPageProps) {
           </label>
           {search || action || from || to ? <button type="button" className="pb-2 text-sm font-bold text-brand-text underline" onClick={() => { setSearch(""); setAction(""); setFrom(""); setTo("") }}>Clear filters</button> : null}
         </div>
+        <p className="mb-3 text-xs text-fg-muted">Export loaded entries saves the {rows.length} entries on screen. Export all matching saves every entry for the filters above (newest first, up to {AUDIT_EXPORT_MAX.toLocaleString()}). Both use the same columns and leave out passwords, tokens and ID numbers.</p>
         {error ? <p role="alert" className="mb-3 rounded-lg bg-danger-soft px-4 py-2 text-sm text-danger-fg">{error}</p> : null}
         <div className="admin-table-wrap">
           <table className="admin-table audit-log-table">

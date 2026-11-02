@@ -31,9 +31,16 @@ export default function PmShell({ activePage, onNavigate, children }: { activePa
   const slot = project ? myDesignation(managers, project.id, profile?.id) : null
   const item = (key: PmPageKey) => ({ key, ...labels[key] })
 
+  const superAdmin = profile?.role === "super_admin"
+  const backToControl = superAdmin ? (
+    <div role="note" className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-surface-muted px-4 py-2 text-sm font-semibold text-fg">
+      <span>Super Admin view of the Project Manager workspace. Changes here are made by the assigned Project Manager.</span>
+      <button type="button" className="rounded-lg border border-line bg-surface px-3 py-1 text-sm font-bold hover:bg-surface-muted" onClick={() => { window.history.pushState({}, "", "/admin/dashboard"); window.dispatchEvent(new PopStateEvent("popstate")) }}>Back to Control center</button>
+    </div>
+  ) : null
   const banner = inProject && project?.archived_at ? (
     <div role="note" className="border-b border-line bg-surface-muted px-4 py-2 text-sm font-semibold text-fg">This project is archived: everything here is read-only. Ask an Admin to restore it.</div>
-  ) : null
+  ) : backToControl
 
   return (
     <AppShell

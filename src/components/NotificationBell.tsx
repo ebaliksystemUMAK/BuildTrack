@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from "react"
 import { useAuth } from "../lib/auth"
 import { followLink, notificationKinds, timeAgo, useEmailPreference, useNotifications } from "../lib/notifications"
+import { safeInAppLink } from "../lib/notificationModel"
 import { useToast } from "../lib/toast"
+import NotificationHistoryModal from "./NotificationHistoryModal"
 import { Skeleton } from "./ui/Skeleton"
 
 // Bell for the top bar of every panel: unread badge and a panel with the latest notifications.
 export default function NotificationBell({ onSurface = false }: { onSurface?: boolean }) {
-  const { items, unread, loading, failed, reload, markRead, remove } = useNotifications()
+  const { items, unread, loading, failed, reload, markRead, markAllRead, remove } = useNotifications()
   const { profile } = useAuth()
   const toast = useToast()
   const email = useEmailPreference(profile?.id ?? null)
   const [open, setOpen] = useState(false)
+  const [history, setHistory] = useState(false)
   const root = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -29,8 +32,6 @@ export default function NotificationBell({ onSurface = false }: { onSurface?: bo
       document.removeEventListener("keydown", onKey)
     }
   }, [open, reload])
-
-  const unreadIds = items.filter((item) => !item.read_at).map((item) => item.id)
 
   return (
     <div ref={root} className="relative">
@@ -56,7 +57,7 @@ export default function NotificationBell({ onSurface = false }: { onSurface?: bo
         <div role="dialog" aria-label="Notifications" className="bt-pop fixed right-2 top-[68px] z-50 w-[24rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-line bg-surface text-fg shadow-2xl sm:absolute sm:right-0 sm:top-12">
           <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
             <h2 className="text-sm font-extrabold">Notifications</h2>
-            <button type="button" disabled={!unreadIds.length} onClick={() => void markRead(unreadIds)} className="rounded-md px-2 py-1 text-xs font-bold text-brand-text hover:bg-surface-muted disabled:opacity-40">
+            <button type="button" disabled={!unread} onClick={() => void markAllRead()} className="rounded-md px-2 py-1 text-xs font-bold text-brand-text hover:bg-surface-muted disabled:opacity-40">
               Mark all as read
             </button>
           </div>
@@ -84,7 +85,8 @@ export default function NotificationBell({ onSurface = false }: { onSurface?: bo
                   const go = () => {
                     void markRead([item.id])
                     setOpen(false)
-                    if (item.link) followLink(item.link, item.project_id)
+                    const link = safeInAppLink(item.link)
+                    if (link) followLink(link, item.project_id)
                   }
                   return (
                     <li key={item.id} className={`group relative border-b border-line last:border-b-0 ${item.read_at ? "" : "bg-brand-soft/60"}`}>
@@ -108,19 +110,45 @@ export default function NotificationBell({ onSurface = false }: { onSurface?: bo
               </ul>
             )}
           </div>
-          <label className="flex cursor-pointer items-center justify-between gap-3 border-t border-line px-4 py-2.5 text-xs">
-            <span><span className="block font-bold">Also email me</span><span className="text-fg-muted">A copy of each notification goes to {profile?.email ?? "your email"}.</span></span>
-            <input
-              type="checkbox"
-              role="switch"
-              className="h-4 w-4 flex-none accent-[#9E1F93]"
-              checked={email.enabled ?? true}
-              disabled={email.enabled === null}
-              onChange={(event) => void email.change(event.target.checked).then((problem) => (problem ? toast.error("Not saved", problem) : toast.success(event.target.checked ? "Emails are on" : "Emails are off")))}
-            />
-          </label>
+          <div className="border-t border-line px-4 py-2 text-center">
+            <button type="button" onClick={() => { setOpen(false); setHistory(true) }} className="rounded-md px-2 py-1 text-xs font-bold text-brand-text hover:bg-surface-muted">See all notifications</button>
+          </div>
+          <div className="border-t border-line text-xs">
+            <label className="flex cursor-pointer items-center justify-between gap-3 px-4 py-2.5">
+              <span><span className="block font-bold">Also email me</span><span className="text-fg-muted">A copy of each notification goes to {profile?.email ?? "your email"}.</span></span>
+              <input
+                type="checkbox"
+                role="switch"
+                aria-label="Also email me"
+                className="h-4 w-4 flex-none accent-[#9E1F93]"
+                checked={email.enabled ?? true}
+                disabled={email.enabled === null}
+                onChange={(event) => void email.change(event.target.checked).then((problem) => (problem ? toast.error("Not saved", problem) : toast.success(event.target.checked ? "Emails are on" : "Emails are off")))}
+              />
+            </label>
+            {email.categories && email.enabled !== false ? (
+              <>
+                <label className="flex cursor-pointer items-center justify-between gap-3 border-t border-line/60 py-2 pl-8 pr-4">
+                  <span><span className="block font-semibold">Reminder emails</span><span className="text-fg-muted">Deadlines and late work.</span></span>
+                  <input type="checkbox" role="switch" aria-label="Reminder emails" className="h-4 w-4 flex-none accent-[#9E1F93]" checked={email.reminders ?? true} disabled={email.reminders === null} onChange={(event) => void email.changeReminders(event.target.checked).then((problem) => (problem ? toast.error("Not saved", problem) : toast.success(event.target.checked ? "Reminder emails are on" : "Reminder emails are off")))} />
+                </label>
+                <label className="flex cursor-pointer items-center justify-between gap-3 border-t border-line/60 py-2 pl-8 pr-4">
+                  <span><span className="block font-semibold">Announcement emails</span><span className="text-fg-muted">Messages from administrators.</span></span>
+                  <input type="checkbox" role="switch" aria-label="Announcement emails" className="h-4 w-4 flex-none accent-[#9E1F93]" checked={email.announcements ?? true} disabled={email.announcements === null} onChange={(event) => void email.changeAnnouncements(event.target.checked).then((problem) => (problem ? toast.error("Not saved", problem) : toast.success(event.target.checked ? "Announcement emails are on" : "Announcement emails are off")))} />
+                </label>
+              </>
+            ) : null}
+            {email.digestColumn && (profile?.role === "admin" || profile?.role === "super_admin") ? (
+              <label className="flex cursor-pointer items-center justify-between gap-3 border-t border-line/60 px-4 py-2">
+                <span><span className="block font-bold">Daily admin summary</span><span className="text-fg-muted">One note each morning with what needs your attention. Off = you get none, in the app or by email.</span></span>
+                <input type="checkbox" role="switch" aria-label="Daily admin summary" className="h-4 w-4 flex-none accent-[#9E1F93]" checked={email.adminDigest ?? true} disabled={email.adminDigest === null} onChange={(event) => void email.changeAdminDigest(event.target.checked).then((problem) => (problem ? toast.error("Not saved", problem) : toast.success(event.target.checked ? "Daily admin summary is on" : "Daily admin summary is off")))} />
+              </label>
+            ) : null}
+            <p className="border-t border-line/60 px-4 py-2 text-fg-muted">Account and security notices are always emailed.</p>
+          </div>
         </div>
       ) : null}
+      {history ? <NotificationHistoryModal onClose={() => setHistory(false)} markRead={markRead} markAllRead={markAllRead} /> : null}
     </div>
   )
 }

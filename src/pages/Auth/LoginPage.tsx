@@ -4,6 +4,7 @@ import Brand from "../../components/Brand"
 import FormField from "../../components/FormField"
 import Header from "../../components/Header"
 import { PrivacyNoticeModal } from "../../components/PrivacyNotice"
+import { FORGOT_EMAIL_KEY } from "./ForgotPasswordPage"
 import { setOAuthIntent, takeLoginNotice, takeLoginSuccessNotice } from "../../lib/oauthIntent"
 import { supabase } from "../../lib/supabase"
 import { useToast } from "../../lib/toast"
@@ -15,7 +16,6 @@ export default function LoginPage({ navigate }: LoginPageProps) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState(() => takeLoginNotice())
-  const [info, setInfo] = useState("")
   const [busy, setBusy] = useState(false)
   const [privacy, setPrivacy] = useState(false)
 
@@ -27,7 +27,6 @@ export default function LoginPage({ navigate }: LoginPageProps) {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError("")
-    setInfo("")
     setBusy(true)
     const { error: signInError } = await supabase.auth
       .signInWithPassword({ email: email.trim().toLowerCase(), password })
@@ -68,21 +67,14 @@ export default function LoginPage({ navigate }: LoginPageProps) {
     }
   }
 
-  const handleForgot = async () => {
-    setError("")
-    setInfo("")
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
-      setError("Enter your email above first, then press Forgot password.")
-      return
+  // The reset itself has its own screen: the person chooses an emailed link or a 6-digit code there. A typed email address is carried over.
+  const handleForgot = () => {
+    try {
+      if (/^\S+@\S+\.\S+$/.test(email.trim())) sessionStorage.setItem(FORGOT_EMAIL_KEY, email.trim())
+    } catch {
+      // The email is simply typed again.
     }
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-      redirectTo: `${window.location.origin}/login`,
-    })
-    if (resetError) setError(resetError.message)
-    else {
-      setInfo("If that email is registered, a reset link has been sent.")
-      toast.success("Reset link sent", "Check your inbox.")
-    }
+    navigate("forgot-password")
   }
 
   return (
@@ -115,7 +107,7 @@ export default function LoginPage({ navigate }: LoginPageProps) {
           />
           <div className="form-options">
             <span />
-            <button className="text-button" type="button" onClick={() => void handleForgot()}>
+            <button className="text-button" type="button" onClick={handleForgot}>
               Forgot password?
             </button>
           </div>
@@ -127,7 +119,12 @@ export default function LoginPage({ navigate }: LoginPageProps) {
               {error}
             </div>
           ) : null}
-          {info ? <div className="form-notice form-notice--info">{info}</div> : null}
+          <div className="register-callout">
+            <span>New to BuildTrack?</span>
+            <button className="button button--gold button--wide" type="button" onClick={() => navigate("register")}>
+              Create an account
+            </button>
+          </div>
           <div className="divider">
             <span>or</span>
           </div>
@@ -138,13 +135,7 @@ export default function LoginPage({ navigate }: LoginPageProps) {
           >
             Sign in with Google
           </button>
-          <p className="support-note">New to BuildTrack? Google sign-in only works for registered accounts.</p>
-          <p className="support-note">
-            New to BuildTrack?{" "}
-            <button className="text-button" type="button" onClick={() => navigate("register")}>
-              Register
-            </button>
-          </p>
+          <p className="support-note">Google sign-in only works for registered accounts.</p>
           <p className="support-note">
             Account pending approval?{" "}
             <button type="button" className="text-button">

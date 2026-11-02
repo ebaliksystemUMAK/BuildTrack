@@ -1,5 +1,5 @@
 import type { Pin } from "./blueprints.ts"
-import { addDays, manilaToday, sCurve, type SCurveData } from "./progress.ts"
+import { addDays, daysBetween, manilaToday, sCurve, type SCurveData } from "./progress.ts"
 import { escapeHtml, reportHtml, type PrintSection } from "./printReport.ts"
 import { progressPercent, scheduledTasks, taskApproved } from "./taskProgress.ts"
 
@@ -32,6 +32,8 @@ export type WeeklySummary = {
   progress: { atStart: number; now: number; change: number; planned: number; gap: number }
   total: number
   verifiedThisPeriod: Array<{ id: string; title: string; blueprintId: string; date: string }>
+  // Final acceptance of a whole work pin (pin status verified), kept apart from the task approvals above: a pin is accepted only after its tasks AND its quality checks.
+  pinsAccepted: Array<{ id: string; title: string; blueprintId: string; date: string }>
   waitingReview: number
   issues: number
   overdue: number
@@ -58,6 +60,54 @@ export function periodPresets(today: string) {
   }
 }
 
+// ---------- Monthly periods and the comparison with the period before ----------
+// Calendar months in Manila time. "This month" runs from the 1st to today; "last month" is the whole previous month.
+export type Period = { from: string; to: string }
+const iso = (year: number, month: number, dayOfMonth: number) => `${year}-${String(month).padStart(2, "0")}-${String(dayOfMonth).padStart(2, "0")}`
+const lastDayOf = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate()
+const monthBefore = (year: number, month: number) => (month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 })
+
+export function monthPresets(today: string): { thisMonth: Period; lastMonth: Period } {
+  const [year, month] = today.split("-").map(Number)
+  const before = monthBefore(year, month)
+  return {
+    thisMonth: { from: iso(year, month, 1), to: today },
+    lastMonth: { from: iso(before.year, before.month, 1), to: iso(before.year, before.month, lastDayOf(before.year, before.month)) },
+  }
+}
+
+// The period to compare with. Months: the previous calendar month, cut to the same number of days when the current month is not over
+// (1-18 Nov is compared with 1-18 Oct; a 31-day March against February stops at its last day). Anything else: the same number of days right before it.
+export function previousPeriod(range: Period, kind: "month" | "days"): Period {
+  const length = daysBetween(range.from, range.to) + 1
+  if (kind === "days") return { from: addDays(range.from, -length), to: addDays(range.from, -1) }
+  const [year, month] = range.from.split("-").map(Number)
+  const before = monthBefore(year, month)
+  const first = iso(before.year, before.month, 1)
+  const last = iso(before.year, before.month, lastDayOf(before.year, before.month))
+  const same = addDays(first, length - 1)
+  return { from: first, to: same < last ? same : last }
+}
+
+export type ComparisonRow = { key: string; label: string; current: number; previous: number; change: number; percent: number | null }
+
+// Only things that were recorded WITH a date can be compared (an approval, a completed inspection, a raised defect, a submitted report, a question).
+// Open counts such as "waiting for review" or "overdue" are today's state: no past snapshots are stored, so they are never compared.
+// A period that ends before the project started has nothing to compare with and gives null.
+export function comparePeriods(current: WeeklySummary, previous: WeeklySummary, options: { audience: "team" | "client"; projectStart: string | null }): ComparisonRow[] | null {
+  if (options.projectStart && options.projectStart > previous.to) return null
+  const row = (key: string, label: string, now: number, before: number): ComparisonRow => ({ key, label, current: now, previous: before, change: now - before, percent: before > 0 ? Math.round(((now - before) / before) * 1000) / 10 : null })
+  const rows = [
+    row("tasks", "Tasks approved", current.verifiedThisPeriod.length, previous.verifiedThisPeriod.length),
+    row("pins", "Work pins completed (final acceptance)", current.pinsAccepted.length, previous.pinsAccepted.length),
+  ]
+  if (options.audience === "team" && current.qa && previous.qa) {
+    rows.push(row("inspections", "Inspections completed", current.qa.inspectionsDone, previous.qa.inspectionsDone), row("ncrOpened", "Defect reports raised", current.qa.ncrOpened, previous.qa.ncrOpened), row("ncrClosed", "Defect reports closed", current.qa.ncrClosed, previous.qa.ncrClosed))
+  }
+  rows.push(row("logs", "Daily reports submitted", current.logs.count, previous.logs.count), row("asked", "Client questions asked", current.questions.asked, previous.questions.asked), row("answered", "Client questions answered", current.questions.answered, previous.questions.answered))
+  return rows
+}
+
 export function buildWeekly(input: WeeklyInput): WeeklySummary {
   const { from, to, today } = input
   const asOf = to < today ? to : today
@@ -77,6 +127,11 @@ export function buildWeekly(input: WeeklyInput): WeeklySummary {
     .filter((entry) => inPeriod(entry.date, from, asOf))
     .sort((a, b) => a.date.localeCompare(b.date))
     .map(({ task, date }) => ({ id: task.id, title: `${parents.get(task.pin_id)?.title ?? "Work pin"} → ${task.text}`, blueprintId: parents.get(task.pin_id)?.blueprint_id ?? "", date }))
+
+  const pinsAccepted = work
+    .filter((pin) => pin.status === "verified" && pin.verified_at && inPeriod(day(pin.verified_at), from, asOf))
+    .map((pin) => ({ id: pin.id, title: pin.title, blueprintId: pin.blueprint_id, date: day(pin.verified_at ?? null) as string }))
+    .sort((a, b) => a.date.localeCompare(b.date))
 
   const open = work.filter((pin) => pin.status !== "verified")
   const dueNext = open
@@ -114,6 +169,7 @@ export function buildWeekly(input: WeeklyInput): WeeklySummary {
     progress: { atStart, now, change: Math.round((now - atStart) * 10) / 10, planned, gap: Math.round((now - planned) * 10) / 10 },
     total,
     verifiedThisPeriod,
+    pinsAccepted,
     waitingReview: work.filter((pin) => pin.status === "for_review").length,
     issues: work.filter((pin) => pin.status === "issue").length,
     overdue: open.filter((pin) => pin.due_date && pin.due_date.slice(0, 10) < asOf).length,
@@ -161,13 +217,27 @@ export function sCurveSvg(data: SCurveData, width = 640, height = 210): string {
 
 type Names = { project: { code: string; name: string; location: string | null }; nameOf: (id: string | null) => string; sheetOf: (id: string) => string }
 
-export function weeklyReportHtml(summary: WeeklySummary, names: Names, audience: "team" | "client"): string {
+export type ReportKind = "weekly" | "monthly"
+export type ReportOptions = { kind?: ReportKind; comparison?: { previous: Period; rows: ComparisonRow[] | null } | null }
+
+export function weeklyReportHtml(summary: WeeklySummary, names: Names, audience: "team" | "client", options: ReportOptions = {}): string {
   const { progress } = summary
   const list = (rows: Array<{ date: string; text: string }>) => (rows.length ? rows.map((row) => `${shortDate(row.date)}: ${row.text}`).join("\n") : "")
   const sections: PrintSection[] = [
     { heading: "Where we stand", body: `${headline(summary)} Progress counts Engineer-approved tasks divided by all tasks; notes are excluded.` },
     ...(summary.curve ? [{ heading: "Plan against verified work", html: sCurveSvg(summary.curve) } satisfies PrintSection] : []),
     { heading: audience === "client" ? "Tasks approved this period" : "Tasks verified this period", ...(summary.verifiedThisPeriod.length ? { table: { head: ["Task", "Sheet", "Approved on"], rows: summary.verifiedThisPeriod.map((row) => [row.title, names.sheetOf(row.blueprintId), shortDate(row.date)]) } } : { body: "No tasks were approved in this period." }) },
+    ...(options.kind === "monthly"
+      ? [{ heading: "Work pins completed (final acceptance)", ...(summary.pinsAccepted.length ? { table: { head: ["Work pin", "Sheet", "Completed on"], rows: summary.pinsAccepted.map((row) => [row.title, names.sheetOf(row.blueprintId), shortDate(row.date)]) } } : { body: "No work pin was completed in this period. A pin is completed only after all its tasks are approved and its quality checks are clear." }) } satisfies PrintSection]
+      : []),
+    ...(options.comparison
+      ? [{
+          heading: `Compared with ${longDate(options.comparison.previous.from)} to ${longDate(options.comparison.previous.to)}`,
+          ...(options.comparison.rows
+            ? { table: { head: ["Recorded in the period", "This period", "Before", "Change"], rows: options.comparison.rows.map((row) => [row.label, String(row.current), String(row.previous), `${row.change > 0 ? "+" : ""}${row.change}${row.percent === null ? "" : ` (${row.percent > 0 ? "+" : ""}${row.percent}%)`}`]) } }
+            : { body: "There is nothing to compare with: the project had not started in that earlier period." }),
+        } satisfies PrintSection, { heading: "About the comparison", body: "Only things recorded with a date are compared. Open counts such as waiting for review or overdue are today's state; past values were not stored, so they are not compared." } satisfies PrintSection]
+      : []),
     { heading: audience === "client" ? "Coming up in the next 7 days" : "Due in the next 7 days", ...(summary.dueNext.length ? { table: { head: audience === "client" ? ["Work pin", "Sheet", "Planned for"] : ["Work pin", "Sheet", "Due", "Assigned to"], rows: summary.dueNext.map((row) => (audience === "client" ? [row.title, names.sheetOf(row.blueprintId), shortDate(row.due)] : [row.title, names.sheetOf(row.blueprintId), shortDate(row.due), names.nameOf(row.assignedTo)])) } } : { body: "Nothing is due in the next 7 days." }) },
     ...(audience === "team"
       ? [
@@ -187,7 +257,7 @@ export function weeklyReportHtml(summary: WeeklySummary, names: Names, audience:
     { heading: audience === "client" ? "Your questions" : "Client questions", rows: [["Asked", String(summary.questions.asked)], ["Answered", String(summary.questions.answered)], ["Waiting for an answer", String(summary.questions.waiting)]] },
   ]
   return reportHtml({
-    title: audience === "client" ? "Weekly progress summary" : "Weekly progress report",
+    title: options.kind === "monthly" ? (audience === "client" ? "Monthly progress summary" : "Monthly progress report") : audience === "client" ? "Weekly progress summary" : "Weekly progress report",
     subtitle: `${names.project.name} (${names.project.code})${names.project.location ? " - " + names.project.location : ""}`,
     meta: [
       ["Period", `${longDate(summary.from)} to ${longDate(summary.to)}`],

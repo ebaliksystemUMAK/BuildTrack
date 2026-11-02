@@ -22,17 +22,26 @@ export type QueueItem = {
 export function isNetworkProblem(error: unknown): boolean {
   const message = typeof error === "string" ? error : error && typeof error === "object" && "message" in error ? String((error as { message: unknown }).message) : ""
   const code = error && typeof error === "object" && "code" in error ? String((error as { code: unknown }).code ?? "") : ""
-  if (code && /^(P|PGRST|2|4|5)/i.test(code) && !/^PGRST000/.test(code)) return false // a database / API answer, not a dropped connection
+  if (code && /^(P|PGRST|BT|2|4|5)/i.test(code) && !/^PGRST000/.test(code)) return false // a database / API answer, not a dropped connection
   return /failed to fetch|networkerror|network error|load failed|network request failed|fetch failed|timeout|timed out|offline|err_internet|err_network/i.test(message)
 }
 
 export const MAX_ATTEMPTS = 8
 
-export type Verdict = "sent" | "retry" | "failed"
+// An administrator paused saving (maintenance, or a feature switched off for this person's role): the database refuses the write with code BT503.
+// That is not a failure of the saved work: it is kept exactly as it is and sent after the pause, without using up its attempts.
+export const SITE_PAUSE_CODE = "BT503"
+export const PAUSE_RETRY_SECONDS = 300
+export function isSitePause(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && String((error as { code: unknown }).code ?? "") === SITE_PAUSE_CODE)
+}
+
+export type Verdict = "sent" | "retry" | "paused" | "failed"
 
 // What to do with an item after one attempt. `error` is null on success.
 export function verdictFor(error: unknown, attempts: number): Verdict {
   if (error === null || error === undefined) return "sent"
+  if (isSitePause(error)) return "paused"
   if (isNetworkProblem(error) && attempts < MAX_ATTEMPTS) return "retry"
   return "failed"
 }

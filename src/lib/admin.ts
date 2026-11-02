@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import type { AppRole } from "./auth"
 import { supabase } from "./supabase"
 import { auditActionLabel } from "./auditLogModel"
+import { createAttentionStore, decisionTotal, type AttentionCounts } from "./attentionStore"
 
 export type ActivityRow = {
   id: number
@@ -46,6 +47,12 @@ const actionLabels: Record<string, string> = {
   "project.export": "Exported a project backup",
   "project.archived": "Archived project",
   "project.restored": "Restored project",
+  "project.removed": "Moved a project to the recycle bin",
+  "project.recovered": "Restored a project from the recycle bin",
+  "project.purged": "Deleted a project forever",
+  "record.removed": "Removed a record",
+  "record.restored": "Restored a removed record",
+  "project.purge_files": "Removed a deleted project's files",
   "project_managers.insert": "Assigned Project Manager",
   "project_managers.update": "Changed Project Manager role",
   "project_managers.delete": "Removed Project Manager",
@@ -53,6 +60,18 @@ const actionLabels: Record<string, string> = {
   "attendance.concern_resolved": "Resolved an attendance concern",
   "blueprints.insert": "Uploaded a sheet",
   "site_issue_reports.insert": "Reported a site issue",
+  "announcement.publish": "Published the site announcement",
+  "announcement.update": "Edited the site announcement",
+  "announcement.disable": "Switched off the site announcement",
+  "message.send": "Sent a message to users",
+  "email.test": "Sent a test email",
+  "maintenance.on": "Switched maintenance on",
+  "maintenance.update": "Changed the maintenance notice",
+  "maintenance.off": "Switched maintenance off",
+  "feature.lock": "Paused a feature",
+  "feature.update": "Changed a paused feature",
+  "feature.unlock": "Switched a feature back on",
+  "user.force_logout": "Signed accounts out",
   "invite.create": "Created invitation code",
   "invite.disable": "Disabled invitation code",
   "invite.enable": "Enabled invitation code",
@@ -102,7 +121,7 @@ export function useActivity(projectId: string | null = null, limit = 15) {
   return { rows, loading, error, reload }
 }
 
-export type UserStats = { engineers: number; foremen: number; clients: number; pending: number }
+export type UserStats = { engineers: number; foremen: number; clients: number; pending: number; suspended: number; basic: number }
 
 // Head-only counts. Only call this for admins with users.view: without it Row Level Security would
 // return 0 (not an error), which would look like real data.
@@ -133,9 +152,11 @@ export function useUserStats(enabled: boolean) {
       countOf("foreman", "active"),
       countOf("client", "active"),
       requestsWaiting(),
+      countOf(null, "disabled"),
+      countOf("user", "active"),
     ])
-      .then(([engineers, foremen, clients, pending]) => {
-        if (active) setStats({ engineers, foremen, clients, pending })
+      .then(([engineers, foremen, clients, pending, suspended, basic]) => {
+        if (active) setStats({ engineers, foremen, clients, pending, suspended, basic })
       })
       .catch(() => active && setError(true))
     return () => {
@@ -146,47 +167,46 @@ export function useUserStats(enabled: boolean) {
   return { stats, error }
 }
 
-// Separate counts for the dashboard "needs your decision" band (registrations, ID checks).
-export function useDecisionCounts(enabled: boolean) {
-  const [counts, setCounts] = useState<{ registrations: number; ids: number; erasures: number } | null>(null)
+// What waits for an administrator (registrations, ID checks, data deletion requests, access requests). One shared store feeds the sidebar badge and
+// the dashboard band, so they always show the same numbers and cost one set of requests; it refreshes every minute while the tab is visible.
+const attention = createAttentionStore(
+  async (): Promise<AttentionCounts> => {
+    const [pending, ids, erase, requests] = await Promise.all([
+      supabase.from("profiles").select("id", { count: "exact", head: true }).eq("status", "pending").not("registration_completed_at", "is", null),
+      supabase.from("identity_verifications").select("id", { count: "exact", head: true }).eq("status", "submitted"),
+      supabase.from("data_requests").select("id", { count: "exact", head: true }).eq("status", "open"),
+      supabase.from("access_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    ])
+    // A failed read must not look like "nothing waiting": the store keeps the previous numbers when this throws.
+    if (pending.error || ids.error || erase.error || requests.error) throw new Error("Could not read the waiting counts")
+    return { registrations: pending.count ?? 0, ids: ids.count ?? 0, erasures: erase.count ?? 0, requests: requests.count ?? 0 }
+  },
+  { isVisible: () => document.visibilityState === "visible" },
+)
+
+function useAttentionCounts(enabled: boolean, refreshOnMount: boolean) {
+  const [counts, setCounts] = useState<AttentionCounts | null>(() => (enabled ? attention.get() : null))
   useEffect(() => {
-    if (!enabled) return
-    let active = true
-    void (async () => {
-      const [pending, ids, erase] = await Promise.all([
-        supabase.from("profiles").select("id", { count: "exact", head: true }).eq("status", "pending").not("registration_completed_at", "is", null),
-        supabase.from("identity_verifications").select("id", { count: "exact", head: true }).eq("status", "submitted"),
-        supabase.from("data_requests").select("id", { count: "exact", head: true }).eq("status", "open"),
-      ])
-      if (active) setCounts({ registrations: pending.count ?? 0, ids: ids.count ?? 0, erasures: erase.count ?? 0 })
-    })()
-    return () => {
-      active = false
+    if (!enabled) {
+      setCounts(null)
+      return
     }
-  }, [enabled])
-  return counts
+    setCounts(attention.get())
+    const off = attention.subscribe(() => setCounts(attention.get()))
+    // A page that shows the numbers asks again when it opens (a request already running is shared).
+    if (refreshOnMount) void attention.refresh()
+    return off
+  }, [enabled, refreshOnMount])
+  return enabled ? counts : null
 }
 
-// How many registrations and ID checks wait for a decision (shown as a badge on User Management). Only admins who may approve get a number.
+// Separate counts for the dashboard "needs your decision" band (registrations, ID checks, data deletion requests).
+export function useDecisionCounts(enabled: boolean) {
+  const counts = useAttentionCounts(enabled, true)
+  return useMemo(() => (counts ? { registrations: counts.registrations, ids: counts.ids, erasures: counts.erasures } : null), [counts])
+}
+
+// How many things wait for a decision (shown as a badge on User Management). Only admins who may approve get a number.
 export function useReviewCount(enabled: boolean) {
-  const [count, setCount] = useState(0)
-  useEffect(() => {
-    if (!enabled) return
-    let active = true
-    const load = async () => {
-      const [pending, ids, erase] = await Promise.all([
-        supabase.from("profiles").select("id", { count: "exact", head: true }).eq("status", "pending").not("registration_completed_at", "is", null),
-        supabase.from("identity_verifications").select("id", { count: "exact", head: true }).eq("status", "submitted"),
-        supabase.from("data_requests").select("id", { count: "exact", head: true }).eq("status", "open"),
-      ])
-      if (active) setCount((pending.count ?? 0) + (ids.count ?? 0) + (erase.count ?? 0))
-    }
-    void load()
-    const timer = window.setInterval(() => document.visibilityState === "visible" && void load(), 60_000)
-    return () => {
-      active = false
-      window.clearInterval(timer)
-    }
-  }, [enabled])
-  return count
+  return decisionTotal(useAttentionCounts(enabled, false))
 }

@@ -5,17 +5,19 @@ import { useAuth } from "../../lib/auth"
 import { useConfirm } from "../../lib/confirm"
 import { dayNames, defaultSettings, settingKeys, useSettings, type Standard } from "../../lib/settings"
 import { useToast } from "../../lib/toast"
-import { PageIntro, Panel } from "./AdminShell"
+import AdminQaChecklists from "./AdminQaChecklists"
+import { EmbeddedPageContext, PageIntro, Panel } from "./AdminShell"
 import PhotoAccountRules from "./PhotoAccountRules"
 import type { AdminPageProps } from "./types"
 
-type SettingsTab = "quality" | "hours" | "standards" | "access" | "photos"
+type SettingsTab = "quality" | "hours" | "standards" | "access" | "photos" | "qc"
 const tabs: Array<{ key: SettingsTab; label: string }> = [
   { key: "quality", label: "Quality scoring" },
   { key: "hours", label: "Working hours" },
   { key: "standards", label: "Standards and codes" },
   { key: "access", label: "Access review" },
   { key: "photos", label: "Site photos" },
+  { key: "qc", label: "QC checklist library" },
 ]
 
 const when = (iso?: string) => (iso ? new Date(iso).toLocaleString("en-PH", { timeZone: "Asia/Manila", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : "")
@@ -40,7 +42,7 @@ function Card({ title, description, updated, dirty, busy, canEdit, error, onSave
   )
 }
 
-export default function SystemSettings(_: AdminPageProps) {
+export default function SystemSettings({ initialTab = "quality", ...pageProps }: AdminPageProps & { initialTab?: SettingsTab }) {
   const { profile, can } = useAuth()
   const { settings, rows, loading, error, save } = useSettings()
   const toast = useToast()
@@ -49,7 +51,7 @@ export default function SystemSettings(_: AdminPageProps) {
   // Site photos: also Admins the Super Admin gave the Site photos permission (photos.manage); the list is visible with View users too.
   const canPhotos = can("photos.manage")
   const canSeeAccounts = canPhotos || can("users.view")
-  const [tab, setTab] = useState<SettingsTab>("quality")
+  const [tab, setTab] = useState<SettingsTab>(initialTab)
   const [photosVisited, setPhotosVisited] = useState(false)
   const [photoAccountsDirty, setPhotoAccountsDirty] = useState(false)
   const updatedOf = (key: string) => rows.find((row) => row.key === key)?.updated_at
@@ -96,10 +98,10 @@ export default function SystemSettings(_: AdminPageProps) {
 
   return (
     <div className="admin-page">
-      <PageIntro eyebrow="Administration" title="System settings" description="Settings the whole product shares. Everyone reads them; only the Super Admin changes them (Site photos also an Admin with the Site photos permission), and every change is written to the audit log." />
-      <div className="mb-4 flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1" role="tablist" aria-label="System settings sections">
+      <PageIntro eyebrow="Administration" title="Company Configuration" description="Settings the whole product shares, and the company library of QC checklists. Everyone reads them; only the Super Admin changes them (Site photos also an Admin with the Site photos permission), and every change is written to the audit log." />
+      <div className="mb-4 flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1" role="tablist" aria-label="Company Configuration sections">
         {tabs.map((item) => {
-          const unsaved = item.key === "quality" ? dirty.qa : item.key === "access" ? dirty.inactive : item.key === "photos" ? photoAccountsDirty : dirty[item.key]
+          const unsaved = item.key === "qc" ? false : item.key === "quality" ? dirty.qa : item.key === "access" ? dirty.inactive : item.key === "photos" ? photoAccountsDirty : dirty[item.key]
           return (
             <button key={item.key} type="button" role="tab" aria-selected={tab === item.key} onClick={() => { if (item.key === "photos") setPhotosVisited(true); setTab(item.key) }}
               className={`flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-bold transition ${tab === item.key ? "bg-brand text-white" : "text-fg-muted hover:bg-surface-muted"}`}>
@@ -109,10 +111,12 @@ export default function SystemSettings(_: AdminPageProps) {
           )
         })}
       </div>
-      {tab === "photos" ? (!canPhotos ? <p className="mb-4 rounded-lg bg-surface-muted px-4 py-2 text-sm text-fg-muted">You can read these settings. Only the Super Admin or an Admin with the Site photos permission can change them.</p> : null)
+      {tab === "qc" ? null : tab === "photos" ? (!canPhotos ? <p className="mb-4 rounded-lg bg-surface-muted px-4 py-2 text-sm text-fg-muted">You can read these settings. Only the Super Admin or an Admin with the Site photos permission can change them.</p> : null)
         : !canEdit ? <p className="mb-4 rounded-lg bg-surface-muted px-4 py-2 text-sm text-fg-muted">You can read the settings. Only the Super Admin can change them.</p> : null}
-      {error ? <p role="alert" className="mb-4 rounded-lg bg-danger-soft px-4 py-2 text-sm text-danger-fg">{error}</p> : null}
-      {loading ? (
+      {error && tab !== "qc" ? <p role="alert" className="mb-4 rounded-lg bg-danger-soft px-4 py-2 text-sm text-danger-fg">{error}</p> : null}
+      {tab === "qc" ? (
+        <div role="tabpanel" aria-label="QC checklist library" className="w-full min-w-0"><EmbeddedPageContext.Provider value><AdminQaChecklists {...pageProps} /></EmbeddedPageContext.Provider></div>
+      ) : loading ? (
         <SkeletonCardGrid count={1} label="Loading settings" />
       ) : (
         <div role="tabpanel" aria-label={tabs.find((item) => item.key === tab)?.label} className="w-full min-w-0">

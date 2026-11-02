@@ -203,6 +203,10 @@ h1, h2, h3, p { margin-top: 0; }
 .button--auth:active:not(:disabled) { transform: translateY(1px); }
 .button--auth:disabled, .button--gold:disabled { opacity: .6; cursor: not-allowed; }
 .button--wide { width: 100%; }
+.auth-form-stack { display: flex; flex-direction: column; gap: 12px; }
+.auth-form-stack > .button--auth { margin-top: 12px; }
+.register-callout { margin-top: 18px; padding: 14px; border: 1px solid rgba(241,139,0,.55); border-radius: 10px; background: rgba(241,139,0,.08); display: flex; flex-direction: column; align-items: center; gap: 10px; color: #e9e9ea; font-size: 13px; font-weight: 700; }
+.register-callout .button { font-weight: 800; }
 .divider { display: flex; align-items: center; gap: 20px; color: #838387; font-size: 11px; text-transform: uppercase; font-weight: 800; margin: 28px 0; }
 .divider::before, .divider::after { content: ""; height: 1px; flex: 1; background: #3c3c3e; }
 .support-note { text-align: center; color: #727276; font-size: 11px; margin: 0; }

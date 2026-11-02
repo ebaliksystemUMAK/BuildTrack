@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import type { Page } from "../../App"
 import Brand from "../../components/Brand"
 import FormField from "../../components/FormField"
 import Header from "../../components/Header"
+import EmailCodeStep from "../../components/EmailCodeStep"
 import DataConfirmModal, { PrivacyNoticeModal } from "../../components/PrivacyNotice"
 import Icon from "../../components/Icons"
 import { useAuth } from "../../lib/auth"
@@ -12,6 +13,7 @@ import { passwordChecks, passwordIssue } from "../../lib/passwordPolicy"
 import { PHONE_DIGITS, phoneDigits, phoneIssue } from "../../lib/phoneNumber"
 import { PRIVACY_VERSION } from "../../lib/privacy"
 import { supabase } from "../../lib/supabase"
+import { loadRegistrationStatus } from "../../lib/systemControl"
 import { useToast } from "../../lib/toast"
 
 type RegisterPageProps = { navigate: (page: Page) => void }
@@ -85,6 +87,23 @@ function CompleteGoogleRegistration({ navigate }: RegisterPageProps) {
     await signOut()
   }
 
+  // Step 1: the address must be proven with an emailed code before any details can be sent to the administrators (the database refuses them otherwise).
+  if (!profile?.email_verified_at) {
+    return (
+      <div className="register-form">
+        <Brand compact inverse />
+        <h1>Confirm your email</h1>
+        <p className="register-lead">
+          Before your registration can reach the administrators, confirm that <strong>{profile?.email}</strong> is yours. Nothing is sent for approval until you do.
+        </p>
+        <EmailCodeStep tone="gold" what="send your registration" />
+        <div className="register-actions">
+          <button className="text-button text-button--gold" type="button" onClick={() => void useAnotherAccount()}>Use a different account</button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <form className="register-form" onSubmit={review} noValidate>
       <Brand compact inverse />
@@ -125,6 +144,13 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
   const { session, profile } = useAuth()
   const finishing = Boolean(session) && profile?.status === "pending" && !profile.registration_completed_at
   const toast = useToast()
+  // A Super Admin can close new registrations (System Control > Registration). The database refuses them too; this page just says so plainly.
+  const [closed, setClosed] = useState<{ closed: boolean; message: string }>({ closed: false, message: "" })
+  useEffect(() => {
+    let active = true
+    void loadRegistrationStatus().then((status) => { if (active) setClosed(status) })
+    return () => { active = false }
+  }, [])
   const [values, setValues] = useState({
     name: "",
     email: "",
@@ -234,7 +260,14 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
       <Header navigate={navigate} />
       <main className="auth-main auth-main--register">
         <div className="register-card">
-          {finishing ? (
+          {closed.closed && !finishing ? (
+            <div className="register-form" role="status">
+              <Brand compact inverse />
+              <h1>Registration is closed</h1>
+              <p className="register-lead">{closed.message}</p>
+              <p className="support-note">Already registered?{" "}<button className="text-button text-button--gold" type="button" onClick={() => navigate("login")}>Back to login</button></p>
+            </div>
+          ) : finishing ? (
             <CompleteGoogleRegistration navigate={navigate} />
           ) : step === "otp" ? (
             <form className="register-form" onSubmit={handleVerify}>

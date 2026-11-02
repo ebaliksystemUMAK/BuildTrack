@@ -53,9 +53,10 @@ const admin: Record<AdminPageKey, PageGuide> = {
       "Set the project's site location (centre and radius). Photo location checks need it.",
       "View team shows the project team and its blueprint access. Project Managers add members and manage their access.",
       "Assign a primary and an optional backup Project Manager.",
-      "Archive a project when the work is finished.",
+      "Archive a project when the work is finished. It is kept with all its records and can be restored from the archive at any time. Use the Show filter for Open, Archived or the Recycle bin.",
+      "An archived project can be removed: give a reason and type its code. It disappears for everyone, but nothing is deleted. The Recycle bin shows who removed it, when and why, and Restore brings it back archived.",
     ],
-    tips: ["Membership alone opens no plans: each person needs access to the blueprint types they work on."],
+    tips: ["Membership alone opens no plans: each person needs access to the blueprint types they work on.", "Only a Super Admin can delete a project forever, after 30 days in the recycle bin and only if it holds no real records (work, inspections, reports, photos, attendance). Nothing expires on its own.", "A removed project keeps its code reserved, so no other project can take it."],
   },
   "user-management": {
     title: "User management",
@@ -66,8 +67,9 @@ const admin: Record<AdminPageKey, PageGuide> = {
       "Access requests: approve or decline basic accounts asking for the Engineer, Foreman or Client role.",
       "Whitelist: pre-approve emails with a role (or import a CSV / TXT file); the role is given when the email is confirmed.",
       "Permissions (Super Admin): tick what each Admin may do, check the list of changes, then save.",
+      "Delete account (Super Admin): open a person, press Delete account, read what will happen, then give a reason, type the phrase shown and enter a fresh code from your authenticator app.",
     ],
-    tips: ["Critical actions ask you to confirm and are written to the audit log.", "You cannot change your own account or permissions here."],
+    tips: ["Critical actions ask you to confirm and are written to the audit log.", "You cannot change your own account or permissions here.", "Deleting an account never deletes what the person did: an account with work, quality, report or approval records is closed (name, email and photos wiped, records kept as \"Deleted account\"); only an account with no records at all is removed completely.", "A registration only reaches this queue after the person confirmed their email with a 6-digit code."],
   },
   invites: {
     title: "Invitations",
@@ -78,6 +80,90 @@ const admin: Record<AdminPageKey, PageGuide> = {
       "They redeem it on their My account page; you can see which codes were used.",
     ],
     tips: ["A Project Manager still needs an Admin to assign their projects."],
+  },
+  records: {
+    title: "Records",
+    purpose: "Remove a daily report, site issue or client report that should not be in the system, with a reason. It is hidden for everyone, not deleted, and you can restore it.",
+    steps: [
+      "Choose the kind of record, search for it and press Remove.",
+      "Write the reason and type the confirmation shown (for example REMOVE SR-0001), then confirm.",
+      "Open Removed records to see who removed what, when and why, and to restore one.",
+    ],
+    tips: ["Inspections, defect reports, attendance records and the audit log cannot be removed here.", "Every removal and restore is written to the audit log with your name.", "A record of a project in the recycle bin cannot be removed or restored until the project is restored."],
+  },
+  "access-messages": {
+    title: "Access & messages",
+    purpose: "Invitation codes, accounts that have not signed in for a while, and messages and announcements to people, as tabs of one page.",
+    steps: [
+      "Invitations: create a one-use or limited code that gives a role, and see who used it.",
+      "Global access review: active accounts that have not signed in for the number of days set in Company Configuration. Switch off accounts that are no longer needed.",
+      "Announcements & messages: send a message to chosen people or a whole role in the app, by email or both, and see what happened to each email.",
+    ],
+    tips: ["A tab appears only if your account has its permission (Review access requests, View users, Edit users).", "The site-wide banner is managed in System Control."],
+  },
+  "records-audit": {
+    title: "Company Records and Audits",
+    purpose: "The full audit trail of what happened in the system, and (Super Admin) the tool that hides a report from view and restores it.",
+    steps: [
+      "Company audit log: search and filter every recorded action, open an entry for its full details, and export what you see.",
+      "Records (Super Admin): remove a daily report, site issue or client report with a reason, or restore one. Nothing is deleted.",
+    ],
+    tips: ["Audit entries cannot be edited or deleted.", "Administrator and system transactions are also listed, by category, in System Logs."],
+  },
+  "system-logs": {
+    title: "System Logs",
+    purpose: "What happened in the system and who did it (Super Admin only, read only): administrator and system transactions, the emails that were really sent, and locked codes.",
+    steps: [
+      "Transactions: account creation, approvals, role and status changes, settings, system controls and removals. Every entry has a reference, a time, who did it and to whom. Filter by category, search, or pick dates, and open an entry for everything recorded.",
+      "Email delivery: how many notification emails were sent, failed or skipped, and the reason for each.",
+      "Lockouts: sign-up and reset codes locked after wrong tries, invitation-code lockouts and blocked Google sign-ins.",
+    ],
+    tips: ["Plain work changes (a pin edited, a QA step saved) are in Company Records and Audits, not here.", "Wrong passwords at sign-in are kept by Supabase Auth: Supabase Dashboard, Authentication, Logs."],
+  },
+  "system-control": {
+    title: "System Control",
+    purpose: "The operating panel of the system itself (Super Admin only): health, maintenance and feature isolation, forced logout, the announcement banner, email and registration switches, who can open what, and a log of system actions. It never touches role work or records.",
+    steps: [
+      "Health: run the read-only checks, send yourself a test email and see storage sizes. Nothing is repaired for you.",
+      "Maintenance & isolation: make non-admin accounts read-only with a message, or pause one feature for chosen roles. Schedule a window (Manila time) and maintenance switches on and off by itself. Forced logout is its own tab with a preview, a reason and a typed phrase.",
+      "Announcement banner: write, preview and publish the banner shown on every page. Quick text fills a ready message such as New version available.",
+      "Email: pause or resume notification emails. Registration: close or open new registrations with a message people will see. What was sent and who was locked out are in System Logs.",
+      "Role access: see which role can open which workspace and Admin page, and edit each Admin's permissions. Every change you make here is recorded in System Logs.",
+      "Switch everything off (top right) puts maintenance, feature pauses, registration and email back to normal in one step. It never signs anyone out.",
+    ],
+    tips: ["Admins, Super Admins and biometric devices are never restricted by maintenance or feature pauses.", "What each role may read or change inside the app is decided by the database rules and changes only with a migration; this page shows it and edits the Admin permissions.", "The older Site controls and System health addresses open the matching tab here."],
+  },
+  "site-controls": {
+    title: "Site controls",
+    purpose: "Pause saving during maintenance, pause one feature for chosen roles, or sign chosen non-admin accounts out. Everything starts off.",
+    steps: [
+      "Maintenance: write the message people will see and, if you know it, when you expect to be back, then switch it on. Non-admin accounts can still look at everything but cannot save until you switch it off.",
+      "Feature isolation: pick the roles and a message, then pause just that feature. Other features and shared work keep working.",
+      "Forced logout: choose roles (and optionally one project), preview who is affected, give a reason, then type the confirmation phrase.",
+    ],
+    tips: ["Admins, Super Admins and biometric devices are never restricted.", "Queued offline reports and photos are kept and sent after a pause or after the person signs in again.", "A sign-in token already issued can work for up to about an hour after a forced logout; suspend the account to stop it immediately.", "The return time is only information: maintenance stays on until you switch it off."],
+  },
+  "system-health": {
+    title: "System health",
+    purpose: "Read-only checks that tell a Super Admin whether the database, migrations, required schema, storage, email and scheduled jobs are working.",
+    steps: [
+      "Open the page: the checks run by themselves. Use Run checks again after the owner changes something.",
+      "Read each result. Every problem or warning says what to do; nothing is repaired or re-run for you.",
+      "Email test: send one test message to your own address. “Accepted” is the provider's answer; use Ask the provider to see whether it reports delivery.",
+      "Daily admin digest: preview what each admin would be told. A preview creates and sends nothing.",
+    ],
+    tips: ["No secret is ever shown: email settings appear only as present or missing.", "Migration history is compared only for migrations since 18 Oct 2026; older ones are checked through the schema results.", "Switching on the digest schedule is the owner's step (SQL shown on the page)."],
+  },
+  communications: {
+    title: "Announcements & messages",
+    purpose: "Show a banner on every page, and send notices to people's notifications and inboxes.",
+    steps: [
+      "Banner (Super Admin): write a title and message, pick a tone, preview it, then publish. Edit it to show it again to people who closed the old one.",
+      "Message: search for people or add a whole group, choose in the app, email or both, write the message and press Review and send.",
+      "Check the audience summary, then confirm. Pressing Send twice never sends twice.",
+      "Recent messages shows what happened to each email: sent, waiting, skipped or failed.",
+    ],
+    tips: ["Only active accounts receive messages. People who switched announcement emails off still get the bell message.", "A critical banner cannot be closed by readers, so keep it for real emergencies.", "Account and security notices are separate and always emailed."],
   },
   "access-review": {
     title: "Access review",
@@ -118,8 +204,8 @@ const admin: Record<AdminPageKey, PageGuide> = {
     tips: ["The pass mark, item weights and the standards catalog are in System settings."],
   },
   settings: {
-    title: "System settings",
-    purpose: "Settings the whole product shares, grouped in tabs. Everyone can read them.",
+    title: "Company Configuration",
+    purpose: "Settings the whole product shares, grouped in tabs (quality scoring, working hours, standards, access review, site photos), and the company library of QC checklists. Everyone can read the settings.",
     steps: [
       "Pick a tab: Quality scoring, Working hours, Standards and codes, Access review or Site photos.",
       "Change the values and press Save on that card; a dot on a tab marks unsaved changes.",

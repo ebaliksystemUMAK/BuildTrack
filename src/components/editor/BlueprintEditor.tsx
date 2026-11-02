@@ -405,7 +405,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
 
   const deletePin = async (pin: Pin) => {
     if (pin.locked) return toast.error("This pin is locked", "Unlock it first, then delete it.")
-    if (!(await confirm({ title: `Delete "${pin.title}"?`, message: "Its tasks, comments and photos are deleted too. This cannot be undone.", confirmLabel: "Delete pin", tone: "danger" }))) return
+    if (!(await confirm({ title: `Delete "${pin.title}"?`, message: "Its tasks, comments and photos are deleted too. This cannot be undone. A pin with recorded work, inspections or reports cannot be deleted.", confirmLabel: "Delete pin", tone: "danger" }))) return
     const { data, error: deleteError } = await supabase.from("pins").delete().eq("id", pin.id).select("id")
     if (deleteError) return toast.error("Could not delete the pin", dbMessage(deleteError))
     if (!data?.length) return toast.error("Could not delete the pin", pin.status === "verified" ? "Verified work is evidence and cannot be deleted." : "You are not allowed to delete this pin.")
@@ -640,6 +640,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
       message: `Its ${revisionCount} revision${revisionCount === 1 ? "" : "s"}, ${sheetPins.length} pin${sheetPins.length === 1 ? "" : "s"} (with their photos and comments) and ${annotations.length} drawn item${annotations.length === 1 ? "" : "s"} are removed for everyone. This cannot be undone.`,
       confirmLabel: "Delete sheet",
       tone: "danger",
+      typeToConfirm: "DELETE",
     }))) return
     // Remember the files first: once the rows are gone there is nothing left to look them up by.
     const photos = sheetPins.length ? ((await supabase.from("pin_photos").select("path").in("pin_id", sheetPins.map((pin) => pin.id))).data ?? []).map((row) => String(row.path)) : []

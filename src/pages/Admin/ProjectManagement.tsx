@@ -5,6 +5,9 @@ import Modal from "../../components/Modal"
 import ProjectCard, { type CardPerson } from "../../components/ProjectCard"
 import ProjectAccessDialog from "./ProjectAccessDialog"
 import ProjectManagersDialog from "./ProjectManagersDialog"
+import ProjectRecycleBin, { RemoveProjectModal } from "./ProjectRecycleBin"
+import { useRecycleBin } from "../../lib/recycleBin"
+import { inScope, scopeCounts, scopeLabels, type ProjectScope } from "../../lib/recycleBinModel"
 import { setProjectArchived, useProjectManagers } from "../../lib/projectManagers"
 import { slotsOf } from "../../lib/projectManagerModel"
 import { buttonPrimary, buttonSecondary } from "../../components/ui/PageParts"
@@ -105,7 +108,8 @@ function dbMessage(error: { code?: string; message: string }): string {
 }
 
 export default function ProjectManagement({ onNavigate }: AdminPageProps) {
-  const { profile } = useAuth()
+  const { profile, can } = useAuth()
+  const canUseBin = can("projects.manage")
   const canEditTeam = profile?.role === "super_admin"
   const { projects, loading, error, reload } = useProjects()
   const [members, setMembers] = useState<ProjectMember[]>([])
@@ -116,7 +120,9 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
   const [formError, setFormError] = useState("")
   const [shareId, setShareId] = useState<string | null>(null)
   const [managersId, setManagersId] = useState<string | null>(null)
-  const [showArchived, setShowArchived] = useState(false)
+  const [scope, setScope] = useState<ProjectScope>("open")
+  const [removing, setRemoving] = useState<Project | null>(null)
+  const bin = useRecycleBin(canUseBin)
   const [managerPeople, setManagerPeople] = useState<Array<{ id: string; full_name: string | null; email: string }>>([])
   const { managers, reload: reloadManagers } = useProjectManagers("all")
   const toast = useToast()
@@ -160,14 +166,15 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
     const text = query.trim().toLowerCase()
     const list = projects.filter(
       (project) =>
-        (showArchived || !project.archived_at) &&
+        inScope(project, scope) &&
         (statusFilter === "all" || project.status === statusFilter) &&
         (!text || `${project.code} ${project.name} ${project.location ?? ""} ${project.client_name ?? ""}`.toLowerCase().includes(text)),
     )
     if (sort === "name") return [...list].sort((a, b) => a.name.localeCompare(b.name))
     if (sort === "status") return [...list].sort((a, b) => a.status.localeCompare(b.status))
     return list
-  }, [projects, query, statusFilter, sort, showArchived])
+  }, [projects, query, statusFilter, sort, scope])
+  const counts = useMemo(() => scopeCounts(projects, bin.projects.length), [projects, bin.projects.length])
 
   const openForm = (project?: Project) => {
     setErrors({})
@@ -239,20 +246,12 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
     await Promise.all([reload(), loadPeople()]) // the engineer / foreman in charge are added to the team automatically
   }
 
-  const removeProject = async (project: Project) => {
-    if (!(await confirm({ title: `Delete ${project.code}?`, message: `${project.name} and its plans, pins and team assignments are removed for everyone. This cannot be undone.`, confirmLabel: "Delete project", tone: "danger" }))) return
-    const { data, error: deleteError } = await supabase.from("projects").delete().eq("id", project.id).select("id")
-    if (deleteError) return setMessage({ text: dbMessage(deleteError), ok: false })
-    if (!data?.length) return setMessage({ text: "Nothing was deleted. You may not have permission.", ok: false })
-    setMessage({ text: "Project deleted.", ok: true })
-    await Promise.all([reload(), loadPeople()])
-  }
-
   // Archiving keeps every record; the project's Project Managers can still read it but not change it. Restoring undoes it.
+  // Removing is a second step for an archived project: it moves it to the recycle bin (hidden for everyone, nothing deleted, restorable).
   const archiveProject = async (project: Project, archived: boolean) => {
     if (!(await confirm(archived
       ? { title: `Archive ${project.code}?`, message: `${project.name} is kept with all its records. Its Project Managers can still read it but can no longer change it. You can restore it later.`, confirmLabel: "Archive project" }
-      : { title: `Restore ${project.code}?`, message: "Its Project Managers can manage it again.", confirmLabel: "Restore project" }))) return
+      : { title: `Restore ${project.code} from the archive?`, message: "Its Project Managers can manage it again.", confirmLabel: "Restore from archive" }))) return
     try {
       await setProjectArchived(project.id, archived)
       setMessage({ text: archived ? "Project archived." : "Project restored.", ok: true })
@@ -327,20 +326,24 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
             <option value="status">Status</option>
           </select>
         </div>
-        <label className="flex min-h-10 items-center gap-2 text-sm font-semibold text-fg sm:whitespace-nowrap"><input type="checkbox" className="h-4 w-4" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />Show archived</label>
-        <span className="text-sm text-fg-muted sm:whitespace-nowrap" aria-live="polite">{visible.length} of {projects.length}</span>
+        <select value={scope} onChange={(event) => setScope(event.target.value as ProjectScope)} aria-label="Show projects" className="min-h-10 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg">
+          {(["open", "archived", "all"] as ProjectScope[]).map((key) => <option key={key} value={key}>{scopeLabels[key]} ({counts[key]})</option>)}
+          {canUseBin ? <option value="bin">{scopeLabels.bin} ({counts.bin})</option> : null}
+        </select>
+        <span className="text-sm text-fg-muted sm:whitespace-nowrap" aria-live="polite">{scope === "bin" ? `${bin.projects.length} removed` : `${visible.length} of ${projects.length}`}</span>
       </div>
 
-      {loading ? <SkeletonCardGrid count={6} /> : null}
-      {!loading && !error && projects.length === 0 ? (
+      {scope === "bin" ? <ProjectRecycleBin canPurge={profile?.role === "super_admin"} projects={bin.projects} loading={bin.loading} error={bin.error} setup={bin.setup} onChanged={() => { void bin.reload(); void reload() }} /> : null}
+      {scope !== "bin" && loading ? <SkeletonCardGrid count={6} /> : null}
+      {scope !== "bin" && !loading && !error && projects.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line p-10 text-center">
           <p className="mb-3 text-fg-muted">No projects yet. Create the first one to start assigning your team.</p>
           <AdminButton icon="plus" onClick={() => openForm()}>New project</AdminButton>
         </div>
       ) : null}
-      {!loading && projects.length > 0 && visible.length === 0 ? <p className="text-sm text-fg-muted">No projects match your filters.</p> : null}
+      {scope !== "bin" && !loading && projects.length > 0 && visible.length === 0 ? <p className="text-sm text-fg-muted">{scope === "archived" && !query && statusFilter === "all" ? "No archived projects. Archive a project when it is finished or on hold: it is kept and can be restored." : "No projects match your filters."}</p> : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className={scope === "bin" ? "hidden" : "grid gap-4 sm:grid-cols-2 xl:grid-cols-3"}>
         {visible.map((project) => (
           <ProjectCard
             key={project.id}
@@ -354,15 +357,19 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
                 <button type="button" className={cardAction} onClick={() => openForm(project)} aria-label={`Edit details of ${project.code}`}>Details</button>
                 <button type="button" className={cardAction} onClick={() => openAccess(project.id)} aria-label={`Team and access of ${project.code}`}>{canEditTeam ? "Team & access" : "View team"}</button>
                 <button type="button" className={cardAction} onClick={() => openBlueprints(project.id)} aria-label={`Blueprints of ${project.code}`}>Blueprints</button>
-                <button type="button" className={cardAction} onClick={() => void archiveProject(project, !project.archived_at)} aria-label={`${project.archived_at ? "Restore" : "Archive"} ${project.code}`}>{project.archived_at ? "Restore" : "Archive"}</button>
-                <button type="button" className="inline-flex min-h-8 items-center rounded-lg px-2.5 text-xs font-bold text-danger-fg hover:bg-danger-soft" onClick={() => void removeProject(project)} aria-label={`Delete ${project.code}`}>
-                  Delete
-                </button>
+                <button type="button" className={cardAction} onClick={() => void archiveProject(project, !project.archived_at)} aria-label={`${project.archived_at ? "Restore from archive" : "Archive"} ${project.code}`}>{project.archived_at ? "Restore from archive" : "Archive"}</button>
+                {project.archived_at && canUseBin ? (
+                  <button type="button" className="inline-flex min-h-8 items-center rounded-lg px-2.5 text-xs font-bold text-danger-fg hover:bg-danger-soft" onClick={() => setRemoving(project)} aria-label={`Move ${project.code} to the recycle bin`}>
+                    Remove
+                  </button>
+                ) : null}
               </>
             }
           />
         ))}
       </div>
+
+      {removing ? <RemoveProjectModal project={removing} onClose={() => setRemoving(null)} onDone={() => { setRemoving(null); void bin.reload(); void reload(); void loadPeople() }} /> : null}
 
       {form ? (
         <Modal title={form.id ? `Edit ${form.code || "project"}` : "New project"} size="lg" onClose={() => setForm(null)}>

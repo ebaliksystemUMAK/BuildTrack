@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
 
-type Props = { children: ReactNode; resetKey?: string }
+// compact: a failing panel shows a small inline message and the rest of the page keeps working (used around independent sections).
+type Props = { children: ReactNode; resetKey?: string; compact?: boolean; label?: string }
 type State = { error: Error | null }
 
 // Last line of defence: if a screen crashes, show a friendly message instead of a blank page. Navigating to another
@@ -23,6 +24,15 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (!this.state.error) return this.props.children
+    if (this.props.compact) {
+      return (
+        <div role="alert" className="rounded-xl border border-line bg-danger-soft px-4 py-3 text-sm text-danger-fg">
+          <p className="font-bold">{this.props.label ?? "This section"} could not be shown.</p>
+          <p className="mt-0.5">The rest of the page still works and your data is safe.</p>
+          <button type="button" onClick={() => this.setState({ error: null })} className="mt-2 rounded-lg border border-current px-3 py-1 text-xs font-bold hover:bg-surface/40">Try again</button>
+        </div>
+      )
+    }
     // A stale deploy (old file names after an update) is the most common cause: a reload fixes it.
     const stale = /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically/i.test(this.state.error.message)
     return (

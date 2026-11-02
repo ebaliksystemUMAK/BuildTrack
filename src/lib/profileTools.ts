@@ -76,7 +76,7 @@ export async function removeAvatar(userId: string): Promise<void> {
 }
 
 // ---- Invitation codes ----
-export type InviteReason = "invalid" | "too_many" | "unconfirmed" | "already_has_role" | "inactive" | "not_verified"
+export type InviteReason = "invalid" | "too_many" | "unconfirmed" | "already_has_role" | "inactive" | "not_verified" | "email_not_verified" | "registration_closed"
 export type RedeemResult = { ok: true; role: string } | { ok: false; reason: InviteReason }
 
 export const inviteReasonText: Record<InviteReason, string> = {
@@ -86,6 +86,8 @@ export const inviteReasonText: Record<InviteReason, string> = {
   already_has_role: "Your account already has a role.",
   inactive: "Your account is not active. Contact an administrator.",
   not_verified: "Verify your identity first (see the Identity verification card), then enter the code.",
+  registration_closed: "New registrations are closed right now. Please try again later.",
+  email_not_verified: "Confirm your email first: use the \"Confirm your email\" card above to get a 6-digit code, then enter the invitation code.",
 }
 
 export const formatInviteCode = (raw: string) => raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12).replace(/(.{4})(?=.)/g, "$1-")

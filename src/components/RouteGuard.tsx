@@ -7,6 +7,7 @@ import MfaPage from "../pages/Auth/MfaPage"
 import { useAuth, type AppRole } from "../lib/auth"
 import { invokeFunction } from "../lib/functions"
 import { GATE_FAILED_MESSAGE, NO_ACCOUNT_MESSAGE, clearOAuthIntent, readOAuthIntent, setLoginNotice } from "../lib/oauthIntent"
+import { endRecovery, useRecovering } from "../lib/passwordRecovery"
 import { PM_WORKSPACE_ROLES, adminToPmPath } from "../lib/projectRoutes"
 import { supabase } from "../lib/supabase"
 
@@ -24,7 +25,7 @@ const areaOf = (page: Page) => page.split("/")[0]
 
 const RETURN_KEY = "buildtrack.returnTo"
 
-const rolesForArea: Record<string, AppRole[]> = {
+export const rolesForArea: Record<string, AppRole[]> = {
   attendance: ["super_admin", "admin", "engineer", "foreman"],
   "pin-link": ["super_admin", "admin", "project_manager", "engineer", "foreman", "client", "user"],
   admin: ["super_admin", "admin"],
@@ -71,7 +72,9 @@ export default function RouteGuard({
   children: ReactNode
 }) {
   const { session, profile, loading, can, signOut, mfaRequired } = useAuth()
-  const isPublic = page === "home" || page === "login" || page === "register"
+  const isPublic = page === "home" || page === "login" || page === "register" || page === "forgot-password" || page === "reset-password"
+  // A reset link or code signs the person in with a one-time session: until a new password is saved they stay on the reset screen, never in a workspace.
+  const recovering = useRecovering() && Boolean(session)
   const active = profile?.status === "active"
   // A Google account that has not submitted its registration yet has no access: it can only finish registering.
   const unregistered = Boolean(session) && profile?.status === "pending" && !profile.registration_completed_at
@@ -119,6 +122,10 @@ export default function RouteGuard({
 
   useEffect(() => {
     if (loading || gate === "checking") return
+    if (recovering) {
+      if (page !== "reset-password") navigate("reset-password")
+      return
+    }
     if (session && unregistered && page !== "register") {
       navigate("register")
       return
@@ -133,7 +140,7 @@ export default function RouteGuard({
         }
       }
       navigate("login")
-    } else if (session && active && (page === "login" || page === "register")) {
+    } else if (session && active && (page === "login" || page === "register" || page === "forgot-password" || page === "reset-password")) {
       let back: string | null = null
       try {
         back = sessionStorage.getItem(RETURN_KEY)
@@ -154,17 +161,17 @@ export default function RouteGuard({
         window.dispatchEvent(new PopStateEvent("popstate"))
       } else navigate(homeFor(profile?.role ?? null))
     }
-  }, [loading, gate, session, unregistered, active, isPublic, allowed, page, profile, navigate, area])
+  }, [loading, gate, session, unregistered, active, isPublic, allowed, page, profile, navigate, area, recovering])
 
   // A completed pending registration never gets a workspace or the old full-page approval screen.
   // An incomplete Google registration is the one exception: it must stay signed in long enough to
   // finish the registration form. Once completed, its session is ended and it returns to Login.
   useEffect(() => {
-    if (loading || pendingExitRan.current || !session || profile?.status !== "pending" || unregistered) return
+    if (loading || pendingExitRan.current || !session || profile?.status !== "pending" || unregistered || recovering) return
     pendingExitRan.current = true
     setLoginNotice("Your registration is awaiting administrator approval. You will be able to sign in after your access is approved.")
     void supabase.auth.signOut().finally(() => window.location.assign("/login"))
-  }, [loading, session, profile?.status, unregistered])
+  }, [loading, session, profile?.status, unregistered, recovering])
 
   if (loading || (gate === "checking" && Boolean(session))) {
     return (
@@ -174,11 +181,15 @@ export default function RouteGuard({
     )
   }
 
-  if (session && profile?.status === "pending" && !unregistered) {
+  if (session && profile?.status === "pending" && !unregistered && !recovering) {
     return <div className="min-h-screen bg-surface-muted" role="status" aria-label="Returning to login"><SkeletonPage /></div>
   }
 
-  if (session && unregistered && page !== "register") {
+  if (recovering && page !== "reset-password") {
+    return <div className="min-h-screen bg-surface-muted" role="status" aria-label="Opening password reset"><SkeletonPage /></div>
+  }
+
+  if (session && unregistered && page !== "register" && !recovering) {
     return <div className="min-h-screen bg-surface-muted" role="status" aria-label="Opening registration"><SkeletonPage /></div>
   }
 

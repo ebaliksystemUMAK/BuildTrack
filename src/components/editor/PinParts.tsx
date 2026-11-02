@@ -52,6 +52,8 @@ const WorkItemWorkspace = lazy(() => import("../qa/WorkItemWorkspace"))
 export const field = "mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg"
 
 export function dbMessage(error: { code?: string; message: string }): string {
+  // The deletion protections (20261101190000) explain themselves: show their sentence instead of the generic refusal.
+  if (/recorded work|inspection, defect, site issue or client records|inspection or defect evidence|cannot be deleted directly/i.test(error.message)) return error.message
   if (error.code === "42501" || /row-level security/i.test(error.message)) return "You are not allowed to do that."
   if (/Only an Engineer can change/i.test(error.message)) return "Only an Engineer can change the tasks; you can tick them off."
   if (/network|fetch/i.test(error.message)) return "Network problem. Check your connection and try again."
@@ -123,6 +125,7 @@ export function PinChecklist({ pin, canEdit, canTick, notice = "", onChange, onP
   canEdit = canEdit && !locked
   canTick = canTick && !locked
   const toast = useToast()
+  const confirm = useConfirm()
   const { profile } = useAuth()
   const engineer = profile?.role === "engineer"
   const editBlock = !editViewAllowed ? "This sheet view is read-only. Open the latest sheet revision and exit presentation mode to add tasks."
@@ -156,6 +159,7 @@ export function PinChecklist({ pin, canEdit, canTick, notice = "", onChange, onP
   const refresh = async () => { await Promise.all([reload(), reloadPhotos(), history.reload(), qa.reload()]); await onPinChanged?.() }
 
   const remove = async (id: string) => {
+    if (!(await confirm({ title: "Remove this task?", message: "It is taken off the checklist. A task that was already ticked, remarked, reviewed or photographed cannot be removed.", confirmLabel: "Remove task", tone: "danger" }))) return
     const { error } = await supabase.from("pin_checklist_items").delete().eq("id", id)
     if (error) return toast.error("Could not remove the item", dbMessage(error))
     await reload()

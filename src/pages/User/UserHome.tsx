@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import Modal from "../../components/Modal"
+import EmailCodeStep from "../../components/EmailCodeStep"
 import DataConfirmModal from "../../components/PrivacyNotice"
 import { IdentityCard } from "../../components/identity/IdentityVerification"
 import { Skeleton, SkeletonList } from "../../components/ui/Skeleton"
@@ -61,7 +62,8 @@ export default function UserHome() {
   }
 
   const name = profile?.full_name || "there"
-  const verified = profile?.identity_status === "verified"
+  const emailConfirmed = Boolean(profile?.email_verified_at)
+  const verified = profile?.identity_status === "verified" && emailConfirmed
 
   return (
     <div className="space-y-6">
@@ -93,6 +95,14 @@ export default function UserHome() {
         </div>
       </section>
 
+      {emailConfirmed ? null : (
+        <section className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
+          <h2 className="border-l-4 border-accent pl-3 text-lg font-extrabold text-brand-strong">Confirm your email</h2>
+          <p className="mt-1 pl-4 text-sm text-fg-muted">Requests for access and invitation codes unlock after you type the 6-digit code we email to your address.</p>
+          <div className="mt-4 max-w-md"><EmailCodeStep what="request access" /></div>
+        </section>
+      )}
+
       <IdentityCard />
 
       <section className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
@@ -102,7 +112,7 @@ export default function UserHome() {
             <p className="mt-1 pl-4 text-sm text-fg-muted">Choose Engineer, Foreman or Client. Admins only review these requests.</p>
           </div>
           {!pending && !loading ? (
-            <button type="button" onClick={() => setRequesting(true)} disabled={!verified} title={verified ? undefined : "Verify your identity first"} className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50">
+            <button type="button" onClick={() => setRequesting(true)} disabled={!verified} title={verified ? undefined : emailConfirmed ? "Verify your identity first" : "Confirm your email first"} className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50">
               Request elevated access
             </button>
           ) : null}
@@ -132,7 +142,7 @@ export default function UserHome() {
           </div>
         ) : (
           <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-fg-muted">
-            {verified ? 'You have no request waiting. Press "Request elevated access" when you are ready.' : "Verify your identity above to unlock access requests."}
+            {verified ? 'You have no request waiting. Press "Request elevated access" when you are ready.' : emailConfirmed ? "Verify your identity above to unlock access requests." : "Confirm your email above to unlock access requests."}
           </p>
         )}
 

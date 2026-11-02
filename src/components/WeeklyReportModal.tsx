@@ -4,15 +4,15 @@ import SCurveChart from "./SCurveChart"
 import { buttonPrimary, buttonSecondary, inputClass } from "./ui/PageParts"
 import type { Pin } from "../lib/blueprints"
 import { manilaToday } from "../lib/progress"
-import { buildWeekly, headline, periodPresets, weeklyReportHtml } from "../lib/weeklyReport"
+import { buildWeekly, comparePeriods, headline, monthPresets, periodPresets, previousPeriod, weeklyReportHtml } from "../lib/weeklyReport"
 import { printHtml } from "../lib/printReport"
 import { useToast } from "../lib/toast"
 
-type Preset = "last7" | "thisWeek" | "lastWeek" | "custom"
-const presetLabels: Record<Preset, string> = { last7: "Last 7 days", thisWeek: "This week", lastWeek: "Last week", custom: "Choose dates" }
+type Preset = "last7" | "thisWeek" | "lastWeek" | "thisMonth" | "lastMonth" | "custom"
+const presetLabels: Record<Preset, string> = { last7: "Last 7 days", thisWeek: "This week", lastWeek: "Last week", thisMonth: "This month", lastMonth: "Last month", custom: "Choose dates" }
 const stat = "rounded-xl border border-line bg-surface-muted/60 px-3 py-2"
 
-// Weekly progress report: pick the period, see what moved, print it or save it as a PDF. The engineer's version includes quality and
+// Weekly or monthly progress report: pick the period, see what moved, print it or save it as a PDF. The engineer's version includes quality and
 // safety; the client's version is plain language and leaves internal sections out. Both read the same rows as the dashboards.
 export default function WeeklyReportModal({
   audience,
@@ -43,25 +43,34 @@ export default function WeeklyReportModal({
 }) {
   const toast = useToast()
   const today = manilaToday()
-  const presets = useMemo(() => periodPresets(today), [today])
+  const presets = useMemo(() => ({ ...periodPresets(today), ...monthPresets(today) }), [today])
   const [preset, setPreset] = useState<Preset>("last7")
   const [custom, setCustom] = useState({ from: presets.last7.from, to: today })
   const range = preset === "custom" ? custom : presets[preset]
   const valid = range.from <= range.to && range.to <= today
+  const monthly = preset === "thisMonth" || preset === "lastMonth"
 
   const summary = useMemo(
     () => (valid ? buildWeekly({ from: range.from, to: range.to, today, projectStart: start, projectEnd: end, pins, defects, inspections, logs, questions }) : null),
     [valid, range.from, range.to, today, start, end, pins, defects, inspections, logs, questions],
   )
 
+  // Months are compared with the month before. Only dated records are compared, never a rebuilt past snapshot (see comparePeriods).
+  const comparison = useMemo(() => {
+    if (!summary || !monthly) return null
+    const before = previousPeriod(range, "month")
+    const earlier = buildWeekly({ from: before.from, to: before.to, today, projectStart: start, projectEnd: end, pins, defects, inspections, logs, questions })
+    return { previous: before, rows: comparePeriods(summary, earlier, { audience, projectStart: start }) }
+  }, [summary, monthly, range, today, start, end, pins, defects, inspections, logs, questions, audience])
+
   const print = () => {
     if (!summary) return
-    if (!printHtml(weeklyReportHtml(summary, { project, nameOf, sheetOf }, audience))) toast.error("Could not open the print dialog", "Allow pop-ups for this site and try again.")
+    if (!printHtml(weeklyReportHtml(summary, { project, nameOf, sheetOf }, audience, { kind: monthly ? "monthly" : "weekly", comparison }))) toast.error("Could not open the print dialog", "Allow pop-ups for this site and try again.")
   }
 
   return (
     <Modal
-      title={audience === "client" ? "Weekly summary" : "Weekly progress report"}
+      title={monthly ? (audience === "client" ? "Monthly summary" : "Monthly progress report") : audience === "client" ? "Weekly summary" : "Weekly progress report"}
       description={`${project.name} (${project.code})`}
       size="xl"
       onClose={onClose}
@@ -102,6 +111,30 @@ export default function WeeklyReportModal({
               <p className="text-sm text-fg-muted">Quality: {summary.qa.inspectionsDone} inspection{summary.qa.inspectionsDone === 1 ? "" : "s"} completed ({summary.qa.passed} passed, {summary.qa.failed} failed); {summary.qa.ncrOpened} defect report{summary.qa.ncrOpened === 1 ? "" : "s"} raised, {summary.qa.ncrClosed} closed, {summary.qa.ncrOpen} still open.</p>
             ) : null}
             <p className="text-sm text-fg-muted">Site logs: {summary.logs.count} daily report{summary.logs.count === 1 ? "" : "s"} submitted{summary.logs.workersAverage === null ? "" : `, about ${summary.logs.workersAverage} workers on site`}. Questions: {summary.questions.asked} asked, {summary.questions.answered} answered.</p>
+            {monthly ? (
+              <p className="text-sm text-fg-muted">Task approvals move the progress figure. A work pin is completed only after final acceptance: <strong className="text-fg">{summary.pinsAccepted.length}</strong> completed in this period, <strong className="text-fg">{summary.verifiedThisPeriod.length}</strong> task{summary.verifiedThisPeriod.length === 1 ? "" : "s"} approved.</p>
+            ) : null}
+            {comparison ? (
+              <section aria-label="Comparison with the previous month" className="rounded-xl border border-line">
+                <h3 className="border-b border-line px-3 py-2 text-sm font-extrabold">Compared with {comparison.previous.from} to {comparison.previous.to}</h3>
+                {comparison.rows ? (
+                  <table className="w-full text-sm">
+                    <thead><tr className="text-left text-xs uppercase tracking-wider text-fg-muted"><th className="px-3 py-1.5 font-bold">Recorded in the period</th><th className="px-3 py-1.5 text-right font-bold">This period</th><th className="px-3 py-1.5 text-right font-bold">Before</th><th className="px-3 py-1.5 text-right font-bold">Change</th></tr></thead>
+                    <tbody className="divide-y divide-line">
+                      {comparison.rows.map((row) => (
+                        <tr key={row.key}>
+                          <td className="px-3 py-1.5">{row.label}</td>
+                          <td className="px-3 py-1.5 text-right font-bold tabular-nums">{row.current}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums text-fg-muted">{row.previous}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{row.change > 0 ? "+" : ""}{row.change}{row.percent === null ? "" : ` (${row.percent > 0 ? "+" : ""}${row.percent}%)`}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : <p className="px-3 py-3 text-sm text-fg-muted">There is nothing to compare with: the project had not started in that earlier period.</p>}
+                <p className="border-t border-line px-3 py-2 text-xs text-fg-muted">Only things recorded with a date are compared. Open counts such as waiting for review or overdue are today's state; past values were not stored.</p>
+              </section>
+            ) : null}
             <SCurveChart pins={pins} start={start} end={end} today={today} compact />
           </>
         )}

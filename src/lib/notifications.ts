@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { supabase } from "./supabase"
 import { useLiveReload } from "./realtime"
+import { HIDDEN_KINDS } from "./notificationModel"
 
 export type AppNotification = {
   id: string
@@ -38,17 +39,23 @@ export function useNotifications() {
   const [items, setItems] = useState<AppNotification[]>([])
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
+  const [unreadTotal, setUnreadTotal] = useState<number | null>(null)
   const alive = useRef(true)
 
   const reload = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("notifications")
-      .select("id,kind,title,body,link,project_id,entity_id,created_at,read_at")
-      .order("created_at", { ascending: false })
-      .limit(50)
+    const [{ data, error }, unreadCount] = await Promise.all([
+      supabase
+        .from("notifications")
+        .select("id,kind,title,body,link,project_id,entity_id,created_at,read_at")
+        .not("kind", "in", `(${HIDDEN_KINDS.join(",")})`)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      supabase.from("notifications").select("id", { count: "exact", head: true }).is("read_at", null).not("kind", "in", `(${HIDDEN_KINDS.join(",")})`),
+    ])
     if (!alive.current) return
     setFailed(Boolean(error))
     if (!error) setItems((data as AppNotification[] | null) ?? [])
+    setUnreadTotal(unreadCount.error ? null : unreadCount.count ?? 0)
     setLoading(false)
   }, [])
 
@@ -73,10 +80,24 @@ export function useNotifications() {
   const markRead = useCallback(async (ids: string[]) => {
     if (!ids.length) return
     const now = new Date().toISOString()
+    const newlyRead = items.filter((item) => ids.includes(item.id) && !item.read_at).length
     setItems((current) => current.map((item) => (ids.includes(item.id) && !item.read_at ? { ...item, read_at: now } : item)))
+    setUnreadTotal((total) => (total === null ? null : Math.max(0, total - newlyRead)))
     const { error } = await supabase.rpc("mark_notifications_read", { p_ids: ids })
     if (error) void reload()
-  }, [reload])
+  }, [items, reload])
+
+  // Every unread notification, including the ones older than the 50 on screen. Falls back to the loaded ones when the database function is not installed yet.
+  const markAllRead = useCallback(async () => {
+    const now = new Date().toISOString()
+    setItems((current) => current.map((item) => (item.read_at ? item : { ...item, read_at: now })))
+    setUnreadTotal(0)
+    const { error } = await supabase.rpc("mark_all_notifications_read")
+    if (!error) return
+    const loaded = items.filter((item) => !item.read_at).map((item) => item.id)
+    if (loaded.length) await supabase.rpc("mark_notifications_read", { p_ids: loaded })
+    void reload()
+  }, [items, reload])
 
   const remove = useCallback(async (id: string) => {
     setItems((current) => current.filter((item) => item.id !== id))
@@ -84,12 +105,16 @@ export function useNotifications() {
     if (error) void reload()
   }, [reload])
 
-  const unread = items.filter((item) => !item.read_at).length
-  return { items, unread, loading, failed, reload, markRead, remove }
+  const unread = unreadTotal ?? items.filter((item) => !item.read_at).length
+  return { items, unread, loading, failed, reload, markRead, markAllRead, remove }
 }
 
 // Go to a notification's page without a full reload (the app re-reads the path on popstate).
+// An in-app path: starts with one "/", no scheme, no "//" or backslash (those can leave the site), no control characters or spaces.
+const isInAppPath = (value: string) => /^\/(?![/\\])[^\s\u0000-\u001f\u007f]*$/.test(value)
+
 export function followLink(link: string, projectId: string | null) {
+  if (typeof link !== "string" || !isInAppPath(link)) return // never navigate away from BuildTrack
   if (projectId) {
     try {
       sessionStorage.setItem("buildtrack.project", projectId)
@@ -156,36 +181,125 @@ export const notificationKinds: Record<string, { label: string; tone: string }> 
   "project.restored": { label: "Restored", tone: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200" },
   "attendance.concern": { label: "Attendance", tone: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200" },
   "attendance.concern_resolved": { label: "Attendance", tone: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200" },
+  "digest.admin": { label: "Summary", tone: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200" },
+  "announcement.message": { label: "Announcement", tone: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200" },
+  "account.suspended": { label: "Account", tone: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200" },
+  "account.reactivated": { label: "Account", tone: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200" },
   "alert.escalation": { label: "Escalation", tone: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200" },
 }
 
-// Whether the person also wants an email copy of their notifications (default yes; the row is created the first time they choose).
+// The person's email choices. Master switch: whether they want email copies at all (default yes). Under it, reminders and announcements can be
+// switched off separately (default yes). Account and security notices are always emailed, so they have no switch. The row is created the first
+// time they choose. When the database does not have the two extra columns yet (migration not installed), only the master switch is offered.
+type Prefs = { email_enabled: boolean; email_reminders: boolean; email_announcements: boolean; email_admin_digest: boolean }
+const defaultPrefs: Prefs = { email_enabled: true, email_reminders: true, email_announcements: true, email_admin_digest: true }
+
 export function useEmailPreference(userId: string | null) {
-  const [enabled, setEnabled] = useState<boolean | null>(null)
+  const [prefs, setPrefs] = useState<Prefs | null>(null)
+  const [categories, setCategories] = useState(true)
+  const [digestColumn, setDigestColumn] = useState(true)
   useEffect(() => {
     if (!userId) return
     let active = true
-    supabase.from("notification_prefs").select("email_enabled").eq("user_id", userId).maybeSingle().then(({ data }) => {
-      if (active) setEnabled(data ? Boolean((data as { email_enabled: boolean }).email_enabled) : true)
-    })
+    void (async () => {
+      const full = await supabase.from("notification_prefs").select("email_enabled,email_reminders,email_announcements,email_admin_digest").eq("user_id", userId).maybeSingle()
+      if (!active) return
+      if (!full.error) return setPrefs({ ...defaultPrefs, ...((full.data as Partial<Prefs> | null) ?? {}) })
+      // One step back at a time: the daily-digest column may be missing while the reminder / announcement columns are there.
+      const withoutDigest = await supabase.from("notification_prefs").select("email_enabled,email_reminders,email_announcements").eq("user_id", userId).maybeSingle()
+      if (!active) return
+      if (!withoutDigest.error) {
+        setDigestColumn(false)
+        return setPrefs({ ...defaultPrefs, ...((withoutDigest.data as Partial<Prefs> | null) ?? {}) })
+      }
+      const basic = await supabase.from("notification_prefs").select("email_enabled").eq("user_id", userId).maybeSingle()
+      if (!active) return
+      setCategories(false)
+      setDigestColumn(false)
+      setPrefs({ ...defaultPrefs, ...((basic.data as Partial<Prefs> | null) ?? {}) })
+    })()
     return () => {
       active = false
     }
   }, [userId])
-  const change = useCallback(
-    async (next: boolean): Promise<string | null> => {
+  const save = useCallback(
+    async (patch: Partial<Prefs>): Promise<string | null> => {
       if (!userId) return "Not signed in"
-      const before = enabled
-      setEnabled(next)
+      const before = prefs
+      setPrefs((current) => ({ ...(current ?? defaultPrefs), ...patch }))
       const existing = await supabase.from("notification_prefs").select("user_id").eq("user_id", userId).maybeSingle()
-      const { error } = existing.data ? await supabase.from("notification_prefs").update({ email_enabled: next }).eq("user_id", userId) : await supabase.from("notification_prefs").insert({ user_id: userId, email_enabled: next })
+      const { error } = existing.data ? await supabase.from("notification_prefs").update(patch).eq("user_id", userId) : await supabase.from("notification_prefs").insert({ user_id: userId, ...patch })
       if (error) {
-        setEnabled(before)
+        setPrefs(before)
         return "Could not save your choice. Try again."
       }
       return null
     },
-    [userId, enabled],
+    [userId, prefs],
   )
-  return { enabled, change }
+  return {
+    enabled: prefs ? prefs.email_enabled : null,
+    reminders: prefs ? prefs.email_reminders : null,
+    announcements: prefs ? prefs.email_announcements : null,
+    adminDigest: prefs ? prefs.email_admin_digest : null,
+    categories,
+    digestColumn,
+    change: (next: boolean) => save({ email_enabled: next }),
+    changeReminders: (next: boolean) => save({ email_reminders: next }),
+    changeAnnouncements: (next: boolean) => save({ email_announcements: next }),
+    changeAdminDigest: (next: boolean) => save({ email_admin_digest: next }),
+  }
+}
+
+export const HISTORY_PAGE = 25
+
+// The full notification history, newest first, 25 at a time (the bell only keeps the latest 50).
+export function useNotificationHistory(unreadOnly: boolean, enabled: boolean) {
+  const [items, setItems] = useState<AppNotification[]>([])
+  const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
+  const [more, setMore] = useState(false)
+  const generation = useRef(0)
+
+  const load = useCallback(
+    async (offset: number) => {
+      const run = ++generation.current
+      setLoading(true)
+      let query = supabase
+        .from("notifications")
+        .select("id,kind,title,body,link,project_id,entity_id,created_at,read_at")
+        .not("kind", "in", `(${HIDDEN_KINDS.join(",")})`)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(offset, offset + HISTORY_PAGE - 1)
+      if (unreadOnly) query = query.is("read_at", null)
+      const { data, error } = await query
+      if (run !== generation.current) return
+      setFailed(Boolean(error))
+      if (!error) {
+        const page = (data as AppNotification[] | null) ?? []
+        setItems((current) => (offset === 0 ? page : [...current, ...page.filter((row) => !current.some((known) => known.id === row.id))]))
+        setMore(page.length === HISTORY_PAGE)
+      }
+      setLoading(false)
+    },
+    [unreadOnly],
+  )
+
+  useEffect(() => {
+    if (!enabled) return
+    setItems([])
+    setMore(false)
+    void load(0)
+    return () => {
+      generation.current++
+    }
+  }, [enabled, load])
+
+  const markReadHere = useCallback((ids: string[]) => {
+    const now = new Date().toISOString()
+    setItems((current) => current.map((item) => (ids.includes(item.id) && !item.read_at ? { ...item, read_at: now } : item)))
+  }, [])
+
+  return { items, loading, failed, more, loadMore: () => load(items.length), reload: () => load(0), markReadHere }
 }
