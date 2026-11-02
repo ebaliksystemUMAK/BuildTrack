@@ -4,6 +4,19 @@ One document per SQL file in `supabase/`. Same sections every time so changes ar
 
 | Doc | SQL file | Status |
 |---|---|---|
+| [20261102140000_system_logs](20261102140000_system_logs.md) | `supabase/migrations/20261102140000_system_logs.sql` | APPLIED 2026-11-02 (live `20261102041122`) |
+| [20261102120000_system_control_schedule_and_lockouts](20261102120000_system_control_schedule_and_lockouts.md) | `supabase/migrations/20261102120000_system_control_schedule_and_lockouts.sql` | APPLIED 2026-11-02 (live `20261102031428`) |
+| [20261102100000_system_control](20261102100000_system_control.md) | `supabase/migrations/20261102100000_system_control.sql` | APPLIED 2026-11-02 (live `20261102024451`) |
+| [20261102000000_email_code_check](20261102000000_email_code_check.md) | `supabase/migrations/20261102000000_email_code_check.sql` | APPLIED 2026-11-02 (live `20261102012618`) |
+| [20261101210000_email_verification_and_codes](20261101210000_email_verification_and_codes.md) | `supabase/migrations/20261101210000_email_verification_and_codes.sql` | APPLIED 2026-11-01 (live `20261101135551`) |
+| [20261101220000_email_only_needed_kinds](20261101220000_email_only_needed_kinds.md) | `supabase/migrations/20261101220000_email_only_needed_kinds.sql` | APPLIED 2026-11-01 (live `20261101135623`) |
+| [20261101230000_account_deletion](20261101230000_account_deletion.md) | `supabase/migrations/20261101230000_account_deletion.sql` | APPLIED 2026-11-01 (live `20261101135657`) |
+| [20261101200000_record_removal](20261101200000_record_removal.md) | `supabase/migrations/20261101200000_record_removal.sql` | APPLIED 2026-11-01 (live `20261101111602`) |
+| [20261101190000_delete_protection_and_purge](20261101190000_delete_protection_and_purge.md) | `supabase/migrations/20261101190000_delete_protection_and_purge.sql` | APPLIED 2026-11-01 (live `20261101081428`) |
+| [20261101180000_project_recycle_bin](20261101180000_project_recycle_bin.md) | `supabase/migrations/20261101180000_project_recycle_bin.sql` | APPLIED 2026-11-01 (live `20261101081342`) |
+| [20261101150000_site_controls](20261101150000_site_controls.md) | `supabase/migrations/20261101150000_site_controls.sql` | APPLIED 2026-11-01 (live `20261101052258`) |
+| [20261101120000_system_health_and_admin_digest](20261101120000_system_health_and_admin_digest.md) | `supabase/migrations/20261101120000_system_health_and_admin_digest.sql` | APPLIED 2026-11-01 (live `20261101052156`) |
+| [20261101090000_admin_communications](20261101090000_admin_communications.md) | `supabase/migrations/20261101090000_admin_communications.sql` | Applied and verified 2026-11-01 |
 | [20261031172653_project_team_role_separation](20261031172653_project_team_role_separation.md) | `supabase/migrations/20261031172653_project_team_role_separation.sql` | Applied and verified 2026-11-01; 566 SQL cases; Admin manager appointment and read-only team oversight, PM team operations, Super Admin recovery |
 | [20261031170819_readable_audit_details](20261031170819_readable_audit_details.md), [20261031171048_audit_label_encoding](20261031171048_audit_label_encoding.md) | `supabase/migrations/20261031170819_readable_audit_details.sql`, `20261031171048_audit_label_encoding.sql` | Applied and verified 2026-11-01; 558 SQL cases; complete readable details, related names, future before/after snapshots; history and access preserved |
 | [20261031123546_photo_upload_rules](20261031123546_photo_upload_rules.md) | `supabase/migrations/20261031123546_photo_upload_rules.sql` | Applied and tracked 2026-10-31; 552 SQL cases pass; admin-users v8 with photos.manage deployed and verified 2026-11-01 (JWT on, source parity) |

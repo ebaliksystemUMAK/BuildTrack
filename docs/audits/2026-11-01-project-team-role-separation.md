@@ -24,3 +24,9 @@ Verification:
 - Security advisor findings unchanged: 4 existing RLS-without-policy info findings, 120 existing authenticated-definer warnings and 1 existing Auth password-protection warning.
 
 Local migration filename matches the hosted version. No Edge Function deployment was required; the frontend is included in the user's requested repository push.
+
+## Update 2026-11-02: Super Admin has every workspace (owner request)
+- Admin sidebar: **Biometric management** is shown to the Super Admin again (it was hidden from the Super Admin's normal menu). Nothing was removed; regular Admin behaviour is unchanged.
+- Project Manager workspace (`/pm/...`): the Super Admin may now open it (`PM_WORKSPACE_ROLES` = project_manager + super_admin; a regular Admin still cannot). Admin sidebar > Projects > **Project Manager workspace** opens `/pm/projects`; inside, a note and a **Back to Control center** button. It is a view for the Super Admin: `pmAccess` still says "manage = false" (the assigned Project Manager makes the changes) and the database re-checks every change, so no backend rule changed. Not checked page by page with a signed-in Super Admin: a page whose data only the assigned Project Manager may read can show an empty list or a refusal.
+- Tests updated: `test-role-separation` (menu keys, link only for Super Admin), `test-project-manager` (roles, Super Admin note).
+- Sidebar (all workspaces, `components/shell/AppShell.tsx`, UI only): on a computer the top-bar menu button now hides the whole sidebar like a drawer and shows it again (remembered in `buildtrack.sidebar.hidden`); the icons-only rail is still there through a button at the bottom of the sidebar ("Icons only"). Phone drawer unchanged. Checked by type-check only; not yet looked at in a signed-in browser.

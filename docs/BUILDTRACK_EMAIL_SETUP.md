@@ -9,4 +9,6 @@ The code, the database queue and the Edge Function `send-notifications` are in p
 
 Check it: call the function once by hand. `{"configured":false}` means a secret is missing; `{"configured":true,"claimed":N,"sent":N}` means it works. Each person can switch emails off in the bell menu. Outcomes are in the table `email_log` (SQL editor only).
 
+After the four steps, open **Admin > System health** (Super Admin) to see the email settings (present / missing, never the values), the queue and the scheduled jobs, and to send yourself one test email. "Accepted" there means the mail provider took the message; use "Ask the provider" for its delivery report. The page needs the `system-health` Edge Function deployed (`npx supabase functions deploy system-health --project-ref ruimjlhsfpaezkgfphsz --use-api`). The daily admin digest is a separate, optional schedule: see `docs/audits/sql/20261101120000_system_health_and_admin_digest.md`.
+
 Limits by design: at most 20 emails per person per 24 hours, three attempts per notification, nothing older than 2 days is sent, only active accounts are emailed.
