@@ -4,7 +4,7 @@ export default async function ({ db, ids, as, asOwner, test, expectOk, expectFai
     await asOwner()
     const { rows } = await db.query("insert into auth.users (email, raw_user_meta_data) values ($1, $2) returning id", [`${key}@signup.test`, JSON.stringify(meta)])
     ids[key] = rows[0].id
-    await db.query("update public.profiles set identity_status = 'verified' where id = $1", [rows[0].id]) // these tests are about the request flow, not identity (see 99-identity-privacy)
+    await db.query("update public.profiles set identity_status = 'verified', email_verified_at = now() where id = $1", [rows[0].id]) // these tests are about the request flow, not identity or the email code (see zzzzz-email-verification) (see 99-identity-privacy)
     return (await db.query("select * from public.profiles where id = $1", [rows[0].id])).rows[0]
   }
 

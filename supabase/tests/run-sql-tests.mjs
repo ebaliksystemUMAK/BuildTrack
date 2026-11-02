@@ -22,7 +22,7 @@ async function addUser(key, role, status = "active", verified = true) {
     [email, JSON.stringify({ full_name: key })],
   )
   ids[key] = rows[0].id
-  await db.query("update public.profiles set role = $2, status = $3, identity_status = $4 where id = $1", [rows[0].id, role, status, verified ? "verified" : "unverified"])
+  await db.query("update public.profiles set role = $2, status = $3, identity_status = $4, email_verified_at = case when $4 = 'verified' then now() end where id = $1", [rows[0].id, role, status, verified ? "verified" : "unverified"]) // the test accounts have a verified identity and email unless a test says otherwise
 }
 
 async function as(key, aal = "aal1") {
@@ -145,11 +145,13 @@ await test("Disabled member loses access immediately", async () => {
   await db.query("update public.profiles set status = 'active' where id = $1", [ids.client1])
 })
 
-await test("Deleting a project cascades members and is audited", async () => {
+await test("A signed-in Admin can no longer hard-delete a project (recycle bin first); the backend delete still cascades members and is audited", async () => {
   await as("admin", "aal2")
   const { rows } = await db.query("select id from public.projects where code = 'VCB-002'")
-  await expectOk("delete from public.projects where id = $1", [rows[0].id])
+  await expectFail("delete from public.projects where id = $1", [rows[0].id], /cannot be deleted directly/)
   await asOwner()
+  await db.query("select set_config('request.jwt.claims', '{}', false)")
+  await expectOk("delete from public.projects where id = $1", [rows[0].id])
   const n = await count("select count(*) n from public.audit_log where action = 'projects.delete'")
   if (n < 1) throw new Error("no audit row for projects.delete")
 })

@@ -17,7 +17,8 @@ Authentication → **Emails** → **Templates**.
 
 Rules:
 - Keep `{{ .Token }}` (the 6-digit code) in the sign-up template. Do not use `{{ .ConfirmationURL }}` there, or the email would send a link instead of a code.
-- Keep `{{ .ConfirmationURL }}` in the reset template.
+- The reset template is the link only (`{{ .ConfirmationURL }}`). The "6-digit code" choice on the Forgot password screen does NOT use this template: BuildTrack's own `email-code` function makes, emails and checks that code (needs `BREVO_API_KEY` and `MAIL_FROM_EMAIL`, see `docs/BUILDTRACK_EMAIL_SETUP.md`), so editing or breaking this template never affects the code.
+- The reset link shares the **Email OTP Expiration** of section 1 (10 minutes), so the template says 10 minutes. If you change that setting, change the wording too.
 - Sender name/email and the SMTP connection are already set (Brevo).
 
 ## 3. Check it

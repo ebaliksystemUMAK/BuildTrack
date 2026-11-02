@@ -1,3 +1,4 @@
+import { checkStatusChange, reactivationNotice, suspensionNotice, type StatusNotice } from "../_shared/accountStatus.ts"
 import { audit, can, type Caller, corsHeaders, HttpError, json, requireCaller } from "../_shared/guard.ts"
 
 // project_manager (20261029095839): any Admin with the matching users.* permission may give it; Admins assign their projects.
@@ -230,16 +231,21 @@ Deno.serve(async (req) => {
     if (action === "set_enabled") {
       if (!can(caller, "users.disable")) throw new HttpError(403, "Missing permission: users.disable")
       const target = await loadTarget(caller, body.id)
-      if (target.id === caller.id) throw new HttpError(400, "You cannot disable your own account")
       const enable = body.enabled === true
-      if (!enable && target.status === "pending") throw new HttpError(400, "Reject pending users instead")
+      // The rules (not yourself, Admins only by a Super Admin, suspend only active accounts, enable only suspended ones, written reason) live in
+      // _shared/accountStatus.ts and are tested in Node; the caller was already required to be an active account by requireCaller.
+      const check = checkStatusChange({ id: caller.id, role: caller.role }, { id: target.id, role: target.role, status: target.status }, enable, body.reason)
+      if (!check.ok) throw new HttpError(check.status, check.message)
       await setBan(caller, target.id, !enable)
       const { error } = await caller.admin.from("profiles")
         .update({ status: enable ? "active" : "disabled" }).eq("id", target.id)
       if (error) throw new HttpError(500, error.message)
       const revoked = enable ? 0 : await revokeSessions(caller, target.id)
-      await audit(caller, enable ? "user.enable" : "user.disable", target.id, enable ? {} : { sessions_revoked: revoked })
-      return json({ ok: true })
+      await audit(caller, enable ? "user.enable" : "user.disable", target.id, enable ? {} : { reason: check.reason, sessions_revoked: revoked })
+      // The person's notice goes through the normal notifications table (bell, and email when it is set up). A failure here never undoes the decision.
+      const notice: StatusNotice = enable ? reactivationNotice() : suspensionNotice(check.reason ?? "")
+      const { error: noticeError } = await caller.admin.from("notifications").insert({ user_id: target.id, kind: notice.kind, title: notice.title, body: notice.body })
+      return json({ ok: true, notified: !noticeError })
     }
 
     if (action === "set_permissions") {

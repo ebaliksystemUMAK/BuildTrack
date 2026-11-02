@@ -255,6 +255,8 @@ export default async function ({ db, ids, as, asOwner, test, expectOk, expectFai
     await as("fore1", "aal2")
     await expectOk(photoSql, [pin, P1, `${P1}/${pin}/draft.jpg`])
     await as("admin", "aal2")
+    await expectFail("delete from public.blueprints where id = $1", [spare], /recorded work.*Only a Super Admin/) // 20261101190000: a pin with photos or progress is not erased by an Admin
+    await as("super", "aal2")
     await db.query("delete from public.blueprints where id = $1", [spare])
     await asOwner()
     if ((await count("select count(*) n from public.pins where blueprint_id = $1", [spare])) !== 0) throw new Error("pins remain")

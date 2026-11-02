@@ -114,6 +114,8 @@ export default async function ({ db, ids, as, asOwner, test, expectFail, count }
     const fresh = (await db.query("insert into public.pins (project_id, blueprint_id, x, y, title, assigned_to) values ($1, $2, 5, 5, 'Not started yet', $3) returning id", [P1, spare, ids.fore1])).rows[0].id
     await addPhoto(fresh, "draft")
     await as("admin", "aal2")
+    await expectFail("delete from public.blueprints where id = $1", [spare], /recorded work.*Only a Super Admin/) // 20261101190000: a pin with photos or progress is not erased by an Admin
+    await as("super", "aal2")
     await db.query("delete from public.blueprints where id = $1", [spare])
     await asOwner()
     if ((await count("select count(*) n from public.pins where id = $1", [fresh])) !== 0) throw new Error("the fresh sheet should be deleted with its pins")

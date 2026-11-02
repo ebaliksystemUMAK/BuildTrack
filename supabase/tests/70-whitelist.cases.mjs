@@ -8,7 +8,7 @@ export default async function ({ db, ids, as, asOwner, test, expectOk, expectFai
     await asOwner()
     const { rows } = await db.query("insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values ($1, '{}'::jsonb, $2) returning id", [email, confirmed ? new Date().toISOString() : null])
     ids[key] = rows[0].id
-    await db.query("update public.profiles set identity_status = 'verified' where id = $1", [rows[0].id])
+    await db.query("update public.profiles set identity_status = 'verified', email_verified_at = now() where id = $1", [rows[0].id])
   }
   const profile = async (key) => (await db.query("select role, status, discipline, approved_by from public.profiles where id = $1", [ids[key]])).rows[0]
   const entry = async (email) => (await db.query("select used_at, used_by from public.whitelisted_emails where email = $1", [email])).rows[0]

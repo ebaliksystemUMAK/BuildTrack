@@ -7,7 +7,7 @@ export default async function ({ db, ids, as, asOwner, test, expectOk, expectFai
   const makeRequest = async (key, email, role = "engineer") => {
     await asOwner()
     ids[key] = (await db.query("insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values ($1, '{}'::jsonb, now()) returning id", [email])).rows[0].id
-    await db.query("update public.profiles set identity_status = 'verified' where id = $1", [ids[key]])
+    await db.query("update public.profiles set identity_status = 'verified', email_verified_at = now() where id = $1", [ids[key]])
     await as(key)
     return (await db.query("insert into public.access_requests (user_id, requested_role, message) values ($1, $2, 'Site engineer for the demo project') returning id", [ids[key], role])).rows[0].id
   }

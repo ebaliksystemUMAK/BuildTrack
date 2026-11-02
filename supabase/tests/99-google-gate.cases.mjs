@@ -41,6 +41,7 @@ export default async function ({ db, ids, as, asOwner, test, expectOk, expectFai
   })
 
   await test("Registration details are validated; the request goes to the administrators and the audit log", async () => {
+    await asOwner(); await db.query("update public.profiles set email_verified_at = now() where id = $1", [ids.g1]) // the emailed code is tested in zzzzz-email-verification
     await as("g1")
     await expectFail("select public.complete_registration('G', '+63 912 345 6789', null, null, 'engineer', 'mep')", [], /full name/)
     await expectFail("select public.complete_registration('Gina Google', 'abc', null, null, 'engineer', 'mep')", [], /phone/)
