@@ -91,6 +91,8 @@ test("access: only assigned Project Managers manage their open projects in the P
   for (const role of ["admin", "super_admin", "engineer", "foreman", "client", "user", null]) {
     assert.equal(pmAccess({ role, designation: "primary", archived: false }).manage, false)
   }
+  assert.match(pmAccess({ role: "super_admin", designation: null, archived: false }).note, /Super Admin view/, "the Super Admin sees why it is view-only")
+  assert.doesNotMatch(pmAccess({ role: "admin", designation: null, archived: false }).note, /Super Admin view/)
 })
 
 test("dashboard: progress, reviews waiting, open / late NCRs and deadlines (late first, then the next 14 days)", () => {
@@ -133,7 +135,7 @@ test("attendance concerns: kind, day (today or up to 120 days back) and a 5-500 
 })
 
 test("routes: Project Manager pages carry the project; Admin project links open the same place in the workspace", () => {
-  assert.deepEqual(PM_WORKSPACE_ROLES, ["project_manager"], "Admin and Super Admin cannot enter /pm routes")
+  assert.deepEqual(PM_WORKSPACE_ROLES, ["project_manager", "super_admin"], "Super Admin can open the Project Manager workspace; a regular Admin cannot")
   assert.equal(PM_PAGES.length, 10)
   assert.ok(isPmPage("audit") && !isPmPage("settings") && !isPmPage("biometrics"))
   assert.equal(fieldPagePath("pm", "dashboard", "p1"), "/pm/dashboard?project=p1")

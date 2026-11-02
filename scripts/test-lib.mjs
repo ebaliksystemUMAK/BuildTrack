@@ -21,7 +21,8 @@ import { taskProgress } from "../src/lib/taskProgress.ts"
 import { fetchAll } from "../src/lib/paging.ts"
 import { canSearch, hitPath, searchPattern } from "../src/lib/projectSearchModel.ts"
 import { distanceM, metres, photoEligible, photoPreviewBlocked, siteFlag, sitePhotoProblem, stampFields, stampLabel, stampSummary } from "../src/lib/photoStamp.ts"
-import { buildWeekly, headline, periodPresets, sCurveSvg, weeklyReportHtml } from "../src/lib/weeklyReport.ts"
+import { createAttentionStore, decisionTotal, isOpenProject, projectsWithoutPrimaryManager } from "../src/lib/attentionStore.ts"
+import { buildWeekly, comparePeriods, headline, monthPresets, periodPresets, previousPeriod, sCurveSvg, weeklyReportHtml } from "../src/lib/weeklyReport.ts"
 import { escapeHtml, reportHtml } from "../src/lib/printReport.ts"
 import { reportableDates } from "../src/lib/reportFormat.ts"
 import { buildZip, crc32, safeEntryName, textBytes } from "../src/lib/zipWriter.ts"
@@ -1686,4 +1687,165 @@ test("Register password: 12+ characters with lowercase, uppercase, a number and 
   assert.deepEqual(passwordChecks("aB1!").map((check) => check.met), [false, true, true, true, true])
   assert.deepEqual(passwordChecks("").map((check) => check.key), ["length", "lower", "upper", "number", "special"])
 })
+
+{
+  // ---- Monthly report: Manila calendar months, dated approvals only, task approval kept apart from final pin acceptance ----
+  const month = (today) => monthPresets(today)
+  test("monthly: this month runs to today, last month is the whole previous month (leap year, year change, 30/31 days)", () => {
+    assert.deepEqual(month("2026-11-18"), { thisMonth: { from: "2026-11-01", to: "2026-11-18" }, lastMonth: { from: "2026-10-01", to: "2026-10-31" } })
+    assert.deepEqual(month("2026-03-31").lastMonth, { from: "2026-02-01", to: "2026-02-28" })
+    assert.deepEqual(month("2028-03-10").lastMonth, { from: "2028-02-01", to: "2028-02-29" })
+    assert.deepEqual(month("2026-01-01"), { thisMonth: { from: "2026-01-01", to: "2026-01-01" }, lastMonth: { from: "2025-12-01", to: "2025-12-31" } })
+    assert.deepEqual(month("2026-05-31").lastMonth, { from: "2026-04-01", to: "2026-04-30" })
+  })
+  test("monthly: the previous period keeps the same number of days while the month is unfinished, and never runs past the previous month", () => {
+    assert.deepEqual(previousPeriod({ from: "2026-11-01", to: "2026-11-18" }, "month"), { from: "2026-10-01", to: "2026-10-18" })
+    assert.deepEqual(previousPeriod({ from: "2026-03-01", to: "2026-03-31" }, "month"), { from: "2026-02-01", to: "2026-02-28" })
+    assert.deepEqual(previousPeriod({ from: "2026-10-01", to: "2026-10-31" }, "month"), { from: "2026-09-01", to: "2026-09-30" })
+    assert.deepEqual(previousPeriod({ from: "2026-01-01", to: "2026-01-10" }, "month"), { from: "2025-12-01", to: "2025-12-10" })
+    assert.deepEqual(previousPeriod({ from: "2026-03-02", to: "2026-03-08" }, "days"), { from: "2026-02-23", to: "2026-03-01" })
+    assert.deepEqual(previousPeriod({ from: "2026-03-05", to: "2026-03-05" }, "days"), { from: "2026-03-04", to: "2026-03-04" })
+  })
+
+  // A pin with two approved tasks (one at the very end of October in Manila, one at the very start of November), plus a pin that is fully accepted.
+  const pins = [
+    { id: "p1", title: "Laundry", blueprint_id: "s1", category: "progress", status: "in_progress", due_date: "2026-10-31", verified_at: null, assigned_to: null, tasks: [
+      progressTask("t1", "p1", true, "2026-10-31T15:59:59Z"), // 23:59:59 on 31 Oct in Manila
+      progressTask("t2", "p1", true, "2026-10-31T16:00:00Z"), // 00:00:00 on 1 Nov in Manila
+      progressTask("t3", "p1"),
+    ] },
+    { id: "p2", title: "Kitchen", blueprint_id: "s1", category: "progress", status: "verified", due_date: "2026-11-05", verified_at: "2026-11-10T03:00:00Z", assigned_to: null, tasks: [progressTask("t4", "p2", true, "2026-11-09T03:00:00Z")] },
+    { id: "p3", title: "Hall", blueprint_id: "s1", category: "progress", status: "verified", due_date: "2026-10-20", verified_at: "2026-10-25T03:00:00Z", assigned_to: null, tasks: [progressTask("t5", "p3", true, "2026-10-24T03:00:00Z")] },
+    { id: "n1", title: "A note", blueprint_id: "s1", category: "note", status: "verified", due_date: null, verified_at: "2026-11-02T03:00:00Z", assigned_to: null, tasks: [] },
+  ]
+  const run = (range) => buildWeekly({ from: range.from, to: range.to, today: "2026-11-18", projectStart: "2026-09-01", projectEnd: "2026-12-31", pins, logs: [], questions: [] })
+  const november = run(month("2026-11-18").thisMonth)
+  const october = run(month("2026-11-18").lastMonth)
+
+  test("monthly: approvals are dated by the Manila day, so the last second of October stays in October", () => {
+    assert.deepEqual(october.verifiedThisPeriod.map((row) => [row.id, row.date]), [["t5", "2026-10-24"], ["t1", "2026-10-31"]])
+    assert.deepEqual(november.verifiedThisPeriod.map((row) => [row.id, row.date]), [["t2", "2026-11-01"], ["t4", "2026-11-09"]])
+  })
+  test("monthly: task approval and final pin acceptance are separate lists (a pin with approved tasks is not completed)", () => {
+    assert.deepEqual(november.pinsAccepted.map((row) => [row.id, row.date]), [["p2", "2026-11-10"]])
+    assert.deepEqual(october.pinsAccepted.map((row) => [row.id, row.date]), [["p3", "2026-10-25"]])
+    assert.equal(november.verifiedThisPeriod.some((row) => row.id === "t3"), false)
+    assert.equal(november.pinsAccepted.some((row) => row.id === "p1"), false, "Laundry has approved tasks but is still in progress")
+    assert.equal(november.pinsAccepted.some((row) => row.id === "n1"), false, "notes are not work")
+  })
+  test("monthly: the comparison uses recorded counts only and states changes; open counts are never compared", () => {
+    const earlier = run(previousPeriod(month("2026-11-18").thisMonth, "month"))
+    const rows = comparePeriods(november, earlier, { audience: "team", projectStart: "2026-09-01" })
+    const byKey = Object.fromEntries(rows.map((row) => [row.key, row]))
+    assert.deepEqual(Object.keys(byKey), ["tasks", "pins", "logs", "asked", "answered"], "no QA rows without inspection and defect data, and no open counts")
+    assert.deepEqual([byKey.tasks.current, byKey.tasks.previous, byKey.tasks.change, byKey.tasks.percent], [2, 0, 2, null]) // 1-18 Oct holds no approval: t5 is on the 24th and t1 on the 31st (a percentage over zero stays null)
+    assert.deepEqual([byKey.pins.current, byKey.pins.previous, byKey.pins.change, byKey.pins.percent], [1, 0, 1, null])
+    assert.equal(byKey.logs.percent, null, "a percentage over zero is not invented")
+  })
+  test("monthly: QA rows appear for the team only, when both periods have inspection and defect data", () => {
+    const withQa = (range) => buildWeekly({ from: range.from, to: range.to, today: "2026-11-18", projectStart: null, projectEnd: null, pins, logs: [], questions: [],
+      defects: [{ status: "open", severity: "major", due_date: "2026-11-30", raised_at: "2026-11-03T01:00:00Z", closed_at: null }, { status: "closed", severity: "minor", due_date: "2026-10-30", raised_at: "2026-10-05T01:00:00Z", closed_at: "2026-10-15T01:00:00Z" }],
+      inspections: [{ status: "passed", completed_at: "2026-11-04T01:00:00Z" }, { status: "failed", completed_at: "2026-10-10T01:00:00Z" }] })
+    const now = withQa(month("2026-11-18").thisMonth)
+    const before = withQa(previousPeriod(month("2026-11-18").thisMonth, "month"))
+    const team = comparePeriods(now, before, { audience: "team", projectStart: null })
+    assert.deepEqual(team.map((row) => row.key), ["tasks", "pins", "inspections", "ncrOpened", "ncrClosed", "logs", "asked", "answered"])
+    assert.deepEqual(team.filter((row) => ["inspections", "ncrOpened", "ncrClosed"].includes(row.key)).map((row) => [row.key, row.current, row.previous]), [["inspections", 1, 1], ["ncrOpened", 1, 1], ["ncrClosed", 0, 1]])
+    assert.deepEqual(comparePeriods(now, before, { audience: "client", projectStart: null }).map((row) => row.key), ["tasks", "pins", "logs", "asked", "answered"])
+  })
+  test("monthly: nothing to compare when the project had not started, and an empty project gives zeros, never NaN", () => {
+    const earlier = run(previousPeriod(month("2026-11-18").thisMonth, "month"))
+    assert.equal(comparePeriods(november, earlier, { audience: "team", projectStart: "2026-10-20" }), null, "the earlier period ended 18 Oct, before the project began")
+    assert.notEqual(comparePeriods(november, earlier, { audience: "team", projectStart: "2026-10-18" }), null, "starting on the last day of the earlier period still compares")
+    const empty = buildWeekly({ from: "2026-11-01", to: "2026-11-18", today: "2026-11-18", projectStart: null, projectEnd: null, pins: [], logs: [], questions: [] })
+    const emptyRows = comparePeriods(empty, empty, { audience: "team", projectStart: null })
+    assert.ok(emptyRows.every((row) => row.current === 0 && row.previous === 0 && row.change === 0 && row.percent === null))
+    assert.equal(empty.pinsAccepted.length, 0)
+  })
+  test("monthly: the print layout is titled monthly, lists completed pins apart from tasks, escapes the comparison and keeps weekly prints unchanged", () => {
+    const names = { project: { code: "P-1", name: "Tower", location: null }, nameOf: () => "Someone", sheetOf: () => "Level <1>" }
+    const earlier = run(previousPeriod(month("2026-11-18").thisMonth, "month"))
+    const comparison = { previous: previousPeriod(month("2026-11-18").thisMonth, "month"), rows: comparePeriods(november, earlier, { audience: "client", projectStart: null }) }
+    const html = weeklyReportHtml(november, names, "client", { kind: "monthly", comparison })
+    assert.match(html, /Monthly progress summary/)
+    assert.match(html, /Work pins completed \(final acceptance\)/)
+    assert.match(html, /Compared with/)
+    assert.match(html, /About the comparison/)
+    assert.doesNotMatch(html, /Level <1>/)
+    const nothing = weeklyReportHtml(november, names, "team", { kind: "monthly", comparison: { previous: comparison.previous, rows: null } })
+    assert.match(nothing, /nothing to compare with/)
+    const weekly = weeklyReportHtml(november, names, "team")
+    assert.match(weekly, /Weekly progress report/)
+    assert.doesNotMatch(weekly, /final acceptance|Compared with/)
+  })
+}
+
+{
+  // ---- Admin attention counts: one shared store for the menu badge and the dashboard; open projects without a primary Project Manager ----
+  const arun = async (name, fn) => {
+    try { await fn(); passed++; console.log(`  ok   ${name}`) } catch (error) { console.log(`  FAIL ${name}\n       ${error.message}`); process.exitCode = 1 }
+  }
+  const counts = (n = 1) => ({ registrations: n, ids: n + 1, erasures: n + 2, requests: n + 3 })
+  const manual = () => {
+    const timers = new Map(); let next = 0
+    return { setTimer: (run) => { timers.set(++next, run); return next }, clearTimer: (id) => timers.delete(id), fire: () => [...timers.values()].forEach((run) => run()), active: () => timers.size }
+  }
+  const later = () => new Promise((resolve) => setImmediate(resolve))
+
+  await arun("attention: the first subscriber reads once, the second shares it, and both hear the result", async () => {
+    let calls = 0
+    const clock = manual()
+    const store = createAttentionStore(async () => { calls++; return counts(5) }, { setTimer: clock.setTimer, clearTimer: clock.clearTimer })
+    assert.equal(store.get(), null)
+    let heard = 0
+    const off1 = store.subscribe(() => heard++)
+    const off2 = store.subscribe(() => heard++)
+    await later()
+    assert.equal(calls, 1, "one request set for two components")
+    assert.deepEqual(store.get(), counts(5)); assert.equal(heard, 2)
+    assert.equal(clock.active(), 1, "one polling timer, not one per subscriber")
+    off1(); assert.equal(clock.active(), 1); off2(); assert.equal(clock.active(), 0, "the timer stops with the last subscriber")
+  })
+  await arun("attention: refresh while a request is running shares that request", async () => {
+    let calls = 0, release
+    const store = createAttentionStore(() => { calls++; return new Promise((resolve) => { release = () => resolve(counts(1)) }) }, { setTimer: () => 1, clearTimer: () => {} })
+    const a = store.refresh(), b = store.refresh()
+    assert.equal(calls, 1)
+    release(); await Promise.all([a, b]); assert.deepEqual(store.get(), counts(1))
+    const c = store.refresh(); assert.equal(calls, 2, "a new request once the first finished"); release(); await c
+  })
+  await arun("attention: a failed read keeps the last good numbers instead of showing zeros; polling only runs while the tab is visible", async () => {
+    let fail = false, calls = 0, visible = true
+    const clock = manual()
+    const store = createAttentionStore(async () => { calls++; if (fail) throw new Error("offline"); return counts(calls) }, { setTimer: clock.setTimer, clearTimer: clock.clearTimer, isVisible: () => visible })
+    const off = store.subscribe(() => {}); await later()
+    assert.deepEqual(store.get(), counts(1))
+    fail = true; clock.fire(); await later()
+    assert.deepEqual(store.get(), counts(1), "a failed refresh does not turn into zeros")
+    visible = false; const before = calls; clock.fire(); await later()
+    assert.equal(calls, before, "no request while the tab is hidden")
+    visible = true; fail = false; clock.fire(); await later()
+    assert.deepEqual(store.get(), counts(calls))
+    off()
+  })
+  await arun("attention: a first read that fails leaves no numbers (shown as a dash), and the badge total is zero rather than invented", async () => {
+    const store = createAttentionStore(async () => { throw new Error("denied") }, { setTimer: () => 1, clearTimer: () => {} })
+    store.subscribe(() => {}); await later()
+    assert.equal(store.get(), null); assert.equal(decisionTotal(store.get()), 0)
+    assert.equal(decisionTotal(counts(1)), 1 + 2 + 3 + 4, "registrations + ID checks + deletion requests + access requests")
+  })
+  await arun("overview: projects without a primary Project Manager ignore closed, archived, backup-only and inactive appointments", async () => {
+    const project = (id, status = "active", archived_at = null) => ({ id, status, archived_at })
+    const projects = [project("a"), project("b"), project("c", "completed"), project("d", "cancelled"), project("e", "active", "2026-10-01T00:00:00Z"), project("f", "planning"), project("g", "on_hold")]
+    const managers = [
+      { project_id: "a", designation: "primary", active: true },
+      { project_id: "b", designation: "backup", active: true }, // a backup alone is not enough
+      { project_id: "f", designation: "primary", active: false }, // an ended appointment
+    ]
+    assert.deepEqual(projectsWithoutPrimaryManager(projects, managers).map((row) => row.id), ["b", "f", "g"])
+    assert.deepEqual(projectsWithoutPrimaryManager([], managers), [])
+    assert.deepEqual(projectsWithoutPrimaryManager(projects, []).map((row) => row.id), ["a", "b", "f", "g"])
+    assert.equal(isOpenProject(project("x", "completed")), false); assert.equal(isOpenProject(project("x", "planning")), true)
+  })
+}
 console.log(`\n${passed} passed${process.exitCode ? ", some FAILED" : ""}`)

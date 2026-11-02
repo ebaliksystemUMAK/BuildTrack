@@ -24,7 +24,7 @@ async function as(key, aal = "aal2") {
 async function addUser(key, role) {
   const { rows } = await db.query("insert into auth.users (email, raw_user_meta_data) values ($1, $2) returning id", [`${key}@load.test`, JSON.stringify({ full_name: key })])
   ids[key] = rows[0].id
-  await db.query("update public.profiles set role = $2, status = 'active', identity_status = 'verified' where id = $1", [rows[0].id, role])
+  await db.query("update public.profiles set role = $2, status = 'active', identity_status = 'verified', email_verified_at = now() where id = $1", [rows[0].id, role])
 }
 const ms = (start) => Number(process.hrtime.bigint() - start) / 1e6
 const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)]

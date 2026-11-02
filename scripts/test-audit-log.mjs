@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { auditActionLabel, auditDetails, auditDetailsText } from "../src/lib/auditLogModel.ts"
+import { AUDIT_CSV_HEADER, AUDIT_EXPORT_MAX, auditActionLabel, auditCsvRows, auditDetails, auditDetailsText, auditExportName, auditExportRecords, auditJson, collectAuditPages } from "../src/lib/auditLogModel.ts"
 import { toCsv } from "../src/lib/progress.ts"
 import { readFileSync } from "node:fs"
 import ts from "typescript"
@@ -40,6 +40,35 @@ assert.equal(auditActionLabel("photos.account_rule"), "Changed account photo rul
 assert.equal(auditActionLabel("new_entity.new_action"), "New entity · new action")
 assert.deepEqual(auditDetails(entry({ before: false, after: true, key: "photos.allow_device_upload" }, {}, "settings.update")).fields[0], { label: "photos.allow_device_upload", before: "No", value: "Yes" })
 
+// Export: allow-listed columns, no secrets, spreadsheet formulas stay text, JSON states its scope, paging is capped and de-duplicated.
+const hostile = { id: 1, created_at: "2026-11-01T00:00:00Z", actor_name: "=HYPERLINK(\"http://evil.test\",\"x\")", actor_email: "+cmd@example.test", action: "pins.update", target_name: "@SUM(A1)", summary: JSON.stringify({ details: { before: { title: "-1+1" }, row: { title: "\t=1+1", password: "hidden", access_token: "hidden", id_number: "hidden-id", note: "ok" } }, context: { subject: "-2+3" } }), internal_only: "must not be exported" }
+const records = auditExportRecords([hostile], auditActionLabel)
+assert.deepEqual(Object.keys(records[0]), ["when_utc", "who", "email", "action", "action_code", "about", "details"])
+assert.ok(!JSON.stringify(records).includes("must not be exported") && !JSON.stringify(records).includes("hidden"))
+const hostileCsv = toCsv(AUDIT_CSV_HEADER, auditCsvRows(records))
+assert.equal(hostileCsv.split("\r\n")[0], "When (UTC),Who,Email,Action,About,Details")
+assert.ok(hostileCsv.includes('"\'=HYPERLINK(""'), "formula in the name stays text"); assert.ok(hostileCsv.includes("'+cmd@example.test")); assert.ok(hostileCsv.includes("'@SUM(A1)"))
+for (const lead of ["=", "+", "-", "@", "\t", "\r"]) assert.ok(toCsv(["x"], [[lead + "1+1"]]).split("\r\n")[1].replace(/^"/, "").startsWith("'" + lead), "leading " + JSON.stringify(lead))
+assert.equal(toCsv(["x"], [["plain, text"]]).split("\r\n")[1], '"plain, text"')
+assert.equal(auditExportRecords([{ ...hostile, summary: "x".repeat(40000) }], auditActionLabel)[0].details.length < 30100, true, "very long details are shortened")
+assert.equal(auditExportRecords([{ ...hostile, actor_email: null }], auditActionLabel)[0].email, "")
+const json = JSON.parse(auditJson(records, { scope: "filtered", filters: { search: " bob ", action: "", from: "2026-10-01", to: "" }, truncated: true, exportedAt: "2026-11-01T01:00:00Z" }))
+assert.equal(json.count, 1); assert.equal(json.truncated, true); assert.equal(json.max_rows, AUDIT_EXPORT_MAX); assert.match(json.scope, /matching the filters/)
+assert.deepEqual(json.filters, { search: "bob", action: null, from_date_manila: "2026-10-01", to_date_manila: null })
+assert.equal(JSON.parse(auditJson([], { scope: "loaded", filters: { search: "", action: "", from: "", to: "" }, truncated: false, exportedAt: "x" })).max_rows, null)
+assert.equal(auditExportName("loaded", "csv", "2026-11-01"), "audit-log-loaded-2026-11-01.csv")
+assert.equal(auditExportName("filtered", "json", "2026-11-01", true), "audit-log-filtered-newest-5000-2026-11-01.json")
+const pageCalls = []
+const fakePage = total => async (offset, limit) => { pageCalls.push([offset, limit]); return Array.from({ length: Math.max(0, Math.min(limit, total - offset)) }, (_, i) => ({ id: offset + i })) }
+assert.deepEqual(await collectAuditPages(fakePage(0), { pageSize: 10, max: 30 }), { rows: [], truncated: false })
+assert.equal((await collectAuditPages(fakePage(25), { pageSize: 10, max: 30 })).rows.length, 25)
+const capped = await collectAuditPages(fakePage(100), { pageSize: 10, max: 30 })
+assert.equal(capped.rows.length, 30); assert.equal(capped.truncated, true)
+assert.equal((await collectAuditPages(fakePage(30), { pageSize: 10, max: 30 })).truncated, true, "a full last page may hide more, so it is reported as capped")
+const shifting = await collectAuditPages(async offset => offset === 0 ? [{ id: 1 }, { id: 2 }] : offset === 2 ? [{ id: 2 }, { id: 3 }] : [], { pageSize: 2, max: 10 }) // a new entry moved row 2 to the next page
+assert.deepEqual(shifting.rows.map(row => row.id), [1, 2, 3])
+await assert.rejects(collectAuditPages(async () => { throw new Error("rpc failed") }), /rpc failed/)
+
 // Exercise the actual page with delayed RPC responses, pagination, filters, dialog and CSV.
 const url = code => "data:text/javascript;base64," + Buffer.from(code).toString("base64")
 let state = [], effects = [], cursor = 0, pending = [], requests = [], timers = new Map(), nextTimer = 0, exports = []
@@ -52,6 +81,7 @@ globalThis.__auditHooks = {
 }
 globalThis.__auditDB = { rpc(name, args) { assert.equal(name, "get_audit_log"); return new Promise(resolve => requests.push({ args, resolve })) } }
 globalThis.__auditExport = (name, csv) => exports.push({ name, csv })
+globalThis.__auditText = (name, text, type) => exports.push({ name, text, type })
 const previousWindow = globalThis.window
 globalThis.window = { setTimeout(fn) { const id = ++nextTimer; timers.set(id, fn); return id }, clearTimeout(id) { timers.delete(id) } }
 const replacements = {
@@ -62,9 +92,9 @@ const replacements = {
   "../../components/ui/Skeleton": url("export function SkeletonRows(){}"),
   "../../lib/admin": url(`import {auditActionLabel} from ${JSON.stringify(new URL("../src/lib/auditLogModel.ts", import.meta.url).href)}; export const activityLabel=auditActionLabel,formatDate=x=>x,formatTime=x=>x;`),
   "../../lib/auditLogModel": new URL("../src/lib/auditLogModel.ts", import.meta.url).href,
-  "../../lib/progress": url(`export {toCsv} from ${JSON.stringify(new URL("../src/lib/progress.ts", import.meta.url).href)};export const downloadCsv=globalThis.__auditExport;`),
+  "../../lib/progress": url(`export {toCsv} from ${JSON.stringify(new URL("../src/lib/progress.ts", import.meta.url).href)};export const downloadCsv=globalThis.__auditExport,downloadText=globalThis.__auditText;`),
   "../../lib/supabase": url("export const supabase=globalThis.__auditDB;"),
-  "../../lib/toast": url("const toast={success(){}};export const useToast=()=>toast;"),
+  "../../lib/toast": url("const toast={success(){},error(){}};export const useToast=()=>toast;"),
   "./AdminShell": url("export function PageIntro(){};export function Panel(){};"),
 }
 let source = ts.transpileModule(readFileSync(new URL("../src/pages/Admin/AuditLog.tsx", import.meta.url), "utf8"), { compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
@@ -88,6 +118,23 @@ buttons(tree).find(button => button.props.children === "Close").props.onClick();
 buttons(tree).find(button => button.props.children === "Export loaded entries (CSV)").props.onClick()
 assert.ok(exports[0].csv.includes("FINAL RECORDED SENTENCE"))
 assert.ok(exports[0].csv.includes("TST-002 · Testing BuildTrack"))
+assert.match(exports[0].name, /^audit-log-loaded-\d{4}-\d{2}-\d{2}\.csv$/)
+// Export all matching: reads 500 at a time with a fixed end time, drops a repeated row and names the file as a filtered export.
+buttons(tree).find(button => button.props.children === "Export all matching (CSV)").props.onClick()
+assert.equal(requests[0].args.p_offset, 0); assert.equal(requests[0].args.p_limit, 500); assert.ok(requests[0].args.p_to, "the export has a fixed end time")
+const endTime = requests[0].args.p_to
+requests.shift().resolve({ data: Array.from({ length: 500 }, (_, i) => ({ ...rows[0], id: 1000 + i })), error: null }); await settle()
+assert.equal(requests[0].args.p_offset, 500); assert.equal(requests[0].args.p_to, endTime)
+requests.shift().resolve({ data: [{ ...rows[0], id: 1000 }, { ...rows[0], id: 2000 }], error: null }); await settle()
+assert.equal(exports.length, 2); assert.match(exports[1].name, /^audit-log-filtered-\d{4}-\d{2}-\d{2}\.csv$/)
+assert.equal(exports[1].csv.split("\r\n").length, 1 + 501, "header, 500 rows and one new row; the repeated id is dropped")
+tree = render()
+// JSON export of the loaded rows carries its scope and only the allow-listed fields.
+nodes(tree).find(node => node.type === "select" && node.props["aria-label"] === "Export format").props.onChange({ target: { value: "json" } }); tree = render()
+buttons(tree).find(button => button.props.children === "Export loaded entries (JSON)").props.onClick()
+const jsonExport = JSON.parse(exports[2].text); assert.equal(exports[2].type, "application/json"); assert.match(exports[2].name, /^audit-log-loaded-.*\.json$/)
+assert.equal(jsonExport.count, 100); assert.deepEqual(Object.keys(jsonExport.entries[0]), ["when_utc", "who", "email", "action", "action_code", "about", "details"])
+nodes(tree).find(node => node.type === "select" && node.props["aria-label"] === "Export format").props.onChange({ target: { value: "csv" } }); tree = render()
 buttons(tree).find(button => button.props.children === "Load older entries").props.onClick()
 assert.equal(requests[0].args.p_offset, 100)
 const oldPage = requests.shift()
@@ -105,5 +152,5 @@ requests.shift().resolve({ data: null, error: { message: "Missing permission: us
 assert.match(text(tree), /View users permission/)
 effects.forEach(effect => effect?.cleanup?.())
 globalThis.window = previousWindow
-for (const key of ["__auditHooks", "__auditDB", "__auditExport"]) delete globalThis[key]
+for (const key of ["__auditHooks", "__auditDB", "__auditExport", "__auditText"]) delete globalThis[key]
 console.log("Audit log: actual changes, legacy history, full details, names, CSV, dialog, filters, pagination and stale responses passed")
