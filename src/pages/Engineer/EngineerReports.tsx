@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import ProjectContextBar from "../../components/ProjectContextBar"
-import DailyReportPhotos from "../../components/DailyReportPhotos"
-import { AttendanceImport, ReportReviewPanel } from "../../components/DailyReportWorkflow"
+import { AttendanceImport, ReportEntriesView, ReportReviewPanel } from "../../components/DailyReportWorkflow"
 import { EmptyState, PageHead, buttonPrimary, buttonSecondary, inputClass } from "../../components/ui/PageParts"
 import { SkeletonList } from "../../components/ui/Skeleton"
 import { severityLabels, statusLabels } from "../../lib/blueprints"
@@ -31,7 +30,7 @@ export default function EngineerReports({ onNavigate }: EngineerPageProps) {
   const projectId = getSelectedProjectId()
   const work = useProjectWork(projectId)
   const workItems = useProjectWorkItems(projectId, true)
-  const { reports, loading: reportsLoading, error: reportsError, reload: reloadReports } = useDailyReports(projectId)
+  const { reports, loading: reportsLoading, error: reportsError, reload: reloadReports } = useDailyReports(projectId, true)
   const { questions, loading: questionsLoading, error: questionsError, reload: reloadQuestions } = useQuestions(projectId)
   const toast = useToast()
   const [tab, setTab] = useState<Tab>(initialTab)
@@ -146,7 +145,7 @@ export default function EngineerReports({ onNavigate }: EngineerPageProps) {
                             <span className="text-xs text-fg-muted">{work.nameOf(report.author_id)} • {weatherLabels[report.weather]} • {report.workers_count} workers</span>
                           </span>
                           <span className="flex items-center gap-2 text-xs">
-                            {report.issues ? <span className="rounded bg-red-100 px-2 py-0.5 font-bold text-red-800 dark:bg-red-900/40 dark:text-red-200">Issues</span> : null}
+                            {report.issues || report.daily_report_entries?.some(entry => entry.issues) ? <span className="rounded bg-red-100 px-2 py-0.5 font-bold text-red-800 dark:bg-red-900/40 dark:text-red-200">Issues</span> : null}
                             {report.delays ? <span className="rounded bg-amber-100 px-2 py-0.5 font-bold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">Delays</span> : null}
                             <span aria-hidden="true">{open ? "−" : "+"}</span>
                           </span>
@@ -157,7 +156,7 @@ export default function EngineerReports({ onNavigate }: EngineerPageProps) {
                               <div key={label}><p className="text-xs font-extrabold uppercase tracking-wider text-fg-muted">{label}</p><p className="whitespace-pre-wrap">{value || "-"}</p></div>
                             ))}
                             {!(report.linked_work ?? []).length ? <p className="text-xs text-fg-muted">This report has no linked work pins or tasks. The Foreman can link them when preparing a new report or a returned revision.</p> : null}
-                            <DailyReportPhotos projectId={report.project_id} reportId={report.id} />
+                            <ReportEntriesView report={report} describe={describe} />
                             <ReportReviewPanel report={report} pins={work.pins} nameOf={work.nameOf} onChanged={reloadReports} />
                             <div className="flex flex-wrap justify-end gap-2 pt-1">
                               <button type="button" className={buttonSecondary + " !py-1.5 !text-xs"} onClick={() => printReport(report)}>Print / PDF</button>

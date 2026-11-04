@@ -6,6 +6,8 @@ import BeforeAfter from "../BeforeAfter"
 import StampChip from "../StampChip"
 import WorkChecklistEditor from "../qa/WorkChecklistEditor"
 import { progressPercent, taskProgress } from "../../lib/taskProgress"
+import { previousTaskProgress, reportDateLong, reportProgressKey, type DailyReport } from "../../lib/reportFormat"
+import { addDays, manilaToday } from "../../lib/progress"
 import { usePinQa } from "../../lib/pinQa"
 import { captureStamp, stampFields, stampSummary, photoEligible, photoPreviewBlocked, type CaptureSource, type PhotoStamp } from "../../lib/photoStamp"
 import { usePhotoPolicy } from "../../lib/photoPolicy"
@@ -45,6 +47,7 @@ import { enqueue } from "../../lib/offlineQueue"
 import { disciplineLabels, type Discipline, type TeamMember } from "../../lib/projects"
 import { supabase } from "../../lib/supabase"
 import { useToast } from "../../lib/toast"
+import PinScheduleProposal from "./PinScheduleProposal"
 
 // Loaded on demand: the work item workspace also uses the parts below.
 const WorkItemWorkspace = lazy(() => import("../qa/WorkItemWorkspace"))
@@ -117,7 +120,7 @@ export function ChecklistProgress({ done, total }: { done: number; total: number
 
 // Work items of this work (FLOOR, WALL…). Each row shows its stage and the one next action; "Open" shows the item's whole QA record
 // (evidence, inspection, corrections and NCRs, attempts). Photo controls live inside that record, not on these rows.
-export function PinChecklist({ pin, canEdit, canTick, notice = "", onChange, onPinChanged }: { pin: Pin; canEdit: boolean; canTick: boolean; notice?: string; onChange?: (done: number, total: number) => void; onPinChanged?: () => void | Promise<void>; submissionNote?: string }) {
+export function PinChecklist({ pin, canEdit, canTick, notice = "", reports = [], reportsLoading = false, reportsError = "", onRetryReports, onChange, onPinChanged }: { pin: Pin; canEdit: boolean; canTick: boolean; notice?: string; reports?: DailyReport[]; reportsLoading?: boolean; reportsError?: string; onRetryReports?: () => void | Promise<void>; onChange?: (done: number, total: number) => void; onPinChanged?: () => void | Promise<void>; submissionNote?: string }) {
   const pinId = pin.id
   const qa = usePinQa(pinId)
   const editViewAllowed = canEdit
@@ -128,6 +131,8 @@ export function PinChecklist({ pin, canEdit, canTick, notice = "", onChange, onP
   const confirm = useConfirm()
   const { profile } = useAuth()
   const engineer = profile?.role === "engineer"
+  const reportThrough = addDays(manilaToday(), 1)
+  const reportedProgress = useMemo(() => previousTaskProgress(reports, pin.project_id, reportThrough), [reports, pin.project_id, reportThrough])
   const editBlock = !editViewAllowed ? "This sheet view is read-only. Open the latest sheet revision and exit presentation mode to add tasks."
     : qa.error ? `Could not check QC status: ${qa.error}. Retry the QC check below.`
     : !qa.state ? "Checking QC status before adding tasks…"
@@ -181,11 +186,13 @@ export function PinChecklist({ pin, canEdit, canTick, notice = "", onChange, onP
         <>
           {items.length ? <ChecklistProgress done={done} total={items.length} /> : <p className="text-sm text-fg-muted">{canEdit ? "No tasks yet. Add the parts of this work the Foreman prepares and the Engineer completes one by one (e.g. FLOOR, WALL, CEILING)." : "No tasks for this pin."}</p>}
           {items.length ? <p className="text-xs text-fg-muted">Approved by the Engineer: {done}/{items.length} tasks</p> : null}
+          {engineer && items.length ? <p role="status" className="text-xs text-fg-muted">{reportsLoading ? "Loading Foreman reported progress…" : reportsError ? "Foreman reported progress is unavailable." : "Foreman percentages come from submitted daily reports. Engineer QA approval is shown separately."}{reportsError && !reportsLoading && onRetryReports ? <> <button type="button" className="min-h-6 font-bold text-brand-text underline" onClick={() => void onRetryReports()}>Retry reported progress</button></> : null}</p> : null}
           <ul className="space-y-1">
             {items.map((item) => {
               const stage = stages.get(item.id)
               const fresh = !stage?.attempts.length && item.review_status !== "for_review" && item.review_status !== "verified"
               const count = photos.filter((photo) => photo.checklist_item_id === item.id && !photo.qa_attempt_id).length
+              const reported = reportedProgress.get(reportProgressKey({ pin_id: pinId, item_id: item.id }))
               return (
                 <li key={item.id} className="group flex items-start gap-2 rounded-lg border border-line p-3 hover:bg-surface-muted/60">
                   <div className="min-w-0 flex-1 text-sm">
@@ -193,6 +200,7 @@ export function PinChecklist({ pin, canEdit, canTick, notice = "", onChange, onP
                       <span className="font-semibold">{item.text}</span>
                       {stage && staff ? <StageChip stage={stage.view.stage} /> : !staff && item.review_status === "verified" ? <StageChip stage="completed" /> : !staff && item.review_status === "for_review" ? <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-bold text-brand-text">For review</span> : null}
                     </span>
+                    {engineer && !reportsLoading && !reportsError ? <span className="mt-1 block text-xs font-semibold text-fg-muted">{reported ? `Foreman reported: ${reported.percent}% · ${reportDateLong(reported.date)}` : "Foreman reported: No submitted progress"}</span> : null}
                     {stage && staff ? <span className="mt-0.5 block text-xs text-fg-muted">{stage.view.blocker ? `Blocked: ${stage.view.blocker}` : `Next: ${stage.view.next}`}</span> : null}
                     <span className="mt-0.5 flex flex-wrap items-center gap-x-3">
                       {fresh ? <span className="text-[11px] text-fg-muted">{count} photo{count === 1 ? "" : "s"}{item.remark ? " · remark" : ""}</span> : null}
@@ -450,7 +458,7 @@ export function PinPhotos({ pin, checklistItemId, canAdd, canRemoveAny, meId, on
 // ---------- Edit form (Engineers) ----------
 export function PinFields({ pin, team, onSaved, idPrefix = "pin" }: { pin: Pin; team: TeamMember[]; onSaved: () => void; idPrefix?: string }) {
   const toast = useToast()
-  const [form, setForm] = useState({ title: pin.title, description: pin.description ?? "", category: pin.category, discipline: (pin.discipline ?? "") as Discipline | "", severity: pin.severity ?? "medium", due_date: pin.due_date ?? "", assigned_to: pin.assigned_to ?? "" })
+  const [form, setForm] = useState({ title: pin.title, description: pin.description ?? "", category: pin.category, discipline: (pin.discipline ?? "") as Discipline | "", severity: pin.severity ?? "medium", assigned_to: pin.assigned_to ?? "" })
   const [errors, setErrors] = useState<{ title?: string; description?: string }>({})
   const [busy, setBusy] = useState(false)
   // Only Foremen with Assigned work access to this plan's type can take it (the current one stays listed).
@@ -466,7 +474,7 @@ export function PinFields({ pin, team, onSaved, idPrefix = "pin" }: { pin: Pin; 
     setBusy(true)
     const { data, error } = await supabase
       .from("pins")
-      .update({ title: form.title.trim(), description: form.description.trim() || null, category: form.category, discipline: form.discipline || null, severity: form.severity, due_date: form.due_date || null, assigned_to: form.assigned_to || null })
+      .update({ title: form.title.trim(), description: form.description.trim() || null, category: form.category, discipline: form.discipline || null, severity: form.severity, assigned_to: form.assigned_to || null })
       .eq("id", pin.id)
       .select("id")
     setBusy(false)
@@ -477,7 +485,7 @@ export function PinFields({ pin, team, onSaved, idPrefix = "pin" }: { pin: Pin; 
   }
 
   return (
-    <form id={`${idPrefix}-fields`} className="space-y-3" noValidate onSubmit={(event) => void save(event)}>
+    <div className="space-y-4"><form id={`${idPrefix}-fields`} className="space-y-3" noValidate onSubmit={(event) => void save(event)}>
       <label className="block text-sm font-semibold">
         Title
         <input className={field} maxLength={120} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
@@ -511,13 +519,10 @@ export function PinFields({ pin, team, onSaved, idPrefix = "pin" }: { pin: Pin; 
             {foremen.map((f) => <option key={f.user_id} value={f.user_id}>{f.full_name}</option>)}
           </select>
         </label>
-        <label className="block text-sm font-semibold">Deadline
-          <input className={field} type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
-        </label>
       </div>
       <div className="text-right">
         <button type="submit" disabled={busy} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-[#9e1f93] to-[#b4329f] px-4 py-2 text-sm font-bold text-white shadow-[0_8px_18px_-10px_rgba(158,31,147,0.85)] hover:from-[#8a1a80] hover:to-[#a52a92] disabled:opacity-60">{busy ? "Saving..." : "Save changes"}</button>
       </div>
-    </form>
+    </form>{pin.category !== "note" ? <PinScheduleProposal key={pin.id} pin={pin} /> : null}</div>
   )
 }

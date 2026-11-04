@@ -153,10 +153,15 @@ reset()
 // Page-level identity and project gates exist in addition to the shared RouteGuard and database RLS.
 let pageProfile = { id: "E", role: "client", status: "active" }, pageCalls = []
 Object.assign(deps, { useAuth: () => ({ profile: pageProfile }), getSelectedProjectId: () => "P", useProjectCalendar: (id, role) => { pageCalls.push({ id, role }); return { project: id ? project : null, loading: false, notFound: false, error: "", today: props.today, events: [], undated: 0, reload: async () => {} } } })
+let timelinePageCalls = [], timelinePageState = { data: null, loading: false, error: "Timeline needs setup", setupRequired: true, reload: async () => {} }
+Object.assign(deps, { useProjectTimeline: id => { timelinePageCalls.push(id); return timelinePageState }, timelineCalendarEvents: events => events })
 const CalendarPage = (await compile("../src/pages/ProjectCalendarPage.tsx", { "../lib/projectCalendarModel": new URL("../src/lib/projectCalendarModel.ts", import.meta.url).href })).default
 render(CalendarPage, { role: "engineer" }); assert.equal(pageCalls.at(-1).id, null); assert.ok(!all(tree).some(byName("ProjectCalendar")), "mismatched role starts no project data request")
+assert.equal(timelinePageCalls.at(-1), null, "mismatched role starts no timeline request either")
 pageProfile = { ...pageProfile, role: "engineer", status: "disabled" }; render(CalendarPage, { role: "engineer" }); assert.equal(pageCalls.at(-1).id, null)
 pageProfile = { ...pageProfile, status: "active" }; render(CalendarPage, { role: "engineer" }); assert.equal(pageCalls.at(-1).id, "P"); assert.ok(all(tree).some(byName("ProjectCalendar")))
+assert.equal(timelinePageCalls.at(-1), "P"); assert.equal(find(byName("ProjectCalendar")).props.error, "", "existing calendar remains usable before the timeline migration is installed")
+timelinePageState = { ...timelinePageState, setupRequired: false, error: "Access denied" }; render(CalendarPage, { role: "engineer" }); assert.equal(find(byName("ProjectCalendar")).props.error, "Access denied", "other timeline failures never silently fall back to stale dates")
 reset()
 
 // Every project workspace routes to the shared lazy calendar, not a global /calendar or external Google page.

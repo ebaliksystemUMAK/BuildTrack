@@ -6,8 +6,11 @@ import { byProject, useLiveReload, usePeriodicReload } from "./realtime"
 
 export * from "./reportFormat"
 
+const reportColumns = (withEntries: boolean): string => (withEntries ? "*,daily_report_entries(*)" : "*")
+
 // Reports of one project, newest first. The database decides what the caller may see (own drafts, everyone's submitted reports).
-export function useDailyReports(projectId: string | null) {
+// withEntries adds the task entries for the project team's pages; a Client's read of them returns nothing.
+export function useDailyReports(projectId: string | null, withEntries = false) {
   const generation = useRef(0)
   const [reports, setReports] = useState<DailyReport[]>([])
   const [loading, setLoading] = useState(Boolean(projectId))
@@ -22,13 +25,13 @@ export function useDailyReports(projectId: string | null) {
       setLoadedFor(null)
       return
     }
-    const { data, error: loadError } = await fetchAll<DailyReport>((from, to) => supabase.from("daily_reports").select("*").eq("project_id", projectId).order("report_date", { ascending: false }).order("id").range(from, to)).catch(() => ({ data: [] as DailyReport[], error: true }))
+    const { data, error: loadError } = await fetchAll<DailyReport>((from, to) => supabase.from("daily_reports").select<string, DailyReport>(reportColumns(withEntries)).eq("project_id", projectId).order("report_date", { ascending: false }).order("id").range(from, to)).catch(() => ({ data: [] as DailyReport[], error: true }))
     if (run !== generation.current) return
     setError(loadError ? "Could not load the reports. Check your connection and try again." : "")
     setReports(loadError ? [] : data)
     setLoadedFor(projectId)
     setLoading(false)
-  }, [projectId])
+  }, [projectId, withEntries])
   useEffect(() => {
     setReports([])
     setLoading(Boolean(projectId))

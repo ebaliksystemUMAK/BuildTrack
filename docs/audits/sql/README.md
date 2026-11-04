@@ -4,6 +4,11 @@ One document per SQL file in `supabase/`. Same sections every time so changes ar
 
 | Doc | SQL file | Status |
 |---|---|---|
+| [20261104101457_qa_schedule_snapshot_compatibility](20261104101457_qa_schedule_snapshot_compatibility.md) | `supabase/migrations/20261104101457_qa_schedule_snapshot_compatibility.sql` | APPLIED 2026-11-04 (live `20261104102037`) |
+| [20261104062715_schedule_proposals_and_date_sync](20261104062715_schedule_proposals_and_date_sync.md) | `supabase/migrations/20261104062715_schedule_proposals_and_date_sync.sql` | APPLIED 2026-11-04 (live `20261104064512`) |
+| [20261104130000_daily_report_entry_work_done](20261104130000_daily_report_entry_work_done.md) | `supabase/migrations/20261104130000_daily_report_entry_work_done.sql` | APPLIED 2026-11-04 (live `20261104064730`) |
+| [20261104042538_project_gantt_timeline](20261104042538_project_gantt_timeline.md) | `supabase/migrations/20261104042538_project_gantt_timeline.sql` | APPLIED 2026-11-04 (live `20261104053041`) |
+| [20261104120000_daily_report_task_entries](20261104120000_daily_report_task_entries.md) | `supabase/migrations/20261104120000_daily_report_task_entries.sql` | APPLIED 2026-11-04 (live `20261104053050`) |
 | [20261102140000_system_logs](20261102140000_system_logs.md) | `supabase/migrations/20261102140000_system_logs.sql` | APPLIED 2026-11-02 (live `20261102041122`) |
 | [20261102120000_system_control_schedule_and_lockouts](20261102120000_system_control_schedule_and_lockouts.md) | `supabase/migrations/20261102120000_system_control_schedule_and_lockouts.sql` | APPLIED 2026-11-02 (live `20261102031428`) |
 | [20261102100000_system_control](20261102100000_system_control.md) | `supabase/migrations/20261102100000_system_control.sql` | APPLIED 2026-11-02 (live `20261102024451`) |

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { stampFields } from "./photoStamp"
 import { MAX_ATTEMPTS, PAUSE_RETRY_SECONDS, backoffSeconds, kindLabel, sendOrder, summarizeQueue, verdictFor, type QueueItem, type QueueKind } from "./offlineModel"
+import { saveReportArgs, type ReportSave } from "./reportFormat"
 import { supabase } from "./supabase"
 
 // Work saved on this device while there is no signal (a foreman on a basement slab, a site with a weak connection). It is kept in
@@ -77,6 +78,11 @@ async function send(item: QueueItem): Promise<Failure> {
       const { data: existing, error: lookupError } = await supabase.from("daily_reports").select("id,status").eq("project_id", p.projectId).eq("report_date", p.date).eq("author_id", item.userId).maybeSingle()
       if (lookupError) return { message: lookupError.message, code: lookupError.code }
       if (existing && existing.status === "submitted") return { message: "That day's report was already submitted, so the saved copy was not applied.", code: "BT001" }
+      // Reports with task entries are saved together; a copy queued before entries existed keeps its direct write.
+      if (p.entries) {
+        const { error } = await supabase.rpc("save_daily_report", saveReportArgs(p as ReportSave))
+        return error ? { message: error.message, code: error.code } : null
+      }
       const { error } = existing
         ? await supabase.from("daily_reports").update(p.values).eq("id", existing.id)
         : await supabase.from("daily_reports").insert({ project_id: p.projectId, report_date: p.date, ...p.values })

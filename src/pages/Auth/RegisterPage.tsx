@@ -235,7 +235,10 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
     setOAuthIntent("register")
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/login` },
+      options: {
+        redirectTo: `${window.location.origin}/login`,
+        queryParams: { prompt: "select_account" },
+      },
     })
     if (oauthError) {
       setError(oauthError.message)

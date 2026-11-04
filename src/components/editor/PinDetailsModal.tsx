@@ -49,7 +49,7 @@ export default function PinDetailsModal({ pin, inspector, section = "details", o
       </div>
       <dl className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
         <Fact label="Assigned Foreman">{nameOf(pin.assigned_to)}</Fact>
-        <Fact label="Deadline">{pin.due_date ? prettyDate(pin.due_date) : "Not set"}</Fact>
+        <Fact label="Approved schedule">{pin.planned_start ? prettyDate(pin.planned_start) : "Start not approved"} → {pin.due_date ? prettyDate(pin.due_date) : "No deadline"}</Fact>
         <Fact label="Pin progress">{data.checklist.items.length ? `${progress}% · ${done}/${data.checklist.items.length} tasks approved` : "No tasks yet"}</Fact>
         <Fact label={inspector.role === "client" ? "Your open reports" : "Open NCRs"}>{inspector.role === "client" ? data.counts.issues ?? 0 : openNcrs}</Fact>
       </dl>

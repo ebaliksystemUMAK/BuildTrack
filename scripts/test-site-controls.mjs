@@ -58,7 +58,7 @@ const all = (node, predicate) => !node || typeof node !== "object" ? [] : Array.
   globalThis.window = { dispatchEvent() {}, addEventListener() {}, removeEventListener() {}, setInterval() { return 1 }, clearInterval() {} }; globalThis.Event = class {}
   let answer = { error: null }; const sent = []
   globalThis.__qSupabase = { rpc: async (name, args) => { sent.push([name, args.p_note]); return typeof answer === "function" ? answer() : answer } }
-  const source = transpile("../src/lib/offlineQueue.ts", { react: url("export const useCallback=(f)=>f,useEffect=()=>{},useState=(v)=>[v,()=>{}];"), "./photoStamp": url("export const stampFields=()=>({});"), "./offlineModel": fileUrl("../src/lib/offlineModel.ts"), "./supabase": url("export const supabase=globalThis.__qSupabase;") })
+  const source = transpile("../src/lib/offlineQueue.ts", { react: url("export const useCallback=(f)=>f,useEffect=()=>{},useState=(v)=>[v,()=>{}];"), "./photoStamp": url("export const stampFields=()=>({});"), "./offlineModel": fileUrl("../src/lib/offlineModel.ts"), "./reportFormat": url("export const saveReportArgs=(p)=>({p_project:p.projectId,p_entries:p.entries,p_note:'entries'});"), "./supabase": url("export const supabase=globalThis.__qSupabase;") })
   const queue = await import(url(source))
   const progress = (note) => ({ userId: "u1", kind: "pin_progress", label: note, payload: { pinId: "p1", status: "in_progress", note } })
   const clearWait = () => { for (const [id, item] of store) store.set(id, { ...item, nextAt: undefined }) }
@@ -88,6 +88,19 @@ const all = (node, predicate) => !node || typeof node !== "object" ? [] : Array.
   result = await queue.flushQueue("u1"); assert.deepEqual(result, { sent: 0, failed: 1, left: 0 }); assert.equal(items().find((item) => item.label === "refused").status, "failed")
   await queue.enqueue(progress("offline")); answer = { error: { message: "Failed to fetch" } }
   await queue.flushQueue("u1"); const offline = items().find((item) => item.label === "offline"); assert.deepEqual([offline.status, offline.attempts], ["pending", 1])
+
+  // a daily report with task entries is sent whole through save_daily_report; a copy queued before entries existed keeps its direct write; a submitted day is not overwritten
+  const wrote = []; let lookup = { id: "r1", status: "draft" }
+  const reportRows = { select: () => reportRows, eq: () => reportRows, maybeSingle: async () => ({ data: lookup, error: null }), update: (values) => { wrote.push(values); return { eq: async () => ({ error: null }) } } }
+  globalThis.__qSupabase.from = () => reportRows
+  const daily = (extra) => ({ userId: "u3", kind: "daily_report", label: "Report", payload: { projectId: "A", date: "2026-11-04", values: { status: "draft" }, ...extra } })
+  sent.length = 0; answer = { error: null }
+  await queue.enqueue(daily({ entries: [{ id: "e1" }] })); await new Promise((r) => setTimeout(r, 2)); await queue.enqueue(daily({}))
+  assert.deepEqual(await queue.flushQueue("u3"), { sent: 2, failed: 0, left: 0 })
+  assert.deepEqual(sent, [["save_daily_report", "entries"]]); assert.deepEqual(wrote, [{ status: "draft" }])
+  lookup = { id: "r1", status: "submitted" }; sent.length = 0
+  await queue.enqueue(daily({ entries: [] }))
+  assert.deepEqual(await queue.flushQueue("u3"), { sent: 0, failed: 1, left: 0 }); assert.equal(sent.length, 0)
   globalThis.window = savedWindow; globalThis.Event = savedEvent; delete globalThis.indexedDB; delete globalThis.__qSupabase; if (savedWindow === undefined) delete globalThis.window; if (savedEvent === undefined) delete globalThis.Event
 }
 

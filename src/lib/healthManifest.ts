@@ -17,11 +17,11 @@ export const FEATURES: Feature[] = [
   { key: "projects", label: "Projects and teams", action: migrate,
     needs: [table("projects"), table("project_members"), table("project_managers"), table("project_blueprint_access"), fn("assign_project_manager"), fn("can_view_project"), fn("set_blueprint_access")] },
   { key: "blueprints", label: "Blueprints and pins", action: migrate,
-    needs: [table("blueprints"), table("blueprint_revisions"), table("blueprint_annotations"), table("pins"), table("pin_events"), table("pin_photos"), table("pin_checklist_items"), table("sheet_history"), fn("move_annotations"), fn("report_pin_progress")] },
+    needs: [table("blueprints"), table("blueprint_revisions"), table("blueprint_annotations"), table("pins"), table("pin_events"), table("pin_photos"), table("pin_checklist_items"), table("sheet_history"), column("pins.planned_start"), column("pin_checklist_items.planned_start"), column("pin_checklist_items.due_date"), fn("get_project_timeline"), fn("submit_pin_schedule_proposal"), fn("decide_timeline_request"), fn("move_annotations"), fn("report_pin_progress")] },
   { key: "quality", label: "Quality inspections and defect reports", action: migrate,
     needs: [table("qa_templates"), table("qa_template_items"), table("qa_inspections"), table("qa_inspection_items"), table("qa_defects"), table("qa_defect_events"), table("qa_photos"), table("qa_counters"), table("client_snags"), fn("request_inspection"), fn("complete_inspection"), fn("raise_defect"), fn("submit_pin_qa")] },
   { key: "reports", label: "Daily reports, site issues and visits", action: migrate,
-    needs: [table("daily_reports"), table("daily_report_photos"), table("project_questions"), table("site_issue_reports"), table("site_visit_requests"), fn("review_daily_report")] },
+    needs: [table("daily_reports"), table("daily_report_photos"), table("daily_report_entries"), column("daily_report_entries.work_done"), table("project_questions"), table("site_issue_reports"), table("site_visit_requests"), fn("review_daily_report"), fn("save_daily_report")] },
   { key: "attendance", label: "Biometric attendance", action: migrate,
     needs: [table("attendance_workers"), table("attendance_devices"), table("attendance_schedules"), table("biometric_attendance_events"), table("biometric_daily_totals"), fn("ingest_biometric_scan")] },
   { key: "notifications", label: "Notifications and email queue", action: migrate,
@@ -70,7 +70,7 @@ export const TRACKED_MIGRATIONS = [
   "return_cancelled_reinspection_ncrs", "resume_cancelled_inspections", "blueprint_type_access", "project_checklists", "project_manager_role", "project_manager_workspace",
   "short_work_qa_titles", "builtin_standard_sources", "photo_capture_policy", "photo_upload_rules", "readable_audit_details", "audit_label_encoding", "project_team_role_separation",
   "admin_communications", "system_health_and_admin_digest", "site_controls", "project_recycle_bin", "delete_protection_and_purge", "record_removal",
-  "email_verification_and_codes", "email_only_needed_kinds", "account_deletion", "email_code_check", "system_control", "system_control_schedule_and_lockouts", "system_logs",
+  "email_verification_and_codes", "email_only_needed_kinds", "account_deletion", "email_code_check", "system_control", "system_control_schedule_and_lockouts", "system_logs", "daily_report_task_entries", "daily_report_entry_work_done", "project_gantt_timeline", "schedule_proposals_and_date_sync", "qa_schedule_snapshot_compatibility",
 ]
 
 export const manifestItems = (): CheckObject[] => [

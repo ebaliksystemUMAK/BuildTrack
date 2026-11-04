@@ -17,11 +17,12 @@ const calendar = (who: "staff" | "client"): PageGuide => ({
     ? "Work deadlines and project milestones of this project on one calendar."
     : "Work deadlines, QA inspections, reinspections, NCR deadlines and project milestones of this project on one calendar.",
   steps: [
+    "Open Gantt Timeline for the schedule. Engineers propose work dates; the assigned Project Manager approves dates, phases and dependencies, then publishes the baseline for Clients.",
     "Switch between Month, Week, Day and Schedule views, and move with the arrows or the small month picker.",
     "Turn the event types on or off and use \"Search this calendar\" to narrow the list.",
     "Open an event to see its details, then follow its link to the record or to its pin on the plan.",
   ],
-  tips: ["The calendar only shows dates that already exist in the project's records; nothing is added by hand here."],
+  tips: ["Approved task dates appear on the task, the pin's overall schedule range, Calendar and Gantt. Proposed dates await PM approval. Reported progress is separate from Engineer QA verification.", "Gantt shows every day number under its month and year. Scroll horizontally for later dates; use Day, Week or Month zoom to change the spacing."],
 })
 
 const fieldProjects = (role: "Engineer" | "Foreman"): PageGuide => ({
@@ -408,7 +409,7 @@ const engineer: Record<EngineerPageKey, PageGuide> = {
     title: "Site logs and reports",
     purpose: "Daily reports from the Foreman, client questions and site visit requests, and printable progress reports.",
     steps: [
-      "Read the Foreman's daily reports; reopen one if it needs changes.",
+      "Read the Foreman's daily reports, with the progress reported for each task; reopen one if it needs changes.",
       "Answer client questions and confirm or decline site visit requests.",
       "Use Weekly report or the progress report to print a summary.",
     ],
@@ -441,14 +442,19 @@ const foreman: Record<ForemanPageKey, PageGuide> = {
   },
   "daily-report": {
     title: "Daily progress report",
-    purpose: "Record the work done on a date, link the tasks and add photos.",
+    purpose: "Record the work done on a date, and each task's progress and photos, all under one report.",
     steps: [
-      "Pick the date and describe the work completed.",
-      "Link the tasks you worked on.",
-      "Take photos (or upload them, if allowed), annotate them or add a caption, and save each one to the report.",
-      "Submit the report. It is read-only afterwards unless the Engineer reopens it.",
+      "Pick the date, then press Add Task Progress. Filter by blueprint if you need to, and choose one of your assigned tasks (its pin fills in).",
+      "Describe the work completed on the task. Its last submitted percentage before this date fills in automatically; type the new total completed. For example, increase 15% to 25% after another 10% of work. Add daily notes, issues and manpower as needed.",
+      "Under the task, take photos (or upload several, if allowed), annotate them or add captions, and save them to the task.",
+      "Press Add Task Progress again for each other task you worked on. All the entries stay on this one report.",
+      "Save a draft during the day. Submit the report at the end of the day. It is read-only afterwards unless the Engineer returns it.",
     ],
-    tips: ["The worker headcount comes from the project's biometric Time in records."],
+    tips: [
+      "The worker headcount comes from the project's biometric Time in records. Manpower is your own count for each task.",
+      "Percentages are cumulative totals from 0 to 100. A saved draft keeps the total you entered. Official progress still comes from tasks the Engineer has approved.",
+      "The client reads the work completed and the photos in the site logs. The notes, issues, manpower and percentages stay with the project team.",
+    ],
   },
   "photo-documentation": {
     title: "Photo documentation",
@@ -568,7 +574,7 @@ export function editorGuide(role: "engineer" | "foreman" | "client" | "admin", c
         "Switch sheets with the sheet switcher or the pages bar; use Layers to order, hide or lock items.",
         "Undo with Ctrl+Z and redo with Ctrl+Shift+Z; export PNG / PDF from the top bar and compare revisions from View.",
       ],
-      tips: ["Press ? for all keyboard shortcuts and Ctrl K for every command.", "Locked items can be selected but never move."],
+      tips: ["Press ? for all keyboard shortcuts and Ctrl K for every command.", "Locked items can be selected but never move.", "Each blueprint task shows its latest submitted Foreman percentage and report date. Engineer QA approval stays separate, including when 100% is reported."],
     }
   }
   if (role === "foreman") {

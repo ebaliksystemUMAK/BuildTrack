@@ -7,6 +7,8 @@ import * as qaModel from "../src/lib/qaModel.ts"
 import { clientActionPath } from "../src/lib/clientPortalModel.ts"
 import * as dateModel from "../src/lib/dateRangeModel.ts"
 import * as sizeModel from "../src/lib/panelSize.ts"
+import { blankEntry, carryForwardProgress, moveSummaryToTask, previousTaskProgress, reportEntries, sameWork } from "../src/lib/reportFormat.ts"
+import { photosOutsideTasks } from "../src/lib/photoGalleryModel.ts"
 
 // Pin records in the blueprint panel: the shared pin picker, each role's Issues & NCRs section (lists, next actions, create
 // actions, which detail opens with which rights), Open on blueprint, reports / communication / photos sections and the
@@ -333,7 +335,7 @@ const queries = []
 const builder = table => {
   const query = { table, filters: [] }
   queries.push(query)
-  const chain = { select() { return chain }, eq(column, value) { query.filters.push(["eq", column, value]); return chain }, contains(column, value) { query.filters.push(["cs", column, value]); return chain }, order() { return chain },
+  const chain = { select(columns) { query.columns = columns; return chain }, eq(column, value) { query.filters.push(["eq", column, value]); return chain }, contains(column, value) { query.filters.push(["cs", column, value]); return chain }, order() { return chain },
     range() { return new Promise(resolve => { query.resolve = resolve }) } }
   return chain
 }
@@ -346,10 +348,12 @@ const tick = () => new Promise(resolve => setImmediate(resolve))
 reset(); render(hook, { pin: { id: "p1", project_id: "A" }, role: "client" }); await tick()
 assert.deepEqual(queries.map(query => query.table).sort(), ["client_snags", "daily_reports", "project_questions"], "Clients never query QA or site issue tables")
 const clientReports = queries.find(query => query.table === "daily_reports")
+assert.equal(clientReports.columns, "*", "The Client's blueprint never requests internal task percentages")
 assert.deepEqual(clientReports.filters, [["eq", "project_id", "A"], ["cs", "linked_work", JSON.stringify([{ pin_id: "p1" }])], ["eq", "status", "submitted"]], "Clients get submitted reports that link this pin")
 queries.length = 0; reset(); render(hook, { pin: { id: "p1", project_id: "A" }, role: "foreman" }); await tick()
 assert.deepEqual(queries.map(query => query.table).sort(), ["daily_reports", "qa_defects", "site_issue_reports"], "Foremen read no client reports or client questions")
 assert.ok(queries.every(query => query.filters.some(([, column, value]) => (column === "pin_id" && value === "p1") || column === "linked_work")), "Every query is scoped to this pin")
+assert.equal(queries.find(query => query.table === "daily_reports").columns, "*,daily_report_entries(*)", "Staff blueprint records include task percentages in the existing pin-scoped read")
 const oldQueries = [...queries]; queries.length = 0
 render(hook, { pin: { id: "p2", project_id: "A" }, role: "foreman" }); await tick()
 const newQueries = [...queries]
@@ -375,12 +379,15 @@ Object.assign(deps, {
   useDailyReports: () => ({ reports: reportState.reports, loading: false, error: "", reload: async () => {} }), useProjectWorkItems: () => reportState.items,
   useReportAttendance: () => ({ count: 4, loading: false, error: "", reload: async () => {} }),
   useToast: () => ({ success: (...args) => successes.push(args), error() {}, info: (...args) => infos.push(args) }), useConfirm: () => async () => true,
+  blankEntry, carryForwardProgress, moveSummaryToTask, previousTaskProgress, reportEntries, sameWork, photosOutsideTasks,
 })
+for (const row of pins) row.assigned_to = "fore"
 const ForemanReport = (await compile("../src/pages/Foreman/ForemanDailyProgressReport.tsx")).default
-const linked = () => find(named("LinkedWorkEditor")).props.value
+const linked = () => find(named("TaskProgressEditor")).props.value.map(({ pin_id, item_id }) => ({ pin_id, item_id }))
 reset(); reportState.items = [{ id: "i1", pin_id: "p1", text: "FLOOR" }]; openReport("?project=A&linkpin=p1")
 render(ForemanReport, {}); render(ForemanReport, {})
 assert.deepEqual(linked(), [{ pin_id: "p1", item_id: null }], "The pin is added to today's new draft")
+assert.equal(find(named("TaskProgressEditor")).props.value[0].percent, null, "A pin added from its panel starts as a blank task entry")
 assert.match(successes.at(-1)[1], /Choose the task worked on for Laundry/)
 assert.ok(!replaced.includes("linkpin"), "The request is used once and removed from the address")
 reset(); successes.length = 0
@@ -392,5 +399,7 @@ openReport("?project=A&linkpin=p1"); render(ForemanReport, {}); render(ForemanRe
 assert.deepEqual(linked(), [{ pin_id: "p2", item_id: null }], "A submitted report is never changed"); assert.match(infos.at(-1)[0], /already submitted/)
 reset(); reportState.reports = []; openReport("?project=A&linkpin=x1"); render(ForemanReport, {}); render(ForemanReport, {})
 assert.deepEqual(linked(), [], "A pin of another project is not linked")
+reset(); pins[1].assigned_to = "someone"; openReport("?project=A&linkpin=p2"); render(ForemanReport, {}); render(ForemanReport, {})
+assert.deepEqual(linked(), [], "Work assigned to someone else is not added"); pins[1].assigned_to = "fore"
 console.log("Foreman daily report: a pin from the panel is added once to today's draft, existing drafts keep their links, submitted reports and foreign pins are refused passed")
 reset(); delete globalThis.__pinHooks; delete globalThis.__pinDeps; delete globalThis.window

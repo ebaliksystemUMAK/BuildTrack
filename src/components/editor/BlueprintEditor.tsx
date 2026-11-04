@@ -359,9 +359,12 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
     }
   }
 
-  const createPin = async (title: string, category: PinCategory): Promise<string | null> => {
+  const createPin = async (title: string, category: PinCategory, proposal: { start: string; end: string; reason: string } | null = null): Promise<string | null> => {
     if (!draftPin || !blueprint || !revision) return "Nothing to place the pin on."
-    const { data, error: insertError } = await supabase
+    const { data, error: insertError } = proposal ? await supabase.rpc("create_pin_with_schedule_proposal", {
+      p_blueprint: blueprint.id, p_revision: revision.id, p_x: draftPin.x, p_y: draftPin.y, p_title: title, p_category: category,
+      p_start: proposal.start, p_end: proposal.end, p_phase: "Unassigned", p_reason: proposal.reason,
+    }).single() : await supabase
       .from("pins")
       .insert({ project_id: projectId, blueprint_id: blueprint.id, revision_id: revision.id, x: draftPin.x, y: draftPin.y, title, category, discipline: blueprint.discipline })
       .select("*")
@@ -372,7 +375,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
     setDraftPin(null)
     setTool("select")
     select({ pin: created.id, ann: [] })
-    toast.success("Pin added", "Add details, a deadline and a task in the panel.")
+    toast.success("Pin added", proposal ? "Date proposal saved as a draft. Add the tasks, then send their dates for PM approval." : "Add tasks and propose their dates in the panel. The Project Manager approves the schedule.")
     if (issueAfter.current) {
       issueAfter.current = false
       void setStatus(created, "issue")
@@ -1493,21 +1496,24 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
   return createPortal(body, document.body)
 }
 
-function NewPinDialog({ onClose, onCreate }: { onClose: () => void; onCreate: (title: string, category: PinCategory) => Promise<string | null> }) {
+function NewPinDialog({ onClose, onCreate }: { onClose: () => void; onCreate: (title: string, category: PinCategory, proposal?: { start: string; end: string; reason: string } | null) => Promise<string | null> }) {
   const [title, setTitle] = useState("")
   const [category, setCategory] = useState<PinCategory>("progress")
+  const [dates, setDates] = useState({ start: "", end: "", reason: "" })
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     if (title.trim().length < 2 || title.trim().length > 120) return setError("Enter a title between 2 and 120 characters.")
+    const hasDates = category !== "note" && Boolean(dates.start || dates.end)
+    if (hasDates && (!dates.start || !dates.end || dates.end < dates.start || dates.reason.trim().length < 5)) return setError("Enter both proposed dates in order and a technical reason of at least 5 characters.")
     setBusy(true)
-    const failure = await onCreate(title.trim(), category)
+    const failure = await onCreate(title.trim(), category, hasDates ? { ...dates, reason: dates.reason.trim() } : null)
     setBusy(false)
     if (failure) setError(failure)
   }
   return (
-    <Modal title="New pin" description="Say what is tracked here. You can add details, a deadline and a task next." size="sm" onClose={busy ? () => undefined : onClose} footer={<><button type="button" className={secondary} onClick={onClose} disabled={busy}>Cancel</button><button type="submit" form="new-pin-form" className={primary} disabled={busy}>{busy ? "Adding..." : "Add pin"}</button></>}>
+    <Modal title="New pin" description="Create the work pin, add its tasks, then send proposed dates for Project Manager approval." size="sm" onClose={busy ? () => undefined : onClose} footer={<><button type="button" className={secondary} onClick={onClose} disabled={busy}>Cancel</button><button type="submit" form="new-pin-form" className={primary} disabled={busy}>{busy ? "Adding..." : "Add pin"}</button></>}>
       <form id="new-pin-form" className="space-y-3" noValidate onSubmit={(event) => void submit(event)}>
         {error ? <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-fg">{error}</p> : null}
         <label className="block text-sm font-semibold">What is here? *<input className={field} maxLength={120} placeholder="e.g. Column C4 rebar" value={title} onChange={(e) => setTitle(e.target.value)} /></label>
@@ -1516,6 +1522,12 @@ function NewPinDialog({ onClose, onCreate }: { onClose: () => void; onCreate: (t
             {(Object.keys(categoryLabels) as PinCategory[]).map((c) => <option key={c} value={c}>{categoryLabels[c]}</option>)}
           </select>
         </label>
+        {category !== "note" ? <fieldset className="space-y-3 rounded-lg border border-line p-3"><legend className="px-1 text-xs font-bold">Optional date proposal draft</legend>
+          <label className="block text-sm font-semibold">Proposed start<input type="date" min="1900-01-01" max="2199-12-31" className={field} value={dates.start} onChange={event => setDates(current => ({ ...current, start: event.target.value }))} /></label>
+          <label className="block text-sm font-semibold">Proposed deadline<input type="date" min="1900-01-01" max="2199-12-31" className={field} value={dates.end} onChange={event => setDates(current => ({ ...current, end: event.target.value }))} /></label>
+          <label className="block text-sm font-semibold">Technical reason<textarea rows={2} maxLength={500} className={field} value={dates.reason} onChange={event => setDates(current => ({ ...current, reason: event.target.value }))} /></label>
+          <p className="text-xs text-fg-muted">These dates stay a private draft until you add the tasks and send the proposal. PM approval makes them official.</p>
+        </fieldset> : null}
       </form>
     </Modal>
   )

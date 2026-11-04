@@ -34,7 +34,7 @@ export function usePinRecords(pin: { id: string; project_id: string } | null, ro
       seesClientReports ? fetchAll<Snag>((from, to) => supabase.from("client_snags").select("*").eq("pin_id", pinId).order("number", { ascending: false }).range(from, to)) : skip<Snag>(),
       staff ? fetchAll<SiteIssueReport>((from, to) => supabase.from("site_issue_reports").select("*").eq("pin_id", pinId).order("created_at", { ascending: false }).order("id").range(from, to)) : skip<SiteIssueReport>(),
       fetchAll<DailyReport>((from, to) => {
-        let query = supabase.from("daily_reports").select("*").eq("project_id", projectId as string).contains("linked_work", JSON.stringify([{ pin_id: pinId }]))
+        let query = supabase.from("daily_reports").select<string, DailyReport>(staff ? "*,daily_report_entries(*)" : "*").eq("project_id", projectId as string).contains("linked_work", JSON.stringify([{ pin_id: pinId }]))
         if (role === "client") query = query.eq("status", "submitted")
         return query.order("report_date", { ascending: false }).order("id").range(from, to)
       }),

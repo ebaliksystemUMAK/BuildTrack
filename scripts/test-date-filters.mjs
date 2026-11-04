@@ -167,8 +167,8 @@ const completionProps = { ...viewProps, tabs: ["inspections", "defects", "comple
 } }
 setLocation("/engineer/qa", "?project=P&tab=complete")
 reset(); render(View, completionProps)
-assert.equal(tab("Complete task").props["aria-selected"], true)
-assert.equal(text(tab("Complete task")), "Complete task2")
+assert.equal(tab("Passed task").props["aria-selected"], true)
+assert.equal(text(tab("Passed task")), "Passed task2")
 assert.match(text(tree), /Ready checklist content/); assert.doesNotMatch(text(tree), /Completed checklist history|Review queue/)
 assert.ok(!has(named("DateRangeFilter")), "Requested/raised date filters never imply they filter completion dates")
 tab("Completed").props.onClick(); render(View, completionProps)

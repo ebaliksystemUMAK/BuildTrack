@@ -13,6 +13,7 @@ import { useProjectWork } from "../../lib/projectWork"
 import { useDefects, useInspections, useQaSummary } from "../../lib/qa"
 import { qaSummaryHtml } from "../../lib/qaPrint"
 import { linkedWorkLabel, type ReportWork } from "../../lib/reportFormat"
+import { useProjectWorkItems } from "../../lib/dailyPhotos"
 import { dailyReportHtml, reportDateLong, useDailyReports, useQuestions, weatherLabels, type DailyReport } from "../../lib/reports"
 import { siteLogReports } from "../../lib/siteReportsModel"
 import { supabase } from "../../lib/supabase"
@@ -30,7 +31,8 @@ export default function PmReports(_: PmPageProps) {
   const pm = usePmProject()
   const projectId = pm.project?.id ?? null
   const work = useProjectWork(projectId)
-  const { reports, loading: reportsLoading, error: reportsError } = useDailyReports(projectId)
+  const { reports, loading: reportsLoading, error: reportsError } = useDailyReports(projectId, true)
+  const workItems = useProjectWorkItems(projectId, true)
   const { questions } = useQuestions(projectId)
   const { defects } = useDefects(projectId)
   const { inspections } = useInspections(projectId)
@@ -45,7 +47,7 @@ export default function PmReports(_: PmPageProps) {
   const cancel = useRef({ cancelled: false })
   const logs = useMemo(() => siteLogReports(reports, projectId), [reports, projectId])
 
-  const describe = (link: ReportWork) => linkedWorkLabel(link, (id) => work.pins.find((pin) => pin.id === id)?.title, () => undefined)
+  const describe = (link: ReportWork) => linkedWorkLabel(link, (id) => work.pins.find((pin) => pin.id === id)?.title, (id) => workItems.find((item) => item.id === id)?.text)
   const printDaily = (report: DailyReport) => {
     if (!work.project) return
     if (!printHtml(dailyReportHtml(report, work.project, work.nameOf(report.author_id), describe))) toast.error("Could not open the print dialog")

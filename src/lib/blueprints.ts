@@ -66,6 +66,7 @@ export type Pin = {
   assigned_by?: string | null
   assigned_at?: string | null
   due_date: string | null
+  planned_start?: string | null
   locked: boolean
   created_by: string | null
   verified_by: string | null
@@ -124,6 +125,8 @@ export type Annotation = {
 }
 
 export type ChecklistItem = {
+  planned_start?: string | null
+  due_date?: string | null
   qa_template_id?: string | null
   review_status?: "not_submitted" | "for_review" | "verified" | "returned"
   review_inspection_id?: string | null

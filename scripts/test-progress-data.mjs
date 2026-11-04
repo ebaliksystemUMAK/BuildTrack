@@ -35,7 +35,7 @@ assert.equal(result.error, false)
 assert.equal(result.data[0].tasks.length, 1005, "Tasks beyond the first Data API page remain in the denominator")
 assert.deepEqual(result.data[1].tasks, [], "A pin without tasks earns no task progress")
 assert.deepEqual(queries.map(query => [query.from, query.to]), [[0, 999], [1000, 1999]])
-assert.ok(queries.every(query => query.fields === "id,pin_id,text,done,review_status,verified_at,created_at" && query.filters.some(([key, value]) => key === "project_id" && value === "P")))
+assert.ok(queries.every(query => query.fields === "id,pin_id,text,done,review_status,verified_at,created_at,planned_start,due_date" && query.filters.some(([key, value]) => key === "project_id" && value === "P")))
 failAt = 1000
 assert.deepEqual(await fetchProgressPins(page, "P"), { data: [], error: true }, "Partial task reads must not produce plausible but incorrect percentages")
 failAt = -1; throwQuery = true

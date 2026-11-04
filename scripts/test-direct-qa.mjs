@@ -5,6 +5,8 @@ import { checklistProblem } from "../src/lib/qaModel.ts"
 import { completionProblem } from "../src/lib/workItemModel.ts"
 import { pickableChecklists } from "../src/lib/qaChecklists.ts"
 import { progressPercent, taskProgress } from "../src/lib/taskProgress.ts"
+import { previousTaskProgress, reportDateLong, reportProgressKey } from "../src/lib/reportFormat.ts"
+import { addDays } from "../src/lib/progress.ts"
 
 // Real React component controls, isolated hooks and fake RPCs. No production fixtures or credentials.
 let slots = [], cursor = 0, effects = [], tree, role = "foreman", calls = [], confirmation = true, saved = 0, preflightItem = null
@@ -39,7 +41,7 @@ globalThis.__directQaDeps = {
   useConfirm: () => async () => confirmation, useToast: () => ({ success() {}, error() {}, info() {} }),
   // Per-type access: this person holds Assigned work on the sheet type (view-only behaviour is covered by test:blueprint-access).
   usePinTypeAccess: () => ({ canAct: true, viewOnly: false, typeLabel: "Civil / Structural" }),
-  checklistProblem, pickableChecklists, progressPercent, taskProgress, pinLevelDefects: () => [], completionProblem, supabase: fakeDb,
+  checklistProblem, pickableChecklists, progressPercent, taskProgress, previousTaskProgress, reportDateLong, reportProgressKey, addDays, manilaToday: () => "2026-11-04", pinLevelDefects: () => [], completionProblem, supabase: fakeDb,
   qaActions: {
     async submitItems(pinId, items) { calls.push({ name: "submitItems", pinId, items }); return { ok: true } },
     async completeItem(itemId) { calls.push({ name: "completeItem", itemId }); return { ok: true } },
@@ -82,6 +84,21 @@ button("Open FLOOR").props.onClick()
 render(PinChecklist, { pin, canEdit: false, canTick: true })
 assert.ok(nodes(tree).some(node => node.props?.itemId === "floor"))
 reset(); role = "engineer"
+const progressReport = (id, date, percent, extra = {}) => ({ id, project_id: pin.project_id, report_date: date, status: "submitted", submitted_at: `${date}T12:00:00Z`, daily_report_entries: [{ id, pin_id: pin.id, item_id: item.id, percent }], ...extra })
+const reported = [progressReport("old", "2026-11-02", 15), progressReport("new", "2026-11-03", 25), progressReport("draft", "2026-11-04", 90, { status: "draft" }), progressReport("returned", "2026-11-04", 80, { review_state: "returned" }), progressReport("elsewhere", "2026-11-04", 70, { project_id: "other" })]
+render(PinChecklist, { pin, canEdit: true, canTick: false, reports: reported })
+assert.match(text(tree), /Foreman reported: 25%/); assert.doesNotMatch(text(tree), /Foreman reported: (90|80|70)%/)
+render(PinChecklist, { pin, canEdit: true, canTick: false, reports: [progressReport("complete", "2026-11-04", 100)] })
+assert.match(text(tree), /Foreman reported: 100%/); assert.equal(item.review_status, "not_submitted", "100% reported cannot complete the task's QA")
+assert.equal(taskProgress([item]).approved, 0, "Reported progress never enters the QA-approved total")
+render(PinChecklist, { pin, canEdit: true, canTick: false, reports: [progressReport("zero", "2026-11-04", 0)] }); assert.match(text(tree), /Foreman reported: 0%/)
+render(PinChecklist, { pin, canEdit: true, canTick: false, reports: reported, reportsLoading: true }); assert.match(text(tree), /Loading Foreman reported progress/); assert.doesNotMatch(text(tree), /Foreman reported: 25%/)
+let retriedProgress = 0
+render(PinChecklist, { pin, canEdit: true, canTick: false, reports: reported, reportsError: "Test error", onRetryReports: () => { retriedProgress++ } }); assert.match(text(tree), /progress is unavailable/); assert.doesNotMatch(text(tree), /Foreman reported: 25%/)
+button("Retry reported progress").props.onClick(); assert.equal(retriedProgress, 1)
+render(PinChecklist, { pin, canEdit: true, canTick: false, reports: reported.map(report => ({ ...report, daily_report_entries: report.daily_report_entries.map(entry => ({ ...entry, pin_id: "other-pin" })) })) }); assert.match(text(tree), /No submitted progress/)
+role = "client"; render(PinChecklist, { pin, canEdit: false, canTick: false, reports: reported }); assert.doesNotMatch(text(tree), /Foreman reported/)
+role = "engineer"
 render(PinChecklist, { pin, canEdit: true, canTick: false })
 button("Add task & QC criteria").props.onClick()
 render(PinChecklist, { pin, canEdit: true, canTick: false })

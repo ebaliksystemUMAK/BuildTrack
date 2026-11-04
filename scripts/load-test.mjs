@@ -42,6 +42,8 @@ await db.query("insert into public.project_members (project_id, user_id) values 
 await as("eng")
 const sheets = []
 for (let s = 0; s < SHEETS; s++) sheets.push((await db.query("insert into public.blueprints (project_id, title, level) values ($1, $2, $3) returning id", [project, `Sheet ${s + 1}`, `L${(s % 12) + 1}`])).rows[0].id)
+// Approved schedule fixtures are backend-seeded; Engineers can only propose dates in the application.
+await asOwner()
 const statuses = ["not_started", "in_progress", "for_review", "issue", "verified"]
 const pins = []
 for (let i = 0; i < PINS; i++) {
@@ -66,6 +68,11 @@ for (let i = 0; i < INSPECTIONS; i++) await db.query("select public.request_insp
 await db.query("insert into public.pin_checklist_items (pin_id, project_id, text) select p.id, p.project_id, t from public.pins p cross join unnest(array['FLOOR', 'WALL']) t where p.project_id = $1 and p.status not in ('for_review', 'verified') and right(p.title, 1) in ('1', '6')", [project])
 for (let i = 0; i < NCRS; i++) await db.query("select public.raise_defect($1, $2, null, 'workmanship', $3, 'general', null, $4, $5)", [project, `Defect ${i + 1}`, ["minor", "major", "critical"][i % 3], pins[i], ids.fore])
 await asOwner()
+// A year of submitted daily reports with five task entries each. Trusted fixture: the 14-day rule only applies to what a person writes.
+await db.exec("set session_replication_role = replica")
+await db.query("insert into public.daily_reports (project_id, report_date, author_id, work_done, status, submitted_at) select $1, current_date - n, $2, 'Work on site', 'submitted', now() from generate_series(1, 365) n", [project, ids.fore])
+await db.query("insert into public.daily_report_entries (report_id, project_id, pin_id, position, percent, notes, manpower) select r.id, r.project_id, p.id, p.n, 40, 'Progress on this task', 5 from public.daily_reports r cross join lateral (select id, row_number() over (order by id) - 1 n from public.pins where project_id = r.project_id order by id limit 5) p where r.project_id = $1", [project])
+await db.exec("set session_replication_role = origin")
 const events = Number((await db.query("select count(*) n from public.pin_events")).rows[0].n)
 const seedSeconds = (ms(seedStart) / 1000).toFixed(1)
 
@@ -122,6 +129,10 @@ await measure("Pin panel: site issues, client reports, questions of one pin", "e
   db.query("select * from public.project_questions where pin_id = $1 order by created_at desc, id", [panelPin]),
 ])).reduce((sum, result) => sum + result.rows.length, 0))
 await measure("Pin panel: daily reports linking one pin (jsonb contains)", "client", () => paged("select * from public.daily_reports where project_id = $1 and linked_work @> $2::jsonb and status = 'submitted' order by report_date desc, id", [project, JSON.stringify([{ pin_id: panelPin }])]))
+// useDailyReports with task entries reads the entries through their own policy, row by row (what the embedded select costs).
+const reportsWithEntries = "select r.*, coalesce((select jsonb_agg(to_jsonb(e)) from public.daily_report_entries e where e.report_id = r.id), '[]'::jsonb) entries from public.daily_reports r where r.project_id = $1 order by report_date desc, id"
+await measure("Daily reports with task entries, a year (paged)", "eng", () => paged(reportsWithEntries, [project]))
+await measure("Daily reports, entries refused to a client (paged)", "client", () => paged(reportsWithEntries, [project]))
 await measure("Foreman dashboard: only my pins, selected project (paged)", "fore", () => paged("select * from public.pins where assigned_to = $1 and project_id = $2 and category <> 'note' order by id", [ids.fore, project]))
 await measure("Foreman dashboard: sent-back events on my pins (100-ID batches)", "fore", async () => {
   let total = 0

@@ -185,6 +185,7 @@ export default function WorkItemWorkspace({ itemId, onClose, onChanged, fromPlan
 
   return (
     <Modal title={`${pin.title} → ${name}`} description={`QC Checklist: ${data.templateName ?? "not approved yet"} · Foreman: ${nameOf(pin.assigned_to)}`} size="2xl" onClose={busy ? () => undefined : onClose} footer={footer}>
+      <p className="mb-3 rounded-lg border border-line bg-surface-muted px-3 py-2 text-xs text-fg-muted">PM-approved task schedule: {item.planned_start ?? "Start not approved"} → {item.due_date ?? "No deadline"}. Task dates can differ from the pin's overall range. Schedule changes do not approve QA.</p>
       <div className="min-w-0 space-y-4">
         {viewOnly ? <p role="status" className="rounded-lg border border-line bg-surface-muted px-3 py-2 text-sm text-fg"><strong>View only.</strong> You can read this task; people with Assigned work access to {typeLabel ?? "this"} plans act on it.</p> : null}
         <NextActionCard view={view} responsible={responsible}>

@@ -140,7 +140,9 @@ export default async function (ctx) {
     await expectFail("insert into public.pins (project_id, blueprint_id, x, y, title) values ($1, $2, 5, 5, 'PM pin')", [P.one, sheet], /row-level security/)
     await expectFail("update public.blueprints set scale_width_m = 30 where id = $1", [sheet], /Only an Engineer/)
     await as("pmEng")
-    pin = (await one("insert into public.pins (project_id, blueprint_id, x, y, title, due_date) values ($1, $2, 10, 10, 'Wall W1', current_date - 9) returning id, updated_at", [P.one, sheet]))
+    pin = (await one("insert into public.pins (project_id, blueprint_id, x, y, title) values ($1, $2, 10, 10, 'Wall W1') returning id, updated_at", [P.one, sheet]))
+    await asOwner() // Seed the existing approved deadline without giving Engineers schedule authority.
+    await expectOk("update public.pins set due_date=current_date-9 where id=$1", [pin.id])
     await as("pmA")
     assert.equal((await db.query("update public.pins set status = 'verified' where id = $1 returning id", [pin.id])).rows.length, 0, "no verification")
     assert.equal((await db.query("update public.pins set title = 'PM edit' where id = $1 returning id", [pin.id])).rows.length, 0)

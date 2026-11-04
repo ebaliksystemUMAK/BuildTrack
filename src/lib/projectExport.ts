@@ -5,7 +5,7 @@ import { buildZip, textBytes, type ZipEntry } from "./zipWriter"
 // pictures on sheets, pin photos) under the same paths they have in storage. Built in the admin's browser from what that admin may read;
 // the database only records that it happened (log_project_export). See docs/BUILDTRACK_BACKUP_RESTORE.md for putting it back.
 
-export const EXPORT_TABLES = ["project_members", "blueprints", "blueprint_revisions", "pins", "pin_events", "pin_checklist_items", "pin_photos", "blueprint_annotations", "daily_reports", "daily_report_photos", "project_questions", "qa_inspections", "qa_inspection_items", "qa_defects", "qa_defect_events", "qa_photos", "pin_qa_submissions"] as const
+export const EXPORT_TABLES = ["project_members", "blueprints", "blueprint_revisions", "pins", "pin_events", "pin_checklist_items", "pin_photos", "blueprint_annotations", "daily_reports", "daily_report_entries", "daily_report_photos", "project_questions", "qa_inspections", "qa_inspection_items", "qa_defects", "qa_defect_events", "qa_photos", "pin_qa_submissions"] as const
 const REVIEW_EXPORT_TABLES = ["daily_report_revisions", "biometric_daily_totals", "qa_work_attempts", "qa_inspection_events"]
 const MAX_FILE_BYTES = 450 * 1024 * 1024 // keeps the archive inside what a browser tab can hold
 
@@ -35,7 +35,7 @@ export function backupReadme(project: { code: string; name: string }, exportedAt
     "",
     "WHAT IS INSIDE",
     "data/project.json          the project row",
-    "data/<table>.json          one file per table (members, sheets, revisions, pins, timeline, checklists, photos, drawings, daily reports, client questions)",
+    "data/<table>.json          one file per table (members, sheets, revisions, pins, timeline, checklists, photos, drawings, daily reports and their task entries, client questions)",
     "data/team.json             names and roles of the team at the time of the backup",
     "data/manifest.json         counts, file list and anything that could not be included",
     withFiles ? "files/<bucket>/...       the plan files, pictures and photos, under the same paths they have in storage" : "(files were not included in this backup)",

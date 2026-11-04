@@ -56,7 +56,7 @@ export default async function ({ db, ids, as, asOwner, test, expectOk, expectFai
 
   await test("Assigning a pin notifies the Foreman (not the person who assigned it)", async () => {
     await as("eng1", "aal2")
-    await expectOk("update public.pins set assigned_to = $2, due_date = current_date + 5 where id = $1", [pin, ids.fore1])
+    await expectOk("update public.pins set assigned_to = $2 where id = $1", [pin, ids.fore1])
     const list = await mine("fore1", "pin.assigned", pin)
     if (list.length !== 1 || !/Beam B7/.test(list[0].title) || !list[0].link.startsWith("/foreman/dashboard?project=" + P1)) throw new Error("assignment not delivered: " + JSON.stringify(list))
     if ((await mine("eng1", "pin.assigned", pin)).length !== 0) throw new Error("assigner notified about their own action")
@@ -96,6 +96,7 @@ export default async function ({ db, ids, as, asOwner, test, expectOk, expectFai
 
   await test("Deadline reminders: due soon and overdue, only for your own pins, once per day", async () => {
     await as("eng1", "aal2")
+    await asOwner() // Approved-date fixtures; Engineers now propose rather than directly set official dates.
     const late = (await db.query("insert into public.pins (project_id, blueprint_id, x, y, title, assigned_to, due_date) values ($1, $2, 40, 40, 'Late rebar', $3, current_date - 3) returning id", [P1, bp, ids.fore1])).rows[0].id
     await expectOk("insert into public.pins (project_id, blueprint_id, x, y, title, assigned_to, due_date) values ($1, $2, 50, 50, 'Soon pour', $3, current_date + 1)", [P1, bp, ids.fore1])
     await expectOk("insert into public.pins (project_id, blueprint_id, x, y, title, assigned_to, due_date) values ($1, $2, 60, 60, 'Far away', $3, current_date + 30)", [P1, bp, ids.fore1])

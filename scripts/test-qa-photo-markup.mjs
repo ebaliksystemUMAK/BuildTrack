@@ -4,6 +4,7 @@ import ts from "typescript"
 import { markupProblem } from "../src/lib/issueMarkup.ts"
 import { stampFields } from "../src/lib/photoStamp.ts"
 import { applyMarkupChanges } from "../src/lib/photoEditorModel.ts"
+import { photosOutsideTasks } from "../src/lib/photoGalleryModel.ts"
 
 // Inspection / NCR evidence photos use the client's markup editor before upload: the real lib/qa upload, EvidenceStrip,
 // IssuePhotoPicker (prepare mode) and PhotoViewer overlay, each compiled with stubbed imports (no browser, no network).
@@ -370,14 +371,16 @@ dailyFailure = null; dailyLookups = [{ data: null, error: null }]
 await saveDailyReportCapture("P", "R", { ...dailyCapture, id: "capture-2", source: "upload" })
 assert.equal(dailyRows.at(-1).capture_source, "upload", "a photo chosen from the device is recorded as an upload")
 
-let savedCaptures = [], parentBusy = [], photoReloads = 0
+let savedCaptures = [], parentBusy = [], photoReloads = 0, failingCapture = null
 globalThis.navigator.onLine = true
 Object.assign(deps, {
+  photosOutsideTasks,
   useEvidencePhotos: () => ({ photos: [], loading: false, error: "", reload: async () => { photoReloads++ } }),
-  saveDailyReportCapture: async (...args) => { savedCaptures.push(args) },
+  saveDailyReportCapture: async (...args) => { if (args[2].id === failingCapture) throw new Error("Upload failed"); savedCaptures.push(args) },
 })
-const DailyPhotos = (await compile("../src/components/DailyReportPhotos.tsx")).default
-const dailyProps = { projectId: "P", reportId: null, editable: true, ensureDraft: async () => "R", onBusy: value => parentBusy.push(value) }
+const ReportPhotos = (await compile("../src/components/DailyReportPhotos.tsx")).default
+const DailyPhotos = props => ReportPhotos({ ...props, evidence: deps.useEvidencePhotos() })
+const dailyProps = { projectId: "P", entryId: "e0", editable: true, ensureDraft: async () => "R", onBusy: value => parentBusy.push(value) }
 photoPolicy = cameraOnlyPolicy("This photo was taken 2.6 km from the project site. Photos must be taken at the site.")
 reset(); render(DailyPhotos, dailyProps)
 assert.ok(!all(tree).some(node => node.type === "input" && node.props.type === "file"))
@@ -394,22 +397,84 @@ assert.equal(reportEditor.props.title, "Annotate daily progress photo")
 const capturedId = reportEditor.props.photos[0].id
 reportEditor.props.onSave([{ id: capturedId, caption: "Slab progress", annotations: markup }]); reportEditor.props.onClose(); render(DailyPhotos, dailyProps)
 assert.ok(parentBusy.at(-1), "Unsaved capture prevents report submission/date switching")
-button("Save photo to report").props.onClick(); button("Save photo to report").props.onClick(); await settle(); render(DailyPhotos, dailyProps)
+button("Save photo to task").props.onClick(); button("Save photo to task").props.onClick(); await settle(); render(DailyPhotos, dailyProps)
 assert.equal(savedCaptures.length, 1); assert.equal(savedCaptures[0][0], "P"); assert.equal(savedCaptures[0][1], "R")
 assert.deepEqual(savedCaptures[0][2].annotations, markup); assert.equal(savedCaptures[0][2].file, dailyCapture.file)
 assert.equal(savedCaptures[0][2].stamp.taken_at, stamp.taken_at, "Annotation time never replaces the shutter timestamp"); assert.equal(savedCaptures[0][2].source, "camera")
 assert.equal(parentBusy.at(-1), false); assert.equal(photoReloads, 1)
 photoPolicy = uploadsAllowed
 reset(); render(DailyPhotos, dailyProps)
-assert.match(text(tree), /or upload one from this device/)
+assert.match(text(tree), /or upload several from this device/)
+assert.equal(find(node => node.type === "input" && node.props.type === "file").props.multiple, true, "Several photos can be chosen at once")
 const chosenFile = { files: [photoFile("gallery.jpg")], value: "x" }
 find(node => node.type === "input" && node.props.type === "file").props.onChange({ target: chosenFile }); await settle(); render(DailyPhotos, dailyProps)
 assert.equal(chosenFile.value, "")
 reportEditor = find(node => node.type?.name === "IssuePhotoEditor"); reportEditor.props.onClose(); render(DailyPhotos, dailyProps)
-assert.match(text(tree), /Unsaved uploaded photo/)
-button("Save photo to report").props.onClick(); await settle(); render(DailyPhotos, dailyProps)
+assert.match(text(tree), /1 unsaved photo\./); assert.equal(find(node => node.type?.name === "PendingPhoto").props.capture.source, "upload")
+button("Save photo to task").props.onClick(); await settle(); render(DailyPhotos, dailyProps)
 assert.equal(savedCaptures.at(-1)[2].source, "upload"); assert.equal(savedCaptures.at(-1)[2].file.type, "image/jpeg", "device photos are converted to JPEG first")
 reset(); render(DailyPhotos, { ...dailyProps, editable: false })
 assert.ok(!all(tree).some(node => node.type === "button" && text(node) === "Take photo"), "Submitted/history viewers have no capture controls")
+
+// A photo of a task entry: the entry is saved first (even on an existing report), the photo points at it, and each section shows its own photos.
+let drafted = []
+const entryProps = { ...dailyProps, entryId: "e1", ensureDraft: async () => { drafted.push("saved"); return "R" } }
+photoPolicy = cameraOnlyPolicy()
+reset(); render(DailyPhotos, entryProps)
+button("Take photo").props.onClick(); render(DailyPhotos, entryProps)
+find(node => node.type?.name === "CameraCapture").props.onCapture(dailyCapture.file, stamp); render(DailyPhotos, entryProps)
+find(node => node.type?.name === "IssuePhotoEditor").props.onClose(); render(DailyPhotos, entryProps)
+button("Save photo to task").props.onClick(); await settle(); render(DailyPhotos, entryProps)
+assert.deepEqual(drafted, ["saved"]); assert.equal(savedCaptures.at(-1)[3], "e1", "The photo is attached to the task entry")
+deps.useEvidencePhotos = () => ({ photos: [{ id: "task", entry_id: "e1" }, { id: "other", entry_id: "e2" }, { id: "report", entry_id: null }, { id: "moved", entry_id: "removed" }], loading: false, error: "", reload: async () => {} })
+const grid = () => find(node => node.type?.name === "PhotoGrid").props.photos.map(photo => photo.id)
+reset(); render(DailyPhotos, { ...entryProps, editable: false }); assert.deepEqual(grid(), ["task"], "A task entry shows only its photos")
+const reportProps = { projectId: "P", editable: true, taskIds: ["e1", "e2"] }
+reset(); render(DailyPhotos, { ...reportProps, editable: false }); assert.deepEqual(grid(), ["report", "moved"], "The report's section shows the rest, including a photo of an entry removed from the form")
+assert.match(text(tree), /Other photos on this report/)
+reset(); render(DailyPhotos, reportProps)
+assert.ok(!has(node => node.type === "button" && /Take photo|Upload photo/.test(text(node))), "New photos are only added under a task")
+assert.equal(typeof find(node => node.type?.name === "PhotoGrid").props.onRemove, "function", "A photo outside the tasks can still be removed from a draft")
+assert.match(text(tree), /Add new photos under each task/)
+reset(); render(DailyPhotos, { projectId: "P", editable: false }); assert.equal(grid().length, 4, "A report without entries shows every photo"); assert.match(text(tree), /Daily progress photos/)
+deps.useEvidencePhotos = () => ({ photos: [], loading: false, error: "", reload: async () => {} })
+reset(); render(DailyPhotos, { ...entryProps, editable: false })
+assert.ok(!has(node => node.type?.name === "PhotoGrid"), "An empty task has a short note, not the large empty box"); assert.match(text(tree), /No photos for this task yet/)
+reset(); render(DailyPhotos, entryProps); assert.ok(has(node => node.type === "button" && text(node) === "Take photo"), "A task offers its own photo buttons"); assert.match(text(tree), /save them to this task/)
+
+// Many photos on one task: all can be chosen at once, each annotated in the same editor, and all saved to that task.
+photoPolicy = uploadsAllowed
+savedCaptures = []
+const pendingCards = () => all(tree).filter(node => node.type?.name === "PendingPhoto")
+const upload = async (names, props = entryProps) => { find(node => node.type === "input" && node.props.type === "file").props.onChange({ target: { files: names.map(name => photoFile(name)), value: "x" } }); await settle(); render(DailyPhotos, props) }
+reset(); render(DailyPhotos, entryProps)
+await upload(["one.jpg", "two.jpg", "three.jpg"])
+let manyEditor = find(node => node.type?.name === "IssuePhotoEditor")
+assert.equal(manyEditor.props.photos.length, 3, "The editor moves between all the new photos"); assert.equal(manyEditor.props.start, 0)
+manyEditor.props.onSave([{ id: manyEditor.props.photos[1].id, caption: "Second", annotations: markup }]); manyEditor.props.onClose(); render(DailyPhotos, entryProps)
+assert.equal(pendingCards().length, 3); assert.deepEqual(pendingCards().map(card => card.props.capture.annotations.length), [0, markup.length, 0], "Each photo keeps its own annotations")
+assert.equal(pendingCards()[1].props.capture.caption, "Second")
+assert.ok(has(node => node.type === "button" && text(node) === "Take photo"), "More photos can be added before saving")
+await upload(["four.jpg"]); manyEditor = find(node => node.type?.name === "IssuePhotoEditor")
+assert.equal(manyEditor.props.start, 3, "The editor opens on the newest photo"); manyEditor.props.onClose(); render(DailyPhotos, entryProps)
+pendingCards()[0].props.onAnnotate(); render(DailyPhotos, entryProps)
+assert.equal(find(node => node.type?.name === "IssuePhotoEditor").props.start, 0, "Annotate opens on that photo"); find(node => node.type?.name === "IssuePhotoEditor").props.onClose(); render(DailyPhotos, entryProps)
+pendingCards()[3].props.onDiscard(); await settle(); render(DailyPhotos, entryProps)
+assert.equal(pendingCards().length, 3, "One photo can be discarded on its own")
+failingCapture = pendingCards()[1].props.capture.id
+button("Save 3 photos to task").props.onClick(); await settle(); render(DailyPhotos, entryProps)
+assert.equal(savedCaptures.length, 1, "A failure stops at that photo"); assert.equal(pendingCards().length, 2, "and only the photos still to send remain")
+failingCapture = null
+button("Save 2 photos to task").props.onClick(); await settle(); render(DailyPhotos, entryProps)
+assert.equal(savedCaptures.length, 3); assert.ok(savedCaptures.every(call => call[3] === "e1"), "Every photo goes to this task"); assert.equal(pendingCards().length, 0)
+assert.equal(savedCaptures[1][2].annotations.length, markup.length, "Annotations are saved with their photo")
+assert.equal(parentBusy.at(-1), false, "Once all are saved the report can be submitted")
+// The report's limit: only what fits is added, and the rest is explained.
+const nearlyFull = Array.from({ length: 48 }, (_, n) => ({ id: `p${n}`, entry_id: "e2" }))
+deps.useEvidencePhotos = () => ({ photos: nearlyFull, loading: false, error: "", reload: async () => {} })
+reset(); render(DailyPhotos, entryProps); await upload(["a.jpg", "b.jpg", "c.jpg"])
+assert.equal(find(node => node.type?.name === "IssuePhotoEditor").props.photos.length, 2); assert.match(text(find(node => node.props?.role === "alert")), /1 not added: one report can hold 50 photos/)
+find(node => node.type?.name === "IssuePhotoEditor").props.onClose(); render(DailyPhotos, entryProps)
+assert.equal(button("Take photo").props.disabled, true, "A full report takes no more photos")
 
 console.log("QA and daily report photo markup: Super Admin photo switch (in-app camera at the site only, or device uploads allowed) for report, work item and Foreman QA photos, report capture, annotation/caption before save, original bytes and shutter timestamp preserved, duplicate-safe save/retry, report-submit lock; existing QA/correction markup, picker/editor, viewer and offline queue passed")

@@ -20,7 +20,7 @@ export async function fetchProgressPins<T extends { id: string }>(page: Paramete
   const [pins, tasks] = await Promise.all([
     completeRows<T>(page),
     completeRows<ProgressTask>((from, to) => {
-      let query = supabase.from("pin_checklist_items").select("id,pin_id,text,done,review_status,verified_at,created_at")
+      let query = supabase.from("pin_checklist_items").select("id,pin_id,text,done,review_status,verified_at,created_at,planned_start,due_date")
       if (projectId) query = query.eq("project_id", projectId)
       return query.order("id").range(from, to)
     }),

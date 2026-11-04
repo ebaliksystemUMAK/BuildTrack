@@ -75,7 +75,7 @@ export default function EngineerQa({ onNavigate }: EngineerPageProps) {
         tabs={["inspections", "defects", "complete", "completed", "snags"]} dateFilter
         workTabs={{
           complete: { count: ready.length + legacy.length, content: <WorkItemBoard key={projectId + ":complete"} showGroupFilters={false}
-            groups={[{ key: "complete", short: "Complete task", title: "Ready to complete", rows: ready,
+            groups={[{ key: "complete", short: "Passed task", title: "Ready to complete", rows: ready,
               hint: "Inspection passed and linked NCRs are closed. Open a task to complete it." }]}
             extras={legacy.length ? [{ key: "legacy", short: "Whole-work submissions", title: "Whole-work submissions", count: legacy.length, content: pinList(legacy) }] : []}
             loading={items.loading || ws.loading} error={items.error || ws.error} nameOf={ws.nameOf} sheetOf={work.sheetOf} onOpen={setItemId}

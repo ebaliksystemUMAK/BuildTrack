@@ -59,7 +59,11 @@ export default function LoginPage({ navigate }: LoginPageProps) {
     setOAuthIntent("login")
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/login` },
+      options: {
+        redirectTo: `${window.location.origin}/login`,
+        // BuildTrack sign-out does not end the browser's Google session.
+        queryParams: { prompt: "select_account" },
+      },
     })
     if (oauthError) {
       setError(oauthError.message)

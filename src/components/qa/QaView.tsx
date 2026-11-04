@@ -14,7 +14,7 @@ import type { QaWorkspace } from "../../lib/qaWorkspace"
 
 export type QaTab = "overview" | "inspections" | "defects" | "snags" | "checklists" | "complete" | "completed"
 type WorkTabs = Partial<Record<"complete" | "completed", { count: number; content: ReactNode }>>
-const tabNames: Record<QaTab, string> = { overview: "Overview", inspections: "Inspections", defects: "NCR register", snags: "Client reports", checklists: "QC Checklists", complete: "Complete task", completed: "Completed" }
+const tabNames: Record<QaTab, string> = { overview: "Overview", inspections: "Inspections", defects: "NCR register", snags: "Client reports", checklists: "QC Checklists", complete: "Passed task", completed: "Completed" }
 // One calendar range for the Overview and registers; each record uses its requested / raised / reported Manila day.
 const datedTabs: Partial<Record<QaTab, { label: string; noun: string }>> = { overview: { label: "Overview", noun: "Overview for" }, inspections: { label: "Requested", noun: "Inspections requested" }, defects: { label: "Raised", noun: "NCRs raised" }, snags: { label: "Reported", noun: "Client reports made" } }
 

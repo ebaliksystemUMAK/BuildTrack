@@ -4,6 +4,8 @@ export type ProgressTask = {
   pin_id: string
   text: string
   done: boolean
+  planned_start?: string | null
+  due_date?: string | null
   review_status?: string | null
   verified_at?: string | null
   created_at?: string | null // when the task was added (progress at the end of a past period counts only tasks that existed then)
@@ -17,7 +19,7 @@ export function taskProgress(tasks: Pick<ProgressTask, "done" | "review_status">
   return { approved, total: tasks.length, percent: progressPercent(approved, tasks.length) }
 }
 
-// Each task inherits its pin's planned due date. Never substitute the pin's final approval date for a task's approval.
+// Task-specific approved dates take precedence. Legacy task shapes still inherit the pin deadline.
 export function scheduledTasks(pins: { category: string; due_date: string | null; tasks?: ProgressTask[] }[]) {
-  return pins.filter(pin => pin.category !== "note").flatMap(pin => (pin.tasks ?? []).map(task => ({ ...task, due_date: pin.due_date })))
+  return pins.filter(pin => pin.category !== "note").flatMap(pin => (pin.tasks ?? []).map(task => ({ ...task, due_date: task.due_date === undefined ? pin.due_date : task.due_date })))
 }

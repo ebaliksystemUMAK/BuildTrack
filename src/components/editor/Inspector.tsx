@@ -216,7 +216,7 @@ export function PinSectionBody(props: InspectorProps & { pin: Pin; section: PinS
   const { pin, section, data } = props
   const shared = { pin, role: props.role, meId: props.meId, team: props.team, canEdit: props.canEdit, canWork: canWorkOn(props, pin), data, wide: props.wide, onPinChanged: props.onChanged ?? props.onPinChanged }
   if (section === "details") return props.wide ? null : <PinDetailsTab {...props} pin={pin} />
-  if (section === "checklist") return <PinChecklist pin={pin} canEdit={props.canEdit} canTick={canWorkOn(props, pin)} notice={checklistNotice(props, pin, pin.assigned_to ? props.team.find((member) => member.user_id === pin.assigned_to)?.full_name : undefined)} onPinChanged={props.onChanged ?? props.onPinChanged} />
+  if (section === "checklist") return <PinChecklist pin={pin} canEdit={props.canEdit} canTick={canWorkOn(props, pin)} notice={checklistNotice(props, pin, pin.assigned_to ? props.team.find((member) => member.user_id === pin.assigned_to)?.full_name : undefined)} reports={data.records.reports} reportsLoading={data.loading} reportsError={data.error} onRetryReports={data.reload} onPinChanged={props.onChanged ?? props.onPinChanged} />
   if (section === "issues") return <PinIssuesSection key={pin.id} {...shared} />
   if (section === "actions") return props.role === "admin" ? null : <PinActionsSection key={pin.id} {...shared} />
   if (section === "reports") return <PinReportsSection key={pin.id} {...shared} />
@@ -281,8 +281,10 @@ export function PinDetailsTab(props: InspectorProps & { pin: Pin; inDialog?: boo
       <dl className="grid grid-cols-2 gap-3 text-sm">
         <div><dt className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">Assigned</dt><dd className="font-semibold">{nameOf(pin.assigned_to)}{pin.assigned_to && pin.assigned_at ? <span className="block text-[11px] font-normal text-fg-muted">by {nameOf(pin.assigned_by ?? null)} on {prettyDate(pin.assigned_at.slice(0, 10))}</span> : null}</dd></div>
         <div>
-          <dt className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">Deadline</dt>
+          <dt className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">Approved start / deadline</dt>
+          <dd className="font-semibold">{pin.planned_start ? prettyDate(pin.planned_start) : "Start not approved"}</dd>
           <dd className={`font-semibold ${overdue ? "text-danger-fg" : ""}`}>{pin.due_date ? prettyDate(pin.due_date) : "Not set"}{overdue ? " (overdue)" : ""}</dd>
+          {pin.planned_start ? <dd className="mt-1 text-[11px] text-fg-muted">Overall range of approved task schedules.</dd> : pin.due_date ? <dd className="mt-1 text-[11px] text-fg-muted">Existing deadline; full schedule awaits PM approval.</dd> : null}
         </div>
         <div><dt className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">Category</dt><dd className="font-semibold">{categoryLabels[pin.category]}</dd></div>
         <div><dt className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">Discipline</dt><dd className="font-semibold">{pin.discipline ? disciplineLabels[pin.discipline] : "Not set"}</dd></div>

@@ -12,7 +12,11 @@ export type GalleryPhoto = {
   work?: { title: string; description: string | null; status: string } | null
   report?: { report_date: string; status: string; work_done: string } | null
   qa_attempt_id?: string | null // a checklist photo added to a correction (resubmission), not to the original submission
+  entry_id?: string | null // a daily report photo attached to one task entry of the report
 }
+
+// Daily report photos that belong to no task on the report: older reports, and photos of an entry that was removed.
+export const photosOutsideTasks = <T extends Pick<GalleryPhoto, "entry_id">>(photos: T[], taskIds: string[]) => photos.filter(photo => !photo.entry_id || !taskIds.includes(photo.entry_id))
 
 export type PhotoDates = { from: string; to: string }
 // Date filter buttons (Asia/Manila calendar days, both ends included). Daily report photos open on today.
