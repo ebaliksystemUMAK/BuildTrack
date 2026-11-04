@@ -557,26 +557,44 @@ const canvasToBlob = (canvas: HTMLCanvasElement, type: string, quality?: number)
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Could not create the image."))), type, quality),
   )
 
-export async function renderPdfPage(file: File, pageNumber: number) {
+export type BlueprintPreview = { blob: Blob | null; width: number; height: number; ext: string }
+
+// Keep one PDF worker open while the upload form labels/previews several pages.
+export async function openBlueprintPdf(file: File) {
   const pdfjs = await import("pdfjs-dist")
   pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString()
-  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise
-  if (pageNumber < 1 || pageNumber > doc.numPages) {
-    throw new Error(`This PDF has ${doc.numPages} page${doc.numPages === 1 ? "" : "s"}. Choose a page between 1 and ${doc.numPages}.`)
+  const task = pdfjs.getDocument({ data: await file.arrayBuffer() })
+  const doc = await task.promise.catch(async error => { await task.destroy(); throw error })
+  return {
+    numPages: doc.numPages,
+    destroy: () => task.destroy(),
+    async renderPage(pageNumber: number, longestEdge = 3200): Promise<BlueprintPreview> {
+      if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > doc.numPages) throw new Error(`Choose a page between 1 and ${doc.numPages}.`)
+      const page = await doc.getPage(pageNumber)
+      const base = page.getViewport({ scale: 1 })
+      const viewport = page.getViewport({ scale: Math.min(6, longestEdge / Math.max(base.width, base.height)) })
+      const canvas = document.createElement("canvas")
+      canvas.width = Math.max(1, Math.round(viewport.width))
+      canvas.height = Math.max(1, Math.round(viewport.height))
+      try {
+        const context = canvas.getContext("2d")
+        if (!context) throw new Error("Your browser cannot draw the plan.")
+        context.fillStyle = "#ffffff"
+        context.fillRect(0, 0, canvas.width, canvas.height)
+        await page.render({ canvasContext: context, viewport, canvas }).promise
+        return { blob: await canvasToBlob(canvas, "image/png"), width: canvas.width, height: canvas.height, ext: "png" }
+      } finally {
+        canvas.width = 0; canvas.height = 0
+        page.cleanup()
+      }
+    },
   }
-  const page = await doc.getPage(pageNumber)
-  const base = page.getViewport({ scale: 1 })
-  const scale = Math.min(6, Math.max(0.5, 3200 / Math.max(base.width, base.height)))
-  const viewport = page.getViewport({ scale })
-  const canvas = document.createElement("canvas")
-  canvas.width = Math.round(viewport.width)
-  canvas.height = Math.round(viewport.height)
-  const context = canvas.getContext("2d")
-  if (!context) throw new Error("Your browser cannot draw the plan.")
-  context.fillStyle = "#ffffff"
-  context.fillRect(0, 0, canvas.width, canvas.height)
-  await page.render({ canvasContext: context, viewport, canvas }).promise
-  return { blob: await canvasToBlob(canvas, "image/png"), width: canvas.width, height: canvas.height, ext: "png" }
+}
+
+export async function renderPdfPage(file: File, pageNumber: number) {
+  const doc = await openBlueprintPdf(file)
+  try { return await doc.renderPage(pageNumber) }
+  finally { await doc.destroy() }
 }
 
 export async function imagePreview(file: File) {
@@ -642,6 +660,9 @@ export type UploadInput = {
   file: File
   page: number
   notes: string
+  preparedPreview?: BlueprintPreview
+  revisionId?: string // stable across a failed/uncertain save so a retry cannot duplicate a revision
+  onCreated?: (blueprintId: string) => void
 }
 
 // Creates the blueprint (if new), stores the original + preview privately, then records the revision.
@@ -650,9 +671,19 @@ export async function uploadBlueprintRevision(input: UploadInput, onStep: (messa
   const problem = validateBlueprintFile(input.file)
   if (problem) throw new Error(problem)
 
+  const readSaved = async () => {
+    if (!input.revisionId) return null
+    const { data, error } = await supabase.from("blueprint_revisions").select("blueprint_id,project_id").eq("id", input.revisionId).maybeSingle()
+    if (error) throw new Error("Could not confirm whether this page was saved. Retry when the connection is available.")
+    if (data && (data.project_id !== input.projectId || (input.blueprintId && data.blueprint_id !== input.blueprintId))) throw new Error("This upload belongs to another plan.")
+    return data?.blueprint_id as string | undefined
+  }
+  const saved = await readSaved()
+  if (saved) return saved
+
   onStep("Preparing the preview...")
   const isPdf = input.file.type === "application/pdf"
-  const preview = isPdf ? await renderPdfPage(input.file, input.page) : await imagePreview(input.file)
+  const preview = input.preparedPreview ?? (isPdf ? await renderPdfPage(input.file, input.page) : await imagePreview(input.file))
 
   let blueprintId = input.blueprintId
   if (!blueprintId) {
@@ -664,6 +695,7 @@ export async function uploadBlueprintRevision(input: UploadInput, onStep: (messa
       .single()
     if (error || !data) throw new Error(error?.code === "42501" ? (error.message.includes("Assigned work") ? error.message : "You are not allowed to add blueprints to this project.") : (error?.message ?? "Could not create the blueprint."))
     blueprintId = data.id as string
+    input.onCreated?.(blueprintId)
   }
 
   const stamp = Date.now()
@@ -671,6 +703,7 @@ export async function uploadBlueprintRevision(input: UploadInput, onStep: (messa
   const filePath = `${input.projectId}/${blueprintId}/${stamp}-${safeName}`
   const previewPath = preview.blob ? `${input.projectId}/${blueprintId}/${stamp}-preview.${preview.ext}` : filePath
   const uploaded: string[] = []
+  let savingRevision = false
 
   try {
     onStep("Uploading the file...")
@@ -695,7 +728,9 @@ export async function uploadBlueprintRevision(input: UploadInput, onStep: (messa
       }
     }
     onStep("Saving the revision...")
+    savingRevision = true
     const { error } = await supabase.from("blueprint_revisions").insert({
+      ...(input.revisionId ? { id: input.revisionId } : {}),
       blueprint_id: blueprintId,
       project_id: input.projectId,
       revision: 1, // replaced by the database
@@ -711,6 +746,12 @@ export async function uploadBlueprintRevision(input: UploadInput, onStep: (messa
     })
     if (error) throw new Error(error.message)
   } catch (error) {
+    if (savingRevision && input.revisionId) {
+      // A connection can fail after Postgres committed. Confirm before removing files;
+      // an inconclusive read retains them and the next retry checks the same revision id.
+      const saved = await readSaved()
+      if (saved) return saved
+    }
     if (uploaded.length) await supabase.storage.from("blueprints").remove(uploaded) // best effort
     throw new Error(
       error instanceof Error && /fetch|network/i.test(error.message)

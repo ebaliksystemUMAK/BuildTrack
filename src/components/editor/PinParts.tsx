@@ -47,7 +47,6 @@ import { enqueue } from "../../lib/offlineQueue"
 import { disciplineLabels, type Discipline, type TeamMember } from "../../lib/projects"
 import { supabase } from "../../lib/supabase"
 import { useToast } from "../../lib/toast"
-import PinScheduleProposal from "./PinScheduleProposal"
 
 // Loaded on demand: the work item workspace also uses the parts below.
 const WorkItemWorkspace = lazy(() => import("../qa/WorkItemWorkspace"))
@@ -523,6 +522,6 @@ export function PinFields({ pin, team, onSaved, idPrefix = "pin" }: { pin: Pin; 
       <div className="text-right">
         <button type="submit" disabled={busy} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-[#9e1f93] to-[#b4329f] px-4 py-2 text-sm font-bold text-white shadow-[0_8px_18px_-10px_rgba(158,31,147,0.85)] hover:from-[#8a1a80] hover:to-[#a52a92] disabled:opacity-60">{busy ? "Saving..." : "Save changes"}</button>
       </div>
-    </form>{pin.category !== "note" ? <PinScheduleProposal key={pin.id} pin={pin} /> : null}</div>
+    </form></div>
   )
 }

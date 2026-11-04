@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { createPortal } from "react-dom"
 import BlueprintUploadDialog from "../BlueprintUploadDialog"
+import { timelinePhases } from "../../lib/projectTimelineModel"
 import Modal from "../Modal"
 import { ContextMenu, type MenuItem } from "../ui/Menu"
 import { Skeleton } from "../ui/Skeleton"
@@ -52,7 +53,7 @@ import { useEditorPrefs } from "../../lib/editorPrefs"
 import { dockedPanelMaximum, panelWidth } from "../../lib/panelSize"
 import { renderSheet, loadSheetImage } from "../../lib/exportSheet"
 import type { LayerAction } from "../../lib/layers"
-import { useProject, useProjectTeam } from "../../lib/projects"
+import { useProject, useProjectTeam, type TeamMember } from "../../lib/projects"
 import { useBlueprintAccess } from "../../lib/blueprintAccess"
 import { canEditType, canWorkType, typeScopedRole, uploadTypes, type BlueprintType } from "../../lib/blueprintTypes"
 import { supabase } from "../../lib/supabase"
@@ -98,7 +99,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
   const [typeFilter, setTypeFilter] = useState<BlueprintType | null>(blueprintType)
   const blueprints = useMemo(() => (typeFilter ? allBlueprints.filter((bp) => bp.blueprint_type === typeFilter) : allBlueprints), [allBlueprints, typeFilter])
   const access = useBlueprintAccess(typeScopedRole(role) ? projectId : null)
-  const { team: projectTeam } = useProjectTeam(projectId)
+  const { team: projectTeam, loading: teamLoading, error: teamError, reload: reloadTeam } = useProjectTeam(projectId)
   const { pins, setPins, loading: pinsLoading, reload: reloadPins } = useProjectPins(projectId)
   const undoStack = useUndoStack()
   const { prefs, update: setPrefs, reset: resetPrefs } = useEditorPrefs()
@@ -186,7 +187,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
   const canReport = canWorkType(role, sheetLevel)
   const canStamp = (editable || (role === "foreman" && canReport && !present)) && !present
   // Foreman pickers only offer Foremen who may take work of this sheet's type (the database refuses the others).
-  const team = useMemo(() => projectTeam.map((member) => (member.role === "foreman" && blueprint && access.grants.length ? { ...member, can_take_work: access.levelFor(member.user_id, blueprint.blueprint_type) === "assigned" } : member)), [projectTeam, blueprint, access.grants, access.levelFor])
+  const team = useMemo(() => projectTeam.map((member) => (member.role === "foreman" && blueprint ? { ...member, can_take_work: access.levelFor(member.user_id, blueprint.blueprint_type) === "assigned" } : member)), [projectTeam, blueprint, access.grants, access.levelFor])
   const canSeeHistory = role !== "client"
   const stampStatuses: PinStatus[] = editable ? allStatuses : ["in_progress"]
   const baseLocked = Boolean(blueprint?.base_locked)
@@ -359,11 +360,12 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
     }
   }
 
-  const createPin = async (title: string, category: PinCategory, proposal: { start: string; end: string; reason: string } | null = null): Promise<string | null> => {
+  const createPin = async (title: string, category: PinCategory, proposal: { start: string; end: string; phase: string; reason: string } | null = null, foremanId: string | null = null): Promise<string | null> => {
     if (!draftPin || !blueprint || !revision) return "Nothing to place the pin on."
-    const { data, error: insertError } = proposal ? await supabase.rpc("create_pin_with_schedule_proposal", {
+    const { data, error: insertError } = proposal ? await supabase.rpc(foremanId ? "create_pin_with_foreman" : "create_pin_with_schedule_proposal", {
       p_blueprint: blueprint.id, p_revision: revision.id, p_x: draftPin.x, p_y: draftPin.y, p_title: title, p_category: category,
-      p_start: proposal.start, p_end: proposal.end, p_phase: "Unassigned", p_reason: proposal.reason,
+      p_start: proposal.start, p_end: proposal.end, p_phase: proposal.phase, p_reason: proposal.reason,
+      ...(foremanId ? { p_foreman: foremanId } : {}),
     }).single() : await supabase
       .from("pins")
       .insert({ project_id: projectId, blueprint_id: blueprint.id, revision_id: revision.id, x: draftPin.x, y: draftPin.y, title, category, discipline: blueprint.discipline })
@@ -375,7 +377,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
     setDraftPin(null)
     setTool("select")
     select({ pin: created.id, ann: [] })
-    toast.success("Pin added", proposal ? "Date proposal saved as a draft. Add the tasks, then send their dates for PM approval." : "Add tasks and propose their dates in the panel. The Project Manager approves the schedule.")
+    toast.success("Pin added", proposal ? "Proposed dates and phase sent to the Project Manager for approval." : "Add tasks and propose their dates in the Schedule tab. The Project Manager approves the schedule.")
     if (issueAfter.current) {
       issueAfter.current = false
       void setStatus(created, "issue")
@@ -1457,7 +1459,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
           Adding the picture...
         </div>
       ) : null}
-      {draftPin ? <NewPinDialog onClose={() => { issueAfter.current = false; setDraftPin(null) }} onCreate={createPin} /> : null}
+      {draftPin ? <NewPinDialog planTitle={blueprint?.title ?? "Selected plan"} team={team} teamLoading={teamLoading || access.loading} teamError={teamError || access.error} onRetryTeam={() => { void reloadTeam(); void access.reload() }} onClose={() => { issueAfter.current = false; setDraftPin(null) }} onCreate={createPin} /> : null}
       {draftNote ? <TextDialog title="New note" submit="Add note" placeholder="e.g. Verify beam depth against the structural drawing" rows={4} initialColor={color} onClose={() => setDraftNote(null)} onCreate={createNote} /> : null}
       {draftText ? <TextDialog title="New text box" submit="Add text" placeholder="Type the text to put on the sheet" rows={3} initialColor={color} onClose={() => setDraftText(null)} onCreate={createText} /> : null}
       {calibrating ? <CalibrateDialog onClose={() => setCalibrating(false)} onSave={async (meters) => { const failure = await calibrate(meters); if (!failure) setCalibrating(false); return failure }} /> : null}
@@ -1496,37 +1498,72 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
   return createPortal(body, document.body)
 }
 
-function NewPinDialog({ onClose, onCreate }: { onClose: () => void; onCreate: (title: string, category: PinCategory, proposal?: { start: string; end: string; reason: string } | null) => Promise<string | null> }) {
+function NewPinDialog({ planTitle, team, teamLoading, teamError, onRetryTeam, onClose, onCreate }: { planTitle: string; team: TeamMember[]; teamLoading: boolean; teamError: string; onRetryTeam: () => void; onClose: () => void; onCreate: (title: string, category: PinCategory, proposal?: { start: string; end: string; phase: string; reason: string } | null, foremanId?: string | null) => Promise<string | null> }) {
   const [title, setTitle] = useState("")
   const [category, setCategory] = useState<PinCategory>("progress")
-  const [dates, setDates] = useState({ start: "", end: "", reason: "" })
+  const [assignedTo, setAssignedTo] = useState("")
+  const foremen = team.filter(member => member.role === "foreman" && member.can_take_work === true)
+  const [dates, setDates] = useState({ start: "", end: "", phase: "Preparation", reason: "" })
   const [error, setError] = useState("")
+  const [invalid, setInvalid] = useState<"title" | "foreman" | "start" | "end" | "phase" | "reason" | null>(null)
+  const inputs = useRef<Partial<Record<"title" | "foreman" | "start" | "end" | "phase" | "reason", HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null>>>({})
   const [busy, setBusy] = useState(false)
+  const invalidField = (name: NonNullable<typeof invalid>, message: string) => {
+    setError(message); setInvalid(name)
+    inputs.current[name]?.focus({ preventScroll: true })
+    inputs.current[name]?.scrollIntoView({ block: "center", behavior: "smooth" })
+  }
   const submit = async (event: FormEvent) => {
     event.preventDefault()
-    if (title.trim().length < 2 || title.trim().length > 120) return setError("Enter a title between 2 and 120 characters.")
-    const hasDates = category !== "note" && Boolean(dates.start || dates.end)
-    if (hasDates && (!dates.start || !dates.end || dates.end < dates.start || dates.reason.trim().length < 5)) return setError("Enter both proposed dates in order and a technical reason of at least 5 characters.")
+    if (busy) return
+    if (title.trim().length < 2 || title.trim().length > 120) return invalidField("title", "Enter a title between 2 and 120 characters.")
+    const hasDates = category !== "note"
+    if (hasDates && assignedTo && (teamLoading || teamError || !foremen.some(member => member.user_id === assignedTo))) return invalidField("foreman", "The selected Foreman is unavailable. Refresh the list, choose another Foreman, or leave the pin unassigned.")
+    if (hasDates) {
+      if (!dates.start || dates.start < "1900-01-01" || dates.start > "2199-12-31") return invalidField("start", "Enter a proposed start between 1900 and 2199.")
+      if (!dates.end || dates.end < "1900-01-01" || dates.end > "2199-12-31") return invalidField("end", "Enter a proposed deadline between 1900 and 2199.")
+      if (dates.end < dates.start) return invalidField("end", "The proposed deadline must be on or after the proposed start.")
+      if (!dates.phase.trim() || dates.phase.trim().length > 80) return invalidField("phase", "Enter a proposed phase between 1 and 80 characters.")
+      if (dates.reason.trim().length > 500) return invalidField("reason", "Keep the optional technical reason within 500 characters.")
+    }
+    setError(""); setInvalid(null)
     setBusy(true)
-    const failure = await onCreate(title.trim(), category, hasDates ? { ...dates, reason: dates.reason.trim() } : null)
-    setBusy(false)
-    if (failure) setError(failure)
+    try {
+      const failure = await onCreate(title.trim(), category, hasDates ? { ...dates, phase: dates.phase.trim(), reason: dates.reason.trim() } : null, hasDates ? assignedTo || null : null)
+      if (failure) setError(failure)
+    } catch { setError("Could not add the pin. Check your connection and retry.") }
+    finally { setBusy(false) }
   }
   return (
-    <Modal title="New pin" description="Create the work pin, add its tasks, then send proposed dates for Project Manager approval." size="sm" onClose={busy ? () => undefined : onClose} footer={<><button type="button" className={secondary} onClick={onClose} disabled={busy}>Cancel</button><button type="submit" form="new-pin-form" className={primary} disabled={busy}>{busy ? "Adding..." : "Add pin"}</button></>}>
+    <Modal title="New pin" description="Add a pin on the selected plan. Proposed dates and phase are sent automatically for Project Manager approval." size="lg" onClose={busy ? () => undefined : onClose} footer={<><button type="button" className={secondary} onClick={onClose} disabled={busy}>Cancel</button><button type="submit" form="new-pin-form" className={primary} disabled={busy}>{busy ? "Adding..." : category !== "note" ? "Add pin & request approval" : "Add pin"}</button></>}>
       <form id="new-pin-form" className="space-y-3" noValidate onSubmit={(event) => void submit(event)}>
-        {error ? <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-fg">{error}</p> : null}
-        <label className="block text-sm font-semibold">What is here? *<input className={field} maxLength={120} placeholder="e.g. Column C4 rebar" value={title} onChange={(e) => setTitle(e.target.value)} /></label>
+        {error ? <p id="new-pin-error" role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-fg">{error}</p> : null}
+        <div className="rounded-lg border border-line bg-surface-muted/40 px-3 py-2 text-sm"><span className="block text-xs font-semibold text-fg-muted">Selected plan</span><span className="font-bold">{planTitle}</span></div>
+        <label className="block text-sm font-semibold">What is here? *<input ref={element => { inputs.current.title = element }} required aria-invalid={invalid === "title"} aria-describedby={invalid === "title" ? "new-pin-error" : undefined} className={field} maxLength={120} placeholder="e.g. Column C4 rebar" value={title} onChange={(e) => setTitle(e.target.value)} /></label>
         <label className="block text-sm font-semibold">Category
           <select className={field} value={category} onChange={(e) => setCategory(e.target.value as PinCategory)}>
             {(Object.keys(categoryLabels) as PinCategory[]).map((c) => <option key={c} value={c}>{categoryLabels[c]}</option>)}
           </select>
         </label>
-        {category !== "note" ? <fieldset className="space-y-3 rounded-lg border border-line p-3"><legend className="px-1 text-xs font-bold">Optional date proposal draft</legend>
-          <label className="block text-sm font-semibold">Proposed start<input type="date" min="1900-01-01" max="2199-12-31" className={field} value={dates.start} onChange={event => setDates(current => ({ ...current, start: event.target.value }))} /></label>
-          <label className="block text-sm font-semibold">Proposed deadline<input type="date" min="1900-01-01" max="2199-12-31" className={field} value={dates.end} onChange={event => setDates(current => ({ ...current, end: event.target.value }))} /></label>
-          <label className="block text-sm font-semibold">Technical reason<textarea rows={2} maxLength={500} className={field} value={dates.reason} onChange={event => setDates(current => ({ ...current, reason: event.target.value }))} /></label>
-          <p className="text-xs text-fg-muted">These dates stay a private draft until you add the tasks and send the proposal. PM approval makes them official.</p>
+        {category !== "note" ? <div>
+          <label className="block text-sm font-semibold">Assigned Foreman (optional)
+            <select ref={element => { inputs.current.foreman = element }} className={field} value={assignedTo} disabled={busy || teamLoading} aria-invalid={invalid === "foreman"} aria-describedby={invalid === "foreman" ? "new-pin-error" : "new-pin-foreman-help"} onChange={event => setAssignedTo(event.target.value)}>
+              <option value="">{teamLoading ? "Loading Foremen..." : "Not assigned yet"}</option>
+              {assignedTo && !foremen.some(member => member.user_id === assignedTo) ? <option value={assignedTo} disabled>Selected Foreman is unavailable</option> : null}
+              {foremen.map(member => <option key={member.user_id} value={member.user_id}>{member.full_name}</option>)}
+            </select>
+          </label>
+          <p id="new-pin-foreman-help" className="mt-1 text-xs text-fg-muted">{teamError || (teamLoading ? "Loading project team and plan access." : foremen.length ? "Choose a Foreman with Assigned work access to this plan." : "No eligible Foremen for this plan. Ask the Project Manager to update the project team or plan access, or leave it unassigned.")}</p>
+          {teamError ? <button type="button" onClick={onRetryTeam} className="mt-1 min-h-6 text-xs font-bold text-brand-text underline">Refresh Foreman list</button> : null}
+        </div> : null}
+        {category !== "note" ? <fieldset className="space-y-3 rounded-lg border border-line p-3"><legend className="px-1 text-xs font-bold">Proposed schedule</legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm font-semibold">Proposed start *<input required ref={element => { inputs.current.start = element }} aria-invalid={invalid === "start"} aria-describedby={invalid === "start" ? "new-pin-error" : undefined} type="date" min="1900-01-01" max="2199-12-31" className={field} value={dates.start} onChange={event => setDates(current => ({ ...current, start: event.target.value }))} /></label>
+            <label className="block text-sm font-semibold">Proposed deadline *<input required ref={element => { inputs.current.end = element }} aria-invalid={invalid === "end"} aria-describedby={invalid === "end" ? "new-pin-error" : undefined} type="date" min="1900-01-01" max="2199-12-31" className={field} value={dates.end} onChange={event => setDates(current => ({ ...current, end: event.target.value }))} /></label>
+          </div>
+          <label className="block text-sm font-semibold">Proposed phase *<input required ref={element => { inputs.current.phase = element }} aria-invalid={invalid === "phase"} aria-describedby={invalid === "phase" ? "new-pin-error" : undefined} maxLength={80} list="new-pin-phases" className={field} value={dates.phase} onChange={event => setDates(current => ({ ...current, phase: event.target.value }))} /><datalist id="new-pin-phases">{timelinePhases.map(phase => <option key={phase} value={phase} />)}</datalist></label>
+          <label className="block text-sm font-semibold">Technical reason (optional)<textarea ref={element => { inputs.current.reason = element }} aria-invalid={invalid === "reason"} aria-describedby={invalid === "reason" ? "new-pin-error" : undefined} rows={2} maxLength={500} className={field} value={dates.reason} onChange={event => setDates(current => ({ ...current, reason: event.target.value }))} /></label>
+          <p className="text-xs text-fg-muted">Enter both dates to automatically request PM approval when adding this pin. Dates become official after approval. Tasks added to this pin receive their own requests using this proposed schedule.</p>
         </fieldset> : null}
       </form>
     </Modal>

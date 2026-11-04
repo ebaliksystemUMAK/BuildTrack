@@ -2,7 +2,8 @@ import { useEffect, useState } from "react"
 import { taskProgress } from "../../lib/taskProgress"
 import { Icon } from "./EditorToolbar"
 import LayerStack, { EyeButton, describe } from "./LayerStack"
-import { ChecklistProgress, PinChecklist, PinTimeline, ProgressTracker, field } from "./PinParts"
+import { ChecklistProgress, PinChecklist, PinTimeline, ProgressTracker, PinFields, field } from "./PinParts"
+import PinScheduleProposal from "./PinScheduleProposal"
 import ChecklistPhotos from "../ChecklistPhotos"
 import { PinActionsSection, PinCommunicationSection, PinIssuesSection, PinReportsSection, usePinPanelData, type PinPanelData } from "./PinRecordSections"
 import { clientActionPath, clientPinStatus, openClientPath } from "../../lib/clientPortalModel"
@@ -215,7 +216,7 @@ function PinPanel(props: InspectorProps & { pin: Pin }) {
 export function PinSectionBody(props: InspectorProps & { pin: Pin; section: PinSection; data: PinPanelData; wide?: boolean; refreshKey?: number; onChanged?: () => void }) {
   const { pin, section, data } = props
   const shared = { pin, role: props.role, meId: props.meId, team: props.team, canEdit: props.canEdit, canWork: canWorkOn(props, pin), data, wide: props.wide, onPinChanged: props.onChanged ?? props.onPinChanged }
-  if (section === "details") return props.wide ? null : <PinDetailsTab {...props} pin={pin} />
+  if (section === "details") return props.wide ? null : <PinDetailSections key={pin.id} {...props} pin={pin} />
   if (section === "checklist") return <PinChecklist pin={pin} canEdit={props.canEdit} canTick={canWorkOn(props, pin)} notice={checklistNotice(props, pin, pin.assigned_to ? props.team.find((member) => member.user_id === pin.assigned_to)?.full_name : undefined)} reports={data.records.reports} reportsLoading={data.loading} reportsError={data.error} onRetryReports={data.reload} onPinChanged={props.onChanged ?? props.onPinChanged} />
   if (section === "issues") return <PinIssuesSection key={pin.id} {...shared} />
   if (section === "actions") return props.role === "admin" ? null : <PinActionsSection key={pin.id} {...shared} />
@@ -223,6 +224,20 @@ export function PinSectionBody(props: InspectorProps & { pin: Pin; section: PinS
   if (section === "photos") return props.role === "client" ? null : <ChecklistPhotos key={`${pin.project_id}:${pin.id}`} pin={pin} />
   if (section === "activity") return props.role === "client" ? null : <PinTimeline pinId={pin.id} canComment={props.canReport} refreshKey={props.refreshKey} />
   return <PinCommunicationSection {...shared} />
+}
+
+export function PinDetailSections(props: InspectorProps & { pin: Pin; inDialog?: boolean; onChanged?: () => void }) {
+  const [tab, setTab] = useState<"overview" | "edit" | "schedule">("overview")
+  const tabs: Array<{ key: typeof tab; label: string }> = [{ key: "overview", label: "Overview" }, ...(props.canEdit ? [{ key: "edit" as const, label: "Edit details" }, ...(props.pin.category !== "note" ? [{ key: "schedule" as const, label: "Schedule" }] : [])] : [])]
+  const active = tabs.some(item => item.key === tab) ? tab : "overview"
+  return <div className="space-y-4">
+    {tabs.length > 1 ? <Tabs tabs={tabs} value={active} onChange={setTab} label="Pin detail sections" /> : null}
+    <div role="tabpanel" aria-label="Pin overview" hidden={active !== "overview"}><PinDetailsTab {...props} /></div>
+    {props.canEdit ? <>
+      <div role="tabpanel" aria-label="Edit pin details" hidden={active !== "edit"}><PinFields key={props.pin.id} pin={props.pin} team={props.team} onSaved={props.onChanged ?? props.onPinChanged} idPrefix={props.inDialog ? "dialog-pin" : "panel-pin"} /></div>
+      {props.pin.category !== "note" ? <div role="tabpanel" aria-label="Pin schedule" hidden={active !== "schedule"}><PinScheduleProposal key={props.pin.id} pin={props.pin} /></div> : null}
+    </> : null}
+  </div>
 }
 
 export function PinDetailsTab(props: InspectorProps & { pin: Pin; inDialog?: boolean }) {

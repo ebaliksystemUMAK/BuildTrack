@@ -50,9 +50,9 @@ const text = node => Array.isArray(node) ? node.map(text).join("") : node?.props
 const render = (Component, props = {}) => { cursor = 0; tree = Component(props); const jobs = pending; pending = []; jobs.forEach(fn => fn()); return tree }
 const reset = () => { effects.forEach(effect => effect?.cleanup?.()); slots = []; effects = []; pending = [] }
 const find = predicate => { const node = all(tree).find(predicate); assert.ok(node, "Expected client portal control"); return node }
-let selected = null, projects = [{ id: "A", code: "TEST-A", name: "Assigned project", phase: "plan_review" }], lastPath = ""
-const originalWindow = globalThis.window, originalDocument = globalThis.document
-globalThis.window = { location: { pathname: "/client/overview", search: "" }, history: { replaceState(_a, _b, path) { lastPath = path }, pushState(_a, _b, path) { lastPath = path } }, dispatchEvent() {}, addEventListener() {}, removeEventListener() {} }
+let selected = null, projects = [{ id: "A", code: "TEST-A", name: "Assigned project", phase: "plan_review" }], lastPath = "", projectLoading = false, staleProject = null
+const originalWindow = globalThis.window, originalDocument = globalThis.document, originalSessionStorage = globalThis.sessionStorage
+globalThis.window = { location: { pathname: "/client/overview", search: "" }, history: { replaceState(_a, _b, path) { lastPath = path }, pushState(_a, _b, path) { lastPath = path } }, scrollTo() {}, dispatchEvent() {}, addEventListener() {}, removeEventListener() {} }
 globalThis.document = { getElementById: () => null, querySelectorAll: () => [] }
 globalThis.PopStateEvent ??= class { constructor(type) { this.type = type } }
 const pin = { id: "pin", project_id: "A", blueprint_id: "sheet", title: "Kitchen", status: "for_review", category: "progress" }
@@ -60,6 +60,12 @@ const deps = globalThis.__portalDeps
 Object.assign(deps, {
   clientPinStatus, reportsForPin, clientActionPath, clientPinPath, openClientPath: path => { lastPath = path }, issuePhotoProblem, markupProblem, inRange, isFiltered, rangeText,
   getSelectedProjectId: () => selected, rememberProject: id => { selected = id },
+  useFieldProject: page => {
+    const projectId = page === "projects" ? null : selected
+    const project = staleProject ?? projects.find(row => row.id === projectId) ?? null
+    const notFound = Boolean(projectId && !project && !projectLoading)
+    return { projectId, project, loading: projectLoading, notFound, mode: page === "projects" || !projectId || notFound ? "list" : "project" }
+  },
   useProjects: () => ({ projects, loading: false, error: "", reload: async () => {} }), phaseLabels: { plan_review: "Plan review" },
   useProjectWork: () => ({ pins: [pin], loading: false, error: "", sheetOf: () => "Plan", nameOf: () => "Engineer", reload: async () => {} }),
   useAuth: () => ({ profile: { id: "client", role: "client" } }),
@@ -75,16 +81,43 @@ Object.assign(deps, {
 
 const Shell = (await compile("../src/pages/Client/ClientShell.tsx")).default
 render(Shell, { activePage: "overview", children: "Private project content", onNavigate() {} })
-assert.equal(selected, "A", "First assigned project opens automatically without project cards")
-assert.equal(lastPath, "/client/overview?project=A")
+assert.equal(selected, null, "Clients explicitly choose a project instead of silently opening the first one")
+assert.equal(tree.props.active, "projects"); assert.doesNotMatch(text(tree), /Private project content/)
+assert.ok(all(tree).some(node => node.type?.name === "ClientProjects"))
+selected = "A"
 render(Shell, { activePage: "overview", children: "Private project content", onNavigate() {} })
 assert.match(text(tree), /Assigned project.*Private project content/)
-assert.ok(!all(tree).some(node => node.type === "select"), "One project needs no selection step")
+assert.equal(tree.props.project.code, "TEST-A")
+assert.ok(!all(tree).some(node => node.type === "select"), "Project cards replace the dropdown")
 projects.push({ id: "B", code: "TEST-B", name: "Second assigned", phase: "plan_review" })
-render(Shell, { activePage: "overview", children: "Content", onNavigate() {} })
-const switcher = find(node => node.props?.["aria-label"] === "Switch assigned project")
-assert.deepEqual(all(switcher).filter(node => node.type === "option").map(node => node.props.value), ["A", "B"])
-switcher.props.onChange({ target: { value: "B" } }); assert.equal(lastPath, "/client/overview?project=B")
+let navigated
+render(Shell, { activePage: "overview", children: "Content", onNavigate: page => { navigated = page } })
+tree.props.onAllProjects(); assert.equal(navigated, "projects")
+find(node => node.type === "button" && text(node) === "All projects").props.onClick(); assert.equal(navigated, "projects")
+render(Shell, { activePage: "projects", children: "Previous project content", onNavigate() {} })
+assert.equal(tree.props.project, undefined); assert.equal(tree.props.active, "projects")
+assert.deepEqual(tree.props.groups.flatMap(group => group.items.map(item => item.key)), ["projects"])
+assert.doesNotMatch(text(tree), /Previous project content|TEST-A|Assigned project/)
+selected = "B"
+render(Shell, { activePage: "communication", children: "Project B messages", onNavigate() {} })
+assert.equal(tree.props.project.code, "TEST-B"); assert.ok(all(tree).some(node => node.key === "B"), "Changing projects remounts content and clears prior drafts/dialogs")
+projectLoading = true; staleProject = projects[0]
+render(Shell, { activePage: "communication", children: "Stale project A messages", onNavigate() {} })
+assert.doesNotMatch(text(tree), /Stale project A messages|TEST-A|Assigned project/, "A stale previous-project response never renders under the next project's URL")
+projectLoading = false; staleProject = null; selected = "unassigned"
+render(Shell, { activePage: "calendar", children: "Foreign calendar", onNavigate() {} })
+assert.doesNotMatch(text(tree), /Foreign calendar/); assert.match(find(node => node.type?.name === "ClientProjects").props.notice, /no longer assigned/)
+reset()
+const remembered = new Map()
+globalThis.sessionStorage = { getItem: key => remembered.get(key) ?? null, setItem: (key, value) => remembered.set(key, value), removeItem: key => remembered.delete(key) }
+const realProjects = await compile("../src/lib/projects.ts", { "./projectRoutes": new URL("../src/lib/projectRoutes.ts", import.meta.url).href })
+realProjects.rememberProject("A")
+window.location.pathname = "/client/projects"; window.location.search = "?project=A"
+assert.equal(realProjects.getSelectedProjectId(), null, "The client project list has no project context even with an old URL or remembered selection")
+render(() => realProjects.useFieldProject("projects")); assert.equal(remembered.size, 0, "Going back to projects clears the previous selection")
+realProjects.openProject("client", "B"); assert.equal(lastPath, "/client/overview?project=B", "A card opens the chosen project's overview")
+window.location.pathname = "/client/overview"; window.location.search = "?project=A"
+assert.equal(realProjects.getSelectedProjectId(), "A", "A deep link or browser Back takes precedence over the last project opened")
 reset(); selected = "A"; window.location.search = "?project=A&pin=pin"
 
 const Reports = await compile("../src/components/client/PinDailyReports.tsx")
@@ -208,6 +241,6 @@ const SnagParts = await compile("../src/components/qa/SnagParts.tsx")
 render(SnagParts.LinkedClientReportEvidence, { projectId: "A", defectId: "defect" })
 assert.match(text(tree), /Reported crack/); assert.doesNotMatch(text(tree), /Foreign report/)
 assert.ok(all(tree).some(node => node.type?.name === "SnagPhotoStrip"))
-reset(); globalThis.window = originalWindow; globalThis.document = originalDocument
+reset(); globalThis.window = originalWindow; globalThis.document = originalDocument; globalThis.sessionStorage = originalSessionStorage
 delete globalThis.__portalHooks; delete globalThis.__portalDeps
-console.log("Client automatic project scope/switcher, linked-report privacy, slideshow/details controls, private communication, pin-linked submission/photo retry and original/markup storage passed")
+console.log("Client project-list/workspace separation, selected-project context and stale-response guards, linked-report privacy, slideshow/details controls, private communication, pin-linked submission/photo retry and original/markup storage passed")

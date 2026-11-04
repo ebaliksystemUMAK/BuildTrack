@@ -1,8 +1,7 @@
 import { useState } from "react"
 import { taskProgress } from "../../lib/taskProgress"
 import Modal from "../Modal"
-import { PinDetailsTab, PinSectionBody, Tabs, type InspectorProps } from "./Inspector"
-import { PinFields } from "./PinParts"
+import { PinDetailSections, PinSectionBody, Tabs, type InspectorProps } from "./Inspector"
 import { usePinPanelData } from "./PinRecordSections"
 import { statusChip, statusDot, statusLabels, type Pin } from "../../lib/blueprints"
 import { clientPinStatus } from "../../lib/clientPortalModel"
@@ -57,18 +56,7 @@ export default function PinDetailsModal({ pin, inspector, section = "details", o
         <Tabs tabs={sections.map((key) => ({ key, label: sectionLabel(inspector.role, key), count: data.counts[key] }))} value={tab} onChange={setTab} label="Pin sections" />
       </div>
       {tab === "details" ? (
-        <div className="grid gap-8 lg:grid-cols-2">
-          <section>
-            <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-brand-text">Progress and assignment</h3>
-            <PinDetailsTab {...inspector} pin={pin} inDialog />
-          </section>
-          {inspector.canEdit ? (
-            <section>
-              <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-brand-text">Edit details</h3>
-              <PinFields pin={pin} team={inspector.team} onSaved={changed} idPrefix="dialog-pin" />
-            </section>
-          ) : null}
-        </div>
+        <PinDetailSections key={pin.id} {...inspector} pin={pin} inDialog onChanged={changed} />
       ) : <PinSectionBody {...inspector} pin={pin} section={tab} data={data} wide refreshKey={refresh} onChanged={changed} />}
     </Modal>
   )

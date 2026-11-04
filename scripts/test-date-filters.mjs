@@ -9,7 +9,7 @@ import { qaSummaryHtml } from "../src/lib/qaPrint.ts"
 import * as taskProgress from "../src/lib/taskProgress.ts"
 
 // Calendar filtering on the QA register (inspections requested / NCRs raised / client reports made) and Progress by zone
-// (work due): the real filter control, page, view and panels, compiled with stubbed imports (no browser, no network).
+// (task approvals): the real filter control, page, view and panels, compiled with stubbed imports (no browser, no network).
 const url = source => "data:text/javascript;base64," + Buffer.from(source).toString("base64")
 let slots = [], effects = [], pending = [], cursor = 0, tree
 globalThis.__dateHooks = {
@@ -81,18 +81,22 @@ const pins = [
   pin("b2", "B", "verified", "2026-09-30", { verified_at: "2026-10-02T03:00:00Z" }),
   pin("n1", "A", "not_started", "2026-10-05", { category: "note" }),
 ]
-let csv = null
+let csv = null, progressProjectId = 'P'
 Object.assign(deps, {
   ...progress, ...taskProgress, downloadCsv: (name, content) => { csv = { name, content } },
-  getSelectedProjectId: () => "P", disciplineLabels: { civil: "Civil" }, statusDot: {}, statusLabels: { not_started: "Not started", in_progress: "In progress", for_review: "For review", issue: "Issue", verified: "Completed" },
+  getSelectedProjectId: () => progressProjectId, disciplineLabels: { civil: "Civil" }, statusDot: {}, statusLabels: { not_started: "Not started", in_progress: "In progress", for_review: "For review", issue: "Issue", verified: "Completed" },
   useProjectWork: () => ({ project: { code: "PRJ", start_date: "2026-09-01", end_date: "2026-12-31" }, blueprints: sheets, pins, today: "2026-10-22", loading: false, error: "", reload: async () => {}, sheetOf: id => id, nameOf: () => "Foreman" }),
 })
 const Progress = (await compile("../src/pages/Engineer/EngineerProgress.tsx", { "../../lib/dateRangeModel": model, "../../lib/periodProgress": new URL("../src/lib/periodProgress.ts", import.meta.url).href })).default
 const card = label => find(node => named("StatCard")(node) && node.props.label === label)
+const progressTab = label => find(node => node.props?.role === 'tab' && text(node) === label)
+const showProgressTab = label => { progressTab(label).props.onClick(); render(Progress, { onNavigate() {} }) }
 setLocation("/engineer/progress", "?project=P"); replaced = []
 reset(); render(Progress, { onNavigate() {} })
 assert.equal(card("Verified").props.note, "5 of 8 tasks approved", "unfiltered: every task, notes left out")
 assert.equal(card("Verified").props.value, "62.5%")
+assert.deepEqual(all(tree).filter(node => node.props?.role === 'tab').map(text), ['Overview', 'Sheets & zones', 'Progress %', 'Chart', 'Deadlines', 'Approved tasks'])
+assert.ok(!has(named('SCurveChart')) && !has(node => node.type === 'article'), 'Overview does not mix the chart or zone list into its figures')
 assert.equal(find(named("DateRangeFilter")).props.label, "Period"); assert.deepEqual(find(named("DateRangeFilter")).props.presets, ["all", "today", "thisWeek", "thisMonth", "lastMonth"])
 assert.ok(!has(node => node.type === "button" && /Work due|Progress made/.test(text(node))), "no view switch: a period always means progress made")
 // Progress made: every work pin counts (a3 has no due date, b2 was due in September), by the day each task was approved.
@@ -102,16 +106,27 @@ assert.equal(card("Approved in period").props.value, 5, "a1 (12 Oct), floor / wa
 assert.equal(card("Progress at end of period").props.value, "62.5%"); assert.match(card("Progress at end of period").props.note, /5 of 8 tasks approved by 22 Oct 2026/, "a running period ends today")
 assert.equal(card("Change in period").props.value, "+62.5 pts"); assert.equal(card("Change in period").props.note, "from 0% to 62.5%")
 assert.ok(!has(node => named("EmptyState")(node)), "a month without due dates still shows its progress")
+showProgressTab('Sheets & zones')
 assert.equal(all(tree).filter(node => node.type === "article").length, 2, "every sheet with work is shown")
 assert.match(text(all(tree).filter(node => node.type === "article")[0]), /4 tasks approved in this period/)
 assert.match(text(all(tree).filter(node => node.type === "article")[0]), /4\/6 tasks approved by 22 Oct 2026/)
+showProgressTab('Approved tasks')
 const approvedList = all(tree).filter(node => node.type === "li" && all(node.props.children).some(child => String(child?.props?.className ?? "").includes("bg-green-100")))
 assert.deepEqual(approvedList.map(node => text(node)), ["a2 · ceilingA20 Oct 2026", "a2 · floorA20 Oct 2026", "a2 · wallA20 Oct 2026", "a1 · a1-taskA12 Oct 2026", "b2 · b2-taskB2 Oct 2026"], "pin · task, sheet, approval day: the five approved tasks, newest first")
 assert.match(text(approvedList[0]), /20 Oct 2026/); assert.match(text(approvedList.at(-1)), /2 Oct 2026/)
+assert.equal(all(tree).filter(node => node.type === 'article').length, 0, 'Approved tasks have their own panel')
+showProgressTab('Chart')
 assert.deepEqual(find(named("SCurveChart")).props.pins.map(pin => pin.id), ["a1", "a2", "b1", "a3", "b2"], "the S-curve shows the whole project")
 find(node => node.type === "button" && text(node) === "Export CSV").props.onClick()
 assert.equal(csv.name, "progress-PRJ-2026-10-22-made-2026-10-01-to-2026-10-22.csv"); assert.match(csv.content, /Tasks approved in period/)
 assert.match(csv.content, /Ground floor,1,Civil,4,4,6,66\.7,0,66\.7/)
+showProgressTab('Progress %')
+assert.equal(find(node => named('Meter')(node) && node.props.label === 'Civil approved tasks').props.value, 66.7)
+assert.deepEqual(find(named('DateRangeFilter')).props.range, october, 'Period selection is retained across all content tabs')
+showProgressTab('Deadlines')
+assert.match(text(tree), /2 d late/)
+assert.ok(!has(named('SCurveChart')) && !has(named('StatCard')))
+showProgressTab('Overview')
 find(named("DateRangeFilter")).props.onChange({ from: "2026-11-01", to: "2026-11-30" }); render(Progress, { onNavigate() {} })
 assert.equal(card("Approved in period").props.value, 0, "a future period has no approvals yet"); assert.equal(card("Change in period").props.value, "0 pts")
 find(named("DateRangeFilter")).props.onChange(october); render(Progress, { onNavigate() {} })
@@ -123,6 +138,13 @@ find(named("DateRangeFilter")).props.onChange({ from: "", to: "" }); render(Prog
 assert.equal(card("Verified").props.note, "5 of 8 tasks approved", "All dates shows the whole project again"); assert.equal(replaced.at(-1), "/engineer/progress?project=P")
 find(node => node.type === "button" && text(node) === "Export CSV").props.onClick()
 assert.equal(csv.name, "progress-PRJ-2026-10-22.csv"); assert.match(csv.content, /Approved tasks,Total tasks,% approved tasks/)
+showProgressTab('Approved tasks'); assert.match(text(tree), /Choose a period above/)
+progressTab('Approved tasks').props.onKeyDown({key:'ArrowRight',preventDefault(){},currentTarget:{}});render(Progress,{onNavigate(){}})
+assert.equal(progressTab('Overview').props['aria-selected'],true,'Arrow keys wrap between the section tabs')
+progressTab('Overview').props.onKeyDown({key:'End',preventDefault(){},currentTarget:{}});render(Progress,{onNavigate(){}})
+assert.equal(progressTab('Approved tasks').props['aria-selected'],true)
+progressProjectId='Q';render(Progress,{onNavigate(){}});assert.equal(progressTab('Overview').props['aria-selected'],true,'A new project starts in Overview')
+progressProjectId='P'
 setLocation("/engineer/progress", "?project=P&by=due&from=2026-10-01&to=2026-10-31")
 reset(); render(Progress, { onNavigate() {} })
 assert.equal(card("Approved in period").props.value, 5, "a shared link opens with its dates; an old by=due link shows progress made")

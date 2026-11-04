@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import SCurveChart from "../../components/SCurveChart"
 import { EmptyState, Meter, PageHead, StatCard, buttonPrimary, buttonSecondary } from "../../components/ui/PageParts"
 import { SkeletonCardGrid, SkeletonList } from "../../components/ui/Skeleton"
@@ -19,10 +19,21 @@ import type { PmPageProps } from "./types"
 const kindChip = { work: "bg-sky-100 text-sky-900 dark:bg-sky-900/40 dark:text-sky-100", ncr: "bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-100", milestone: "bg-brand-soft text-brand-text" }
 const kindName = { work: "Work", ncr: "NCR", milestone: "Milestone" }
 const dateText = (day: string) => new Date(`${day}T00:00:00`).toLocaleDateString("en-PH", { day: "numeric", month: "short", year: "numeric" })
+const dashboardTabs = [
+  { key: "overview", label: "Overview" },
+  { key: "schedule", label: "Schedule & deadlines" },
+  { key: "quality", label: "QA" },
+  { key: "team", label: "Team" },
+  { key: "activity", label: "Activity" },
+] as const
+type DashboardTab = typeof dashboardTabs[number]["key"]
 
 // Project dashboard: progress against the schedule, deadlines, what waits for the Engineer's review, and the quality issues still open.
 export default function PmDashboard({ onNavigate }: PmPageProps) {
   const pm = usePmProject()
+  const [view, setView] = useState<{ projectId: string | null; tab: DashboardTab }>({ projectId: pm.projectId, tab: "overview" })
+  const activeTab = view.projectId === pm.projectId ? view.tab : "overview"
+  const setTab = (tab: DashboardTab) => setView({ projectId: pm.projectId, tab })
   const work = useProjectWork(pm.projectId)
   const { inspections, loading: inspectionsLoading } = useInspections(pm.projectId)
   const { defects, loading: defectsLoading } = useDefects(pm.projectId)
@@ -45,7 +56,7 @@ export default function PmDashboard({ onNavigate }: PmPageProps) {
     else onNavigate("details")
   }
 
-  if (!project || !summary) return <div className="admin-page"><SkeletonCardGrid count={4} label="Loading the project dashboard" /></div>
+  if (!project || project.id !== pm.projectId || !summary) return <div className="admin-page"><SkeletonCardGrid count={4} label="Loading the project dashboard" /></div>
   return (
     <div className="admin-page">
       <PageHead
@@ -60,6 +71,22 @@ export default function PmDashboard({ onNavigate }: PmPageProps) {
       {pm.note ? <p role="status" className="mb-4 rounded-lg bg-surface-muted px-4 py-2 text-sm text-fg">{pm.note}</p> : null}
       {work.error ? <p role="alert" className="mb-3 rounded-lg bg-danger-soft px-4 py-2 text-sm text-danger-fg">{work.error} <button type="button" className="font-bold underline" onClick={() => void work.reload()}>Retry</button></p> : null}
 
+      <div role="tablist" aria-label="Project dashboard sections" className="mb-5 flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
+        {dashboardTabs.map((tab, index) => <button
+          key={tab.key} type="button" role="tab" id={`pm-dashboard-tab-${tab.key}`} aria-selected={activeTab === tab.key} aria-controls="pm-dashboard-panel" tabIndex={activeTab === tab.key ? 0 : -1}
+          className={`min-h-11 shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${activeTab === tab.key ? "bg-brand text-white shadow-sm" : "text-fg-muted hover:bg-surface-muted hover:text-fg"}`}
+          onClick={() => setTab(tab.key)}
+          onKeyDown={event => {
+            const next = event.key === "ArrowRight" ? (index + 1) % dashboardTabs.length : event.key === "ArrowLeft" ? (index + dashboardTabs.length - 1) % dashboardTabs.length : event.key === "Home" ? 0 : event.key === "End" ? dashboardTabs.length - 1 : null
+            if (next === null) return
+            event.preventDefault(); setTab(dashboardTabs[next].key)
+            event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
+          }}
+        >{tab.label}</button>)}
+      </div>
+
+      <div id="pm-dashboard-panel" role="tabpanel" aria-labelledby={`pm-dashboard-tab-${activeTab}`} tabIndex={0}>
+      {activeTab === "overview" ? <>
       {loading ? <SkeletonCardGrid count={4} label="Loading project figures" /> : (
         <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <StatCard label="Verified progress" value={`${summary.totals.percentVerified}%`} note={`${summary.totals.approvedTasks} of ${summary.totals.totalTasks} tasks approved by the Engineer`} tone="green" />
@@ -70,13 +97,15 @@ export default function PmDashboard({ onNavigate }: PmPageProps) {
         </div>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Panel title="Progress against the plan">
           {loading ? <SkeletonList rows={3} /> : summary.totals.total ? <>
             <Meter value={summary.totals.percentVerified} label="Verified progress" />
             <div className="mt-4"><SCurveChart pins={work.pins} start={project.start_date} end={project.end_date} today={work.today} /></div>
           </> : <EmptyState title="No work pins yet">Engineers place work pins on the plans; progress appears here once they exist.</EmptyState>}
         </Panel>
+      </> : null}
+
+      {activeTab === "schedule" ? (
         <Panel title="Deadlines (late and next 14 days)">
           {loading ? <SkeletonList rows={4} /> : summary.deadlines.length === 0 ? <p className="text-sm text-fg-muted">Nothing is due in the next 14 days and nothing is late.</p> : (
             <ul className="divide-y divide-line">
@@ -92,20 +121,27 @@ export default function PmDashboard({ onNavigate }: PmPageProps) {
             </ul>
           )}
           {summary.deadlines.length > 12 ? <p className="mt-2 text-xs text-fg-muted">{summary.deadlines.length - 12} more in Schedule & calendar.</p> : null}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" className={buttonSecondary} onClick={() => onNavigate("calendar")}>Open project calendar</button>
+            <button type="button" className={buttonPrimary} onClick={() => onNavigate("calendar", "tab=gantt")}>Open Gantt timeline</button>
+          </div>
         </Panel>
-      </div>
+      ) : null}
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+      {activeTab === "quality" ? (
         <Panel title="Quality issues">
-          <dl className="grid grid-cols-2 gap-3 text-sm">
+          {loading ? <SkeletonList rows={3} /> : <dl className="grid grid-cols-2 gap-3 text-sm lg:grid-cols-4">
             {([["Critical", summary.bySeverity.critical ?? 0], ["Major", summary.bySeverity.major ?? 0], ["Minor", summary.bySeverity.minor ?? 0], ["In correction", summary.correction]] as const).map(([label, value]) => (
               <div key={label} className="rounded-xl border border-line p-3"><dt className="text-xs font-bold uppercase tracking-wide text-fg-muted">{label}</dt><dd className="mt-1 text-xl font-extrabold text-fg tabular-nums">{value}</dd></div>
             ))}
-          </dl>
+          </dl>}
           <p className="mt-3 text-xs text-fg-muted">Engineers inspect, verify and close NCRs. Foremen correct the work. Follow them in Quality & QA.</p>
+          <button type="button" className={`${buttonPrimary} mt-4`} onClick={() => onNavigate("quality")}>Open Quality & QA</button>
         </Panel>
+      ) : null}
+      {activeTab === "team" ? (
         <Panel title="Who runs this project">
-          <dl className="divide-y divide-line text-sm">
+          {work.loading || pm.loading ? <SkeletonList rows={5} /> : <dl className="divide-y divide-line text-sm">
             {(["primary", "backup"] as const).map((slot) => {
               const row = pm.managers.find((item) => item.designation === slot)
               return <div key={slot} className="flex justify-between gap-3 py-2"><dt className="text-fg-muted">{slotLabels[slot]}</dt><dd className="text-right font-semibold text-fg">{row ? row.full_name : "Not assigned"}</dd></div>
@@ -113,9 +149,11 @@ export default function PmDashboard({ onNavigate }: PmPageProps) {
             <div className="flex justify-between gap-3 py-2"><dt className="text-fg-muted">Engineer in charge</dt><dd className="text-right font-semibold text-fg">{lead("engineer")}</dd></div>
             <div className="flex justify-between gap-3 py-2"><dt className="text-fg-muted">Foreman in charge</dt><dd className="text-right font-semibold text-fg">{lead("foreman")}</dd></div>
             <div className="flex justify-between gap-3 py-2"><dt className="text-fg-muted">Team</dt><dd className="text-right font-semibold text-fg">{counts.engineer} Engineers • {counts.foreman} Foremen • {counts.client} Clients</dd></div>
-          </dl>
+          </dl>}
           <button type="button" className="mt-3 min-h-6 text-sm font-bold text-brand-text hover:underline" onClick={() => onNavigate("team")}>Team & work access →</button>
         </Panel>
+      ) : null}
+      {activeTab === "activity" ? (
         <Panel title="Recent activity">
           {activity.loading ? <SkeletonList rows={3} /> : activity.error ? <p role="alert" className="text-sm text-danger-fg">{activity.error}</p> : activity.entries.length === 0 ? <p className="text-sm text-fg-muted">No activity recorded yet.</p> : (
             <ul className="divide-y divide-line text-sm">
@@ -129,6 +167,7 @@ export default function PmDashboard({ onNavigate }: PmPageProps) {
           )}
           <button type="button" className="mt-3 min-h-6 text-sm font-bold text-brand-text hover:underline" onClick={() => onNavigate("audit")}>Project audit log →</button>
         </Panel>
+      ) : null}
       </div>
     </div>
   )

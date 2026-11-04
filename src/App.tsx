@@ -5,7 +5,7 @@ import { SkeletonCardGrid } from "./components/ui/Skeleton"
 import RouteGuard from "./components/RouteGuard"
 import ProjectWorkspace from "./pages/Admin/ProjectWorkspace"
 import { fieldPagePath, isPmPage, projectPath, projectSections, readProjectRoute, type ProjectSection } from "./lib/projectRoutes"
-import { getSelectedProjectId } from "./lib/projects"
+import { getSelectedProjectId, rememberProject } from "./lib/projects"
 const LandingPage = lazy(() => import("./pages/Public/LandingPage"))
 const ValenciaIntroduction = lazy(() => import("./pages/Public/ValenciaIntroduction"))
 const BiometricAttendancePage = lazy(() => import("./pages/Attendance/BiometricAttendancePage"))
@@ -76,6 +76,7 @@ import UserShell from "./pages/User/UserShell"
 const UserHome = lazy(() => import("./pages/User/UserHome"))
 import type { UserPageKey } from "./pages/User/types"
 import ClientShell from "./pages/Client/ClientShell"
+import ClientProjects from "./pages/Client/ClientProjects" // also the Client shell's fallback project list
 const ClientOverview = lazy(() => import("./pages/Client/ClientOverview"))
 const ClientBlueprint = lazy(() => import("./pages/Client/ClientBlueprint"))
 const ClientTicketSubmission = lazy(() => import("./pages/Client/ClientSnagSubmission"))
@@ -194,6 +195,7 @@ function pageFromPath(): Page {
       "",
     ) as ClientPageKey
     const validKeys: ClientPageKey[] = [
+      "projects",
       "overview",
       "blueprint",
       "ticket",
@@ -290,7 +292,8 @@ export default class App extends Component<Record<string, never>, AppState> {
   }
 
   navigateClient = (nextPage: ClientPageKey) => {
-    const project = getSelectedProjectId()
+    const project = nextPage === "projects" ? null : getSelectedProjectId()
+    if (nextPage === "projects") rememberProject(null)
     const path = `/client/${nextPage}${project ? `?project=${encodeURIComponent(project)}` : ""}`
     window.history.pushState({}, "", path)
     window.scrollTo({ top: 0, behavior: "smooth" })
@@ -445,6 +448,7 @@ export default class App extends Component<Record<string, never>, AppState> {
       const activePage = this.state.page.replace("client/", "") as ClientPageKey
       const pageProps = { onNavigate: this.navigateClient }
       const page = {
+        projects: <ClientProjects />,
         overview: <ClientOverview {...pageProps} />,
         blueprint: <ClientBlueprint {...pageProps} />,
         ticket: <ClientTicketSubmission {...pageProps} />,

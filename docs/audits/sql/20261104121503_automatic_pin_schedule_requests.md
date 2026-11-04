@@ -1,0 +1,25 @@
+# Automatic pin schedule requests and separated Details content
+
+| Field | Value |
+| --- | --- |
+| File | `supabase/migrations/20261104121503_automatic_pin_schedule_requests.sql` |
+| Applied | 2026-11-04, BuildTrack connector version `20261104122333_automatic_pin_schedule_requests` |
+| Depends on | Project timeline, Engineer schedule proposals and optional technical-reason migrations |
+
+Add Pin identifies the selected plan and requires proposed start/deadline and a phase for work pins. Phase suggestions reuse the existing timeline phases; the Engineer can enter a custom phase. Technical reason stays optional. Note pins remain unscheduled. The wide responsive form focuses and scrolls to its first invalid field.
+
+The existing invoker creation RPC now calls the checked schedule submission RPC in the same transaction. A dated pin and its pending PM request either both save or both roll back. Official pin/task dates, QA, and Client publications do not change on submission. Legacy undated pins remain supported by the existing API and are not backfilled or submitted automatically.
+
+Sending a bare-pin proposal marks that private request as a template for later task requests (`auto_task_proposals`). The new private insert trigger on checklist items uses a sent or approved template, never an unsent draft. Each new task receives its own pending request; an approved template supplies the PM-adjusted plan, but never supplies approval to the new task. A pending parent request is marked `superseded` when tasks replace it, preserving its original proposal/author without inventing a PM decision. Approved and rejected parent decisions remain untouched. Parent requests were otherwise hidden/unreviewable as soon as the canonical Gantt rows changed from a bare pin to tasks.
+
+The trigger checks the task creator's active project/work access and rechecks the template proposer's active Engineer/assigned-type access. It retains the template requester and private explanation; a different authorized Engineer adding a task does not receive that author's request. The audit identifies the actual task creator, source request and retained requester. Rejected templates or revoked proposer work access do not generate new requests. Existing/private drafts are not opted in. Deleting unrecorded tasks does not resurrect a superseded parent request; the Engineer can submit a new proposal explicitly.
+
+Details now separates Overview, Edit details and Schedule in both the side panel and full modal. Forms remain mounted while switching tabs so unsaved edits survive. Read-only roles receive only Overview; note pins have no Schedule editor. Existing top-level Tasks & QC, reports, photos and other role-specific sections remain in place.
+
+The two replaced RPCs retain their signatures and ACLs; creation remains security invoker. The new trigger function has a fixed empty search path and is not executable directly by public, anonymous or authenticated users. Existing private-table RLS/grants, site controls, task guards, optimistic revisions, required PM review/publication notes, immutable evidence and explicit Engineer QA completion remain in force. No existing requests, work, dates, evidence or publications are rewritten by this migration; the new template flag defaults false.
+
+Local verification: actual Add Pin and Details handlers, required phase/date validation, note/read-only separation, mounted edit forms and network retry pass. Twenty-five focused schedule/QA cases pass, including creation rollback, immediate PM request, automatic task requests, independent approval, adjusted dates, hidden unsent draft changes, rejection, author/privacy/audit preservation, revoked access and private trigger ACLs. Full `pnpm check` passed (744 SQL cases, application checks, TypeScript and production build), as did the 5,000-pin load check. Browser visual verification was unavailable in this session.
+
+Hosted verification confirmed the trigger/status constraint, private-table RLS and denied direct writes, unchanged RPC grants and fixed empty search paths. The trigger helper denies direct authenticated and anonymous execution; creation remains invoker. All three bodies match local SQL: `create_pin_with_schedule_proposal` = `f9b7a2083915fe57af0d5324be4fbd25`, `submit_pin_schedule_proposal` = `aa794c59ecb215aaeac4b6cd51bbefef`, `request_new_task_schedule` = `e7e5547a737d322b9b30d9d3b95f4e25`. All 21 existing requests retain their original-field fingerprint `09038fbd292f2d1260b166e84e209ae7`; none was opted into automatic proposals. Security-advisor categories/counts are unchanged (16 private RLS tables, 3 existing anonymous definers, 172 authenticated definers, 1 password-protection warning). No production test work was created.
+
+Rollback requires an additive migration removing the trigger, restoring the two prior RPC bodies, and preserving requests/audit history. Keep support for existing `superseded` history and the inert template flag unless a separate reviewed data plan resolves them. Do not delete generated requests or rewrite approvals to restore the old status constraint.

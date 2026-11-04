@@ -20,7 +20,7 @@ export default async function ({ db, ids, as, asOwner, addUser, test, expectFail
     for (const key of ["rrEng", "rrFore"]) await db.query("insert into public.project_blueprint_access(project_id, user_id, blueprint_type, access_level) values ($1, $2, 'architectural', 'assigned')", [P.one, ids[key]])
     P.sheet = (await one("insert into public.blueprints(project_id, title, blueprint_type) values ($1, 'Plan', 'architectural') returning id", [P.one])).id
     P.pin = (await one("insert into public.pins(project_id, blueprint_id, title, x, y) values ($1, $2, 'Wall', 10, 10) returning id", [P.one, P.sheet])).id
-    await as("rrFore"); P.report = (await one("insert into public.daily_reports(project_id, report_date, work_done) values ($1, current_date, 'Laid the floor tiles') returning id", [P.one])).id
+    await as("rrFore"); const report = await one("insert into public.daily_reports(project_id, report_date, work_done) values ($1, current_date, 'Laid the floor tiles') returning id, report_date::text", [P.one]); P.report = report.id; P.reportDate = report.report_date
     await owner(); P.issue = (await one("insert into public.site_issue_reports(pin_id, project_id, description, severity, raised_by) values ($1, $2, 'Cracked beam near gridline B', 'high', $3) returning id", [P.pin, P.one, ids.rrEng])).id
     await as("rrClient"); P.snag = (await one("select public.submit_snag($1, 'Crack above the door', 'Hairline', 'Level 2', 'urgent') id", [P.one])).id
     await owner()
@@ -47,7 +47,7 @@ export default async function ({ db, ids, as, asOwner, addUser, test, expectFail
   await test("Removal needs the exact confirmation, a reason and a visible project; each refusal changes nothing", async () => {
     await as("rrSuper", "aal2")
     const preview = (await db.query("select public.preview_record_removal('daily_report', $1) p", [P.report])).rows[0].p
-    assert.deepEqual({ label: preview.label, code: preview.project_code, phrase: preview.confirm_phrase, removed: preview.project_removed }, { label: new Date().toISOString().slice(0, 10), code: "RR-1", phrase: "REMOVE " + new Date().toISOString().slice(0, 10), removed: false })
+    assert.deepEqual({ label: preview.label, code: preview.project_code, phrase: preview.confirm_phrase, removed: preview.project_removed }, { label: P.reportDate, code: "RR-1", phrase: "REMOVE " + P.reportDate, removed: false })
     const remove = (kind, id, reason, confirm) => attempt("rrSuper", "select public.remove_record($1, $2, $3, $4)", [kind, id, reason, confirm])
     for (const [args, pattern] of [[["daily_report", P.report, "abc", preview.confirm_phrase], /reason of 5 to 300/], [["daily_report", P.report, "x".repeat(301), preview.confirm_phrase], /reason of 5 to 300/],
       [["daily_report", P.report, "Entered by mistake", "remove " + preview.label], /Type the confirmation exactly/], [["daily_report", P.report, "Entered by mistake", null], /Type the confirmation exactly/],
@@ -60,7 +60,7 @@ export default async function ({ db, ids, as, asOwner, addUser, test, expectFail
   await test("Removed: hidden from every role, nothing deleted, audited; the pin still counts the record as attached", async () => {
     await owner()
     const before = { reports: await count("select count(*) n from public.daily_reports"), issues: await count("select count(*) n from public.site_issue_reports"), snags: await count("select count(*) n from public.client_snags") }
-    const day = new Date().toISOString().slice(0, 10)
+    const day = P.reportDate
     await as("rrSuper", "aal2")
     assert.deepEqual((await db.query("select public.remove_record('daily_report', $1, E'Entered by mistake\\u0007', $2) r", [P.report, "REMOVE " + day])).rows[0].r, { removed: true, label: day })
     assert.equal((await db.query("select public.remove_record('site_issue', $1, 'Duplicate of another issue', $2) r", [P.issue, "REMOVE " + P.issue.slice(0, 8).toUpperCase()])).rows[0].r.removed, true)

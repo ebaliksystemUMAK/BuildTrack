@@ -62,6 +62,9 @@ assert.equal(
   "Verified",
 )
 assert.equal(timeline.timelineStatus(undated, props.today), "Unscheduled")
+assert.equal(timeline.timelineViewFromSearch('?project=P&tab=gantt&ganttview=requests'),'requests')
+assert.equal(timeline.timelineViewFromSearch('?ganttview=history'),'history')
+assert.equal(timeline.timelineViewFromSearch('?ganttview=https://invalid.example'),'timeline')
 assert.equal(timeline.timelineDays("2024-02-28", "2024-03-01"), 2)
 assert.equal(
   timeline.timelinePlanProblem(
@@ -140,8 +143,10 @@ let slots = [],
   followed,
   reloads = 0,
   rpcCalls = []
+let captureEffects = false
+const effectsToRun = []
 globalThis.__ganttHooks = {
-  useEffect() {},
+  useEffect(fn) { if (captureEffects) effectsToRun.push(fn) },
   useState(initial) {
     const n = cursor++
     if (!(n in slots))
@@ -331,9 +336,21 @@ render()
 const editor = find((node) => node.type?.name === "ScheduleForm")
 const savedEditorSlots = slots
 slots = []; cursor = 0
-const approvalForm = editor.type({ ...editor.props, approval: true })
+const approvalSaves = []
+const approvalProps = { ...editor.props, approval: true, onSave: async (plan, reason) => { approvalSaves.push({ plan, reason }); return null } }
+const approvalForm = editor.type(approvalProps)
 assert.equal(all(approvalForm).filter(node => node.type === "input" && node.props.type === "date").length, 2, "Proposal approval reviews planned dates only")
 assert.doesNotMatch(text(approvalForm), /Actual start|Actual finish|Actual dates record/)
+assert.equal(all(approvalForm).find(node => node.type === 'textarea').props.required, false)
+assert.equal(all(approvalForm).find(node => node.type === 'textarea').props.minLength, undefined)
+assert.equal(all(approvalForm).find(node => node.type === 'button' && text(node) === 'Approve schedule').props.disabled, false)
+await all(approvalForm).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
+assert.equal(approvalSaves.at(-1).reason, '', 'The actual approval form accepts a blank reason')
+all(approvalForm).find(node => node.type === 'textarea').props.onChange({ target: { value: 'a' } })
+cursor = 0
+const shortApproval = editor.type(approvalProps)
+await all(shortApproval).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
+assert.equal(approvalSaves.at(-1).reason, 'a', 'An optional reason has no minimum length')
 slots = savedEditorSlots
 await editor.props.onSave(
   timeline.timelinePlan(first),
@@ -418,6 +435,83 @@ await find(
   (node) => node.type === "button" && text(node) === "Retry",
 ).props.onClick()
 assert.equal(reloads, 2)
+reset()
+const pendingProposal = { ...timeline.timelinePlan(undated), planned_start: '2026-11-10', planned_end: '2026-11-14', phase: 'Structural' }
+const requests = [
+  { id: 'REQ-PENDING', work_key: undated.key, status: 'pending', proposal: pendingProposal, expected_revision: 0, reason: 'Coordinate the concrete crew', created_at: '2026-11-06T18:00:00Z', review_note: null },
+  { id: 'REQ-APPROVED', work_key: second.key, status: 'approved', proposal: timeline.timelinePlan(second), approved_plan: timeline.timelinePlan(second), reason: 'Earlier request explanation', created_at: '2026-11-05T01:00:00Z', review_note: 'Reviewed and approved separately' },
+  { id: 'REQ-DRAFT', work_key: first.key, status: 'draft', proposal: timeline.timelinePlan(first), reason: 'Private unsent explanation' },
+]
+const detailedData = { ...data, items: [first, second, { ...undated, title: 'Undated wall', pin_title: 'Bedroom', location: 'First floor plan' }], requests }
+const detailProps = { timeline: { data: detailedData, loading: false, error: '', reload: async () => {} } }
+const sectionTab = label => find(node => node.props?.role === 'tab' && text(node).startsWith(label))
+render(detailProps)
+assert.equal(sectionTab('Pending requests').props.children[1].props.children, 1)
+assert.equal(sectionTab('Request history').props.children[1].props.children, 1)
+assert.equal(sectionTab('Unscheduled tasks').props.children[1].props.children, 1)
+assert.ok(!all(tree).some(node => node.type === 'table'), 'Task and request lists are separate from the timeline')
+assert.doesNotMatch(text(tree), /Coordinate the concrete crew|Earlier request explanation|Private unsent explanation/)
+sectionTab('Pending requests').props.onClick();render(detailProps)
+assert.equal(sectionTab('Pending requests').props['aria-selected'], true)
+assert.match(text(tree), /Coordinate the concrete crew|Undated wall/)
+assert.doesNotMatch(text(tree), /Earlier request explanation|Private unsent explanation/)
+assert.ok(all(tree).some(node => node.type === 'table'))
+assert.ok(all(tree).some(node => node.type === 'td' && text(node).includes(calendar.calendarDateLabel('2026-11-07', { day: 'numeric', month: 'short', year: 'numeric' }))), 'Submitted dates use the Philippine day across UTC midnight boundaries')
+assert.ok(!all(tree).some(node => node.type === 'svg'), 'Pending requests do not show the Gantt chart underneath')
+find(node => node.type === 'button' && text(node) === 'Review & approve').props.onClick();render(detailProps)
+await find(node => node.type?.name === 'ScheduleForm').props.onSave(pendingProposal, 'Dates reviewed by the Project Manager')
+assert.equal(rpcCalls.at(-1).name, 'decide_timeline_request')
+assert.equal(rpcCalls.at(-1).args.p_request, 'REQ-PENDING')
+render(detailProps)
+sectionTab('Request history').props.onClick();render(detailProps)
+assert.match(text(tree), /Earlier request explanation|Reviewed and approved separately/)
+assert.doesNotMatch(text(tree), /Coordinate the concrete crew|Private unsent explanation/)
+assert.ok(!all(tree).some(node => node.type === 'button' && text(node) === 'Review & approve'))
+sectionTab('Unscheduled tasks').props.onClick();render(detailProps)
+assert.match(text(tree), /Undated wall|Bedroom|First floor plan|Assigned Foreman|Current dates/)
+assert.ok(!all(tree).some(node => node.props?.['aria-label'] === 'Timeline zoom'))
+find(node => node.props?.['aria-label'] === 'View Undated wall details').props.onClick();render(detailProps)
+assert.ok(all(tree).some(node => node.type?.name === 'Modal' && node.props.title === 'Undated wall'))
+find(node => node.type?.name === 'Modal').props.onClose();render(detailProps)
+find(node => node.props?.['aria-label'] === 'Search timeline tasks').props.onChange({ target: { value: 'No matching wall' } });render(detailProps)
+assert.match(text(tree), /No unscheduled tasks match your filters/)
+sectionTab('Unscheduled tasks').props.onKeyDown({ key: 'ArrowLeft', preventDefault() {}, currentTarget: {} });render(detailProps)
+assert.equal(sectionTab('Pending requests').props['aria-selected'], true, 'Arrow keys move between the tabs')
+sectionTab('Pending requests').props.onKeyDown({ key: 'Home', preventDefault() {}, currentTarget: {} });render(detailProps)
+assert.equal(sectionTab('Timeline').props['aria-selected'], true)
+assert.equal(find(node => node.props?.['aria-label'] === 'Search timeline tasks').props.value, 'No matching wall', 'Search survives tab changes')
+sectionTab('Pending requests').props.onClick()
+render({ ...detailProps, role: 'foreman', timeline: { ...detailProps.timeline, data: { ...detailedData, can_edit: false, can_request: true } } })
+assert.match(text(tree), /Coordinate the concrete crew/)
+assert.ok(!all(tree).some(node => node.type === 'button' && ['Review & approve', 'Reject'].includes(text(node))), 'Read-only request viewers cannot make PM decisions')
+render({ ...detailProps, role: 'client', timeline: { ...detailProps.timeline, data: { ...detailedData, can_edit: false, can_request: false } } })
+assert.ok(!all(tree).some(node => node.props?.role === 'tab'), 'Client publication view has no internal request or unscheduled tabs')
+assert.doesNotMatch(text(tree), /Coordinate the concrete crew|Earlier request explanation|Private unsent explanation/)
+reset();render({ timeline: { ...detailProps.timeline, data } })
+sectionTab('Pending requests').props.onClick();render({ timeline: { ...detailProps.timeline, data } })
+assert.match(text(tree), /No schedule requests are awaiting review/)
+find(node => node.type === 'button' && text(node) === 'Publish schedule').props.onClick()
+render({ timeline: { ...detailProps.timeline, data } })
+const publicationDialog = find(node => node.type?.name === 'Modal' && node.props.title === 'Publish schedule & save baseline')
+assert.equal(all(publicationDialog).find(node => node.type === 'textarea').props.required, false)
+assert.equal(all(publicationDialog).find(node => node.type === 'textarea').props.minLength, undefined)
+assert.equal(all(publicationDialog).find(node => node.type === 'button' && node.props.type === 'submit').props.disabled, false)
+all(publicationDialog).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
+for (let tick = 0; tick < 6; tick++) await Promise.resolve()
+assert.equal(rpcCalls.at(-1).name, 'publish_project_timeline')
+assert.equal(rpcCalls.at(-1).args.p_reason, '', 'Publishing sends an absent reason without placeholder text')
+const previousWindow=globalThis.window
+const linkListeners={}
+globalThis.window={location:{search:'?project=P&tab=gantt&ganttview=requests'},addEventListener:(name,fn)=>{linkListeners[name]=fn},removeEventListener:name=>{delete linkListeners[name]}}
+captureEffects=true
+reset();render(detailProps)
+assert.equal(sectionTab('Pending requests').props['aria-selected'],true,'Email links open the PM request queue')
+const cleanups=effectsToRun.splice(0).map(fn=>fn())
+window.location.search='?project=P&tab=gantt&ganttview=history';linkListeners.popstate();render(detailProps)
+assert.equal(sectionTab('Request history').props['aria-selected'],true,'An already open Gantt follows notification navigation')
+cleanups.forEach(fn=>fn?.())
+captureEffects=false;effectsToRun.length=0
+if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow
 console.log(
-  "Gantt model and component: date geometry, dependency guards, unverified reported progress, calendar synchronization, zoom, search, task links, editing, role controls, client privacy, and loading/error states passed",
+  "Gantt model and component: date geometry, dependency guards, unverified reported progress, calendar synchronization, zoom, search, task links, editing, separate timeline/request/unscheduled/history tabs, detail tables, PM review, keyboard controls, client privacy, and loading/error states passed",
 )

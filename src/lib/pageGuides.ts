@@ -18,11 +18,12 @@ const calendar = (who: "staff" | "client"): PageGuide => ({
     : "Work deadlines, QA inspections, reinspections, NCR deadlines and project milestones of this project on one calendar.",
   steps: [
     "Open Gantt Timeline for the schedule. Engineers propose work dates; the assigned Project Manager approves dates, phases and dependencies, then publishes the baseline for Clients.",
+    ...(who === "staff" ? ["Gantt has separate Timeline, Pending requests, Unscheduled tasks and Request history tabs. Detailed rows show the pin/plan, Foreman, phase and dates; use View details to open the work and PM review actions to decide requests. Reasons are optional when approving or publishing a schedule."] : []),
     "Switch between Month, Week, Day and Schedule views, and move with the arrows or the small month picker.",
     "Turn the event types on or off and use \"Search this calendar\" to narrow the list.",
     "Open an event to see its details, then follow its link to the record or to its pin on the plan.",
   ],
-  tips: ["Approved task dates appear on the task, the pin's overall schedule range, Calendar and Gantt. Proposed dates await PM approval. Reported progress is separate from Engineer QA verification.", "Gantt shows every day number under its month and year. Scroll horizontally for later dates; use Day, Week or Month zoom to change the spacing."],
+  tips: ["Approved task dates appear on the task, the pin's overall schedule range, Calendar and Gantt. Proposed dates await PM approval. Reported progress is separate from Engineer QA verification.", "Gantt shows every day number under its month and year. Scroll horizontally for later dates; use Day, Week or Month zoom to change the spacing.", "Schedule requests notify assigned PMs, decisions notify the requester and assigned Foreman, and publication notifies project Clients. Email copies follow each person's email preferences and the scheduled sender."],
 })
 
 const fieldProjects = (role: "Engineer" | "Foreman"): PageGuide => ({
@@ -234,7 +235,9 @@ const admin: Record<AdminPageKey, PageGuide> = {
     purpose: "Upload plans by blueprint type and add revisions.",
     steps: [
       "Pick the project and the blueprint type.",
-      "Upload a PDF or image sheet, or add a new revision to an existing sheet.",
+      "Choose a PDF or image file. A PDF expands into one card for each page.",
+      "Label each PDF page, set its level or area, preview it if needed, and select the pages to upload as separate plans.",
+      "For a revision, choose the PDF page that updates the existing plan, then upload it.",
     ],
     tips: ["CAD files (DWG / DXF) are not uploaded: export them to PDF or PNG first.", "Engineers and Foremen only see the types they are given in Team & access."],
   },
@@ -266,8 +269,8 @@ const manager: Record<PmPageKey, PageGuide> = {
     title: "Project dashboard",
     purpose: "How the project is going: progress against the plan, deadlines, what waits for the Engineer's review and the quality issues still open.",
     steps: [
-      "Check progress against the plan and the deadlines coming up.",
-      "See what is waiting for the Engineer's review and which NCRs are still open.",
+      "Start in Overview for the key figures and progress chart.",
+      "Use Schedule & deadlines, QA, Team and Activity to see one section at a time. Schedule links to the project Calendar and Gantt; QA shows NCR totals; Team shows the people in charge; Activity shows recent changes.",
       "Open a card or a row to go to its page.",
     ],
   },
@@ -394,8 +397,8 @@ const engineer: Record<EngineerPageKey, PageGuide> = {
     purpose: "Approved tasks divided by all tasks, per zone and discipline, against the schedule.",
     steps: [
       "Choose a period (Today, This week, This month, Last month or your own dates) to see the progress made in it: tasks approved on those dates, progress at the end of the period and the change.",
-      "Check each zone's progress, the tasks approved and the late work.",
-      "Compare planned and verified progress on the S-curve, or export the figures as CSV.",
+      "Use Overview, Sheets & zones, Progress %, Chart, Deadlines and Approved tasks to view one section at a time. The period filter stays available across the tabs.",
+      "Compare planned and verified progress on the S-curve, open a sheet from Sheets & zones, or export the zone figures as CSV. Approved tasks lists the Engineer approvals for the selected period.",
     ],
     tips: ["Progress made counts every work pin, with or without a due date.", "A pin completes after all its tasks are approved and its NCRs and inspections are clear."],
   },
@@ -500,6 +503,12 @@ const foreman: Record<ForemanPageKey, PageGuide> = {
 }
 
 const client: Record<ClientPageKey, PageGuide> = {
+  projects: {
+    title: "My projects",
+    purpose: "Choose which assigned project to view in the Client portal.",
+    steps: ["Search or filter your project cards, then open a project.", "Use that project's overview, plans, calendar, reports and communication.", "Choose All projects to return to your other projects."],
+    tips: ["Only projects assigned to your account appear here. Each project's pages and messages stay in its own workspace."],
+  },
   overview: {
     title: "Overview & progress",
     purpose: "How your project is going. Only work the engineer has checked and approved counts as done.",
@@ -569,7 +578,8 @@ export function editorGuide(role: "engineer" | "foreman" | "client" | "admin", c
       purpose: "Place and manage the work on this plan sheet.",
       steps: [
         "Choose a tool in the second row: Select, Add pin, Add note, Draw shape, Tape (sheet scale), Upload image or More.",
-        "Click the sheet to place a pin, then set its details, tasks and QC checklist, and assign a Foreman.",
+        "Click the selected plan to place a pin. Enter its title, proposed start, deadline and phase, and optionally choose an eligible Foreman before saving. Adding the pin saves its assignment and sends a PM approval request. The technical reason is optional. Missing or invalid fields receive focus.",
+        "Details has Overview, Edit details and Schedule tabs. New tasks you add to a dated pin automatically receive their own PM requests using the sent pin schedule; PM approval makes dates official. Tasks & QC retains Engineer completion checks.",
         "Select a pin to change its status, lock it, open its details or delete it; select a drawing to move, resize, rotate or restyle it.",
         "Switch sheets with the sheet switcher or the pages bar; use Layers to order, hide or lock items.",
         "Undo with Ctrl+Z and redo with Ctrl+Shift+Z; export PNG / PDF from the top bar and compare revisions from View.",

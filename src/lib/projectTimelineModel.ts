@@ -14,6 +14,11 @@ export type TimelinePlan = {
   actual_end: string | null
   predecessors: string[]
 }
+export type TimelineView = "timeline" | "requests" | "unscheduled" | "history"
+export function timelineViewFromSearch(search: string): TimelineView {
+  const view = new URLSearchParams(search).get("ganttview")
+  return view === "requests" || view === "unscheduled" || view === "history" ? view : "timeline"
+}
 export type TimelineItem = TimelinePlan & {
   key: string
   kind: "work" | "milestone"
@@ -39,7 +44,7 @@ export type TimelineRequest = {
   proposal: TimelinePlan
   expected_revision: number
   reason: string
-  status: "draft" | "pending" | "approved" | "rejected"
+  status: "draft" | "pending" | "approved" | "rejected" | "superseded"
   approved_plan?: TimelinePlan | null
   created_at: string
   review_note: string | null

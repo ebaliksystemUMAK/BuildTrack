@@ -98,7 +98,7 @@ export default function EngineerReportIssue({ onNavigate }: EngineerPageProps) {
           <>
             <button type="button" className={buttonSecondary} disabled={!projectId} onClick={() => followLink(`/engineer/qa?project=${projectId}&tab=defects`, projectId)}>Open QA defects (NCR)</button>
             <button type="button" className={buttonSecondary} onClick={exportCsv} disabled={!rows.length}>Export CSV</button>
-            <button type="button" className={buttonPrimary} onClick={() => setLogging(true)} disabled={!projectId || Boolean(work.error || register.error)}>Log an issue</button>
+            <button type="button" className={buttonPrimary} onClick={() => setLogging(true)} disabled={!projectId || Boolean(work.error || register.error)}>Create Punchlist</button>
           </>
         }
       />

@@ -86,7 +86,7 @@ export const roleHomePath = (role: AppRole | null): string => {
   if (role === "project_manager") return "/pm/projects"
   if (role === "engineer") return "/engineer/projects"
   if (role === "foreman") return "/foreman/projects"
-  if (role === "client") return "/client/overview"
+  if (role === "client") return "/client/projects"
   if (role === "user") return "/user/home"
   return "/login"
 }

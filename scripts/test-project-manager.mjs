@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { readFileSync, readdirSync } from "node:fs"
+import ts from "typescript"
 import {
   PM_EDITABLE_FIELDS,
   concernProblem,
@@ -10,6 +11,7 @@ import {
   pmAccess,
   slotChange,
   slotsOf,
+  slotLabels,
   statusNeedsConfirm,
   validateDetails,
 } from "../src/lib/projectManagerModel.ts"
@@ -164,4 +166,64 @@ test("shared models: calendar, pin links and QA record links know the Project Ma
   assert.equal(qaRecordPath("engineer", "p1", "defect", "d1"), "/engineer/qa?project=p1&tab=defects&defect=d1", "Engineer links unchanged")
 })
 
-console.log(`\n${passed} passed`)
+// Render the actual PM dashboard with scoped data; each tab shows only its own contents.
+let dashboardSlots=[], dashboardCursor=0, dashboardTree, dashboardNavigation=[], dashboardLinks=[], dashboardReloads=0
+const dashboardProject={id:'p1',code:'PM-1',name:'Dashboard project',status:'active',phase:'preparation',start_date:'2026-11-01',end_date:'2026-11-20'}
+let dashboardPm={projectId:'p1',canManage:true,loading:false,note:null,managers:[{designation:'primary',full_name:'Primary manager'}]}
+let dashboardWork={project:dashboardProject,loading:false,error:'',today:'2026-11-05',pins:[{id:'PIN',blueprint_id:'PLAN',title:'Foundation wall',status:'in_progress',category:'progress',due_date:'2026-11-08',tasks:[{id:'TASK',done:false,review_status:'not_submitted'}]}],team:[{role:'engineer',is_lead:true,full_name:'Lead Engineer'},{role:'foreman',is_lead:true,full_name:'Lead Foreman'}],reload:async()=>{dashboardReloads++}}
+let dashboardAudit={loading:false,error:'',entries:[{id:'AUDIT',action:'project.updated',subject:'Schedule adjusted',actor_name:'Recorded actor',actor_role:'project_manager',created_at:'2026-11-05T00:00:00Z'}]}
+globalThis.__pmDashboardHooks={useMemo:fn=>fn(),useState(initial){const index=dashboardCursor++;if(!(index in dashboardSlots))dashboardSlots[index]=typeof initial==='function'?initial():initial;return[dashboardSlots[index],value=>{dashboardSlots[index]=typeof value==='function'?value(dashboardSlots[index]):value}]}}
+globalThis.__pmDashboardDeps={
+  usePmProject:()=>dashboardPm,useProjectWork:()=>dashboardWork,useProjectAudit:()=>dashboardAudit,
+  useDefects:()=>({defects:[{id:'DEFECT',status:'open',severity:'major',title:'Repair opening',due_date:'2026-11-09'}],loading:false}),useInspections:()=>({inspections:[],loading:false}),
+  dashboardSummary,slotLabels,scheduleElapsed:()=>25,statusLabels:{active:'Active'},phaseLabels:{preparation:'Preparation'},
+  activityLabel:value=>value,formatDate:value=>value,formatTime:()=>'',roleLabel:{project_manager:'Project Manager'},
+  pinPlanPath,qaRecordPath,followLink:(path,project)=>dashboardLinks.push({path,project}),buttonPrimary:'primary',buttonSecondary:'secondary',
+}
+const moduleUrl=source=>'data:text/javascript;base64,'+Buffer.from(source).toString('base64')
+const dashboardSource=readFileSync(new URL('../src/pages/ProjectManager/PmDashboard.tsx',import.meta.url),'utf8')
+const dashboardAst=ts.createSourceFile('dashboard.tsx',dashboardSource,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX)
+let dashboardOutput=ts.transpileModule(dashboardSource,{compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText
+const dashboardImports={'react/jsx-runtime':import.meta.resolve('react/jsx-runtime')}
+for(const declaration of dashboardAst.statements.filter(ts.isImportDeclaration)){
+  if(!declaration.importClause||declaration.importClause.isTypeOnly)continue
+  const name=declaration.moduleSpecifier.text,exports=[]
+  if(declaration.importClause.name)exports.push(`export default function ${declaration.importClause.name.text}(){return null}`)
+  for(const binding of declaration.importClause.namedBindings?.elements??[]){if(binding.isTypeOnly)continue;const key=binding.name.text;exports.push(`export const ${key}=globalThis.${name==='react'?'__pmDashboardHooks':'__pmDashboardDeps'}.${key} ?? function ${key}(){return null}`)}
+  dashboardImports[name]=moduleUrl(exports.join(';'))
+}
+for(const[name,value]of Object.entries(dashboardImports))dashboardOutput=dashboardOutput.replaceAll(`from "${name}"`,`from ${JSON.stringify(value)}`)
+const Dashboard=(await import(moduleUrl(dashboardOutput))).default
+const renderDashboard=()=>{dashboardCursor=0;dashboardTree=Dashboard({onNavigate:(...args)=>dashboardNavigation.push(args)})}
+const nodes=node=>Array.isArray(node)?node.flatMap(nodes):node&&typeof node==='object'?[node,...nodes(node.props?.children),...nodes(node.props?.actions)]:[]
+const nodeText=node=>Array.isArray(node)?node.map(nodeText).join(''):node?.props?nodeText(node.props.children):typeof node==='string'||typeof node==='number'?String(node):''
+const control=predicate=>{const result=nodes(dashboardTree).find(predicate);assert.ok(result,'Expected PM dashboard control');return result}
+const tab=label=>control(node=>node.props?.role==='tab'&&nodeText(node)===label)
+const showTab=label=>{tab(label).props.onClick();renderDashboard()}
+renderDashboard()
+assert.deepEqual(nodes(dashboardTree).filter(node=>node.props?.role==='tab').map(nodeText),['Overview','Schedule & deadlines','QA','Team','Activity'])
+assert.deepEqual(nodes(dashboardTree).filter(node=>node.type?.name==='Panel').map(node=>node.props.title),['Progress against the plan'])
+assert.equal(nodes(dashboardTree).filter(node=>node.type?.name==='StatCard').length,5)
+assert.ok(nodes(dashboardTree).some(node=>node.type?.name==='SCurveChart'))
+showTab('Schedule & deadlines')
+assert.match(nodeText(dashboardTree),/Foundation wall|Repair opening/)
+assert.ok(!nodes(dashboardTree).some(node=>node.type?.name==='SCurveChart'))
+control(node=>node.type==='button'&&nodeText(node)==='Open Gantt timeline').props.onClick();assert.deepEqual(dashboardNavigation.at(-1),['calendar','tab=gantt'])
+control(node=>node.type==='button'&&nodeText(node).includes('Foundation wall')).props.onClick();assert.equal(dashboardLinks.at(-1).project,'p1');assert.match(dashboardLinks.at(-1).path,/pin=PIN/)
+showTab('QA');assert.deepEqual(nodes(dashboardTree).filter(node=>node.type?.name==='Panel').map(node=>node.props.title),['Quality issues'])
+assert.match(nodeText(dashboardTree),/Major|In correction/)
+control(node=>node.type==='button'&&nodeText(node)==='Open Quality & QA').props.onClick();assert.deepEqual(dashboardNavigation.at(-1),['quality'])
+showTab('Team');assert.match(nodeText(dashboardTree),/Primary manager|Lead Engineer|Lead Foreman/)
+control(node=>node.type==='button'&&nodeText(node).startsWith('Team & work access')).props.onClick();assert.deepEqual(dashboardNavigation.at(-1),['team'])
+showTab('Activity');assert.match(nodeText(dashboardTree),/Schedule adjusted|Recorded actor/);assert.doesNotMatch(nodeText(dashboardTree),/Lead Engineer/)
+control(node=>node.type==='button'&&nodeText(node).startsWith('Project audit log')).props.onClick();assert.deepEqual(dashboardNavigation.at(-1),['audit'])
+tab('Activity').props.onKeyDown({key:'ArrowRight',preventDefault(){},currentTarget:{}});renderDashboard();assert.equal(tab('Overview').props['aria-selected'],true)
+tab('Overview').props.onKeyDown({key:'End',preventDefault(){},currentTarget:{}});renderDashboard();assert.equal(tab('Activity').props['aria-selected'],true)
+dashboardAudit={loading:false,error:'Could not load activity',entries:[]};renderDashboard();assert.match(nodeText(dashboardTree),/Could not load activity/)
+dashboardAudit={loading:false,error:'',entries:[]};renderDashboard();assert.match(nodeText(dashboardTree),/No activity recorded yet/)
+showTab('Team');dashboardPm={...dashboardPm,loading:true};renderDashboard();assert.ok(nodes(dashboardTree).some(node=>node.type?.name==='SkeletonList'));assert.doesNotMatch(nodeText(dashboardTree),/Lead Engineer/)
+dashboardPm={...dashboardPm,loading:false,projectId:'p2'};renderDashboard();assert.ok(nodes(dashboardTree).some(node=>node.props?.label==='Loading the project dashboard'),'Previous project data is masked during a project switch')
+dashboardWork={...dashboardWork,project:{...dashboardProject,id:'p2',name:'Second project'}};renderDashboard();assert.equal(tab('Overview').props['aria-selected'],true,'A new project starts on Overview')
+dashboardPm={...dashboardPm,canManage:false};renderDashboard();assert.ok(nodes(dashboardTree).some(node=>node.type==='button'&&nodeText(node)==='View details'))
+console.log('  ok   PM dashboard: separate content tabs, figures/chart, project-safe links, keyboard controls, activity/team states and project-switch isolation')
+console.log(`\n${passed} model checks plus dashboard component checks passed`)

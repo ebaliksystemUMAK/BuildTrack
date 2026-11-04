@@ -735,7 +735,7 @@ test("Page guides: every workspace page has a complete guide; unknown pages and 
     manager: ["projects", "dashboard", "details", "team", "blueprints", "calendar", "quality", "attendance", "reports", "audit"],
     engineer: ["projects", "dashboard", "calendar", "project-blueprint", "annotation", "qa", "checklists", "report-issue", "progress", "assignments", "reports"],
     foreman: ["projects", "dashboard", "calendar", "daily-work", "daily-report", "photo-documentation", "quality-control", "issues", "qa-workflow", "attendance"],
-    client: ["overview", "calendar", "blueprint", "ticket", "site-logs", "communication"],
+    client: ["projects", "overview", "calendar", "blueprint", "ticket", "site-logs", "communication"],
     user: ["home"],
   }
   const complete = (guide, where) => {

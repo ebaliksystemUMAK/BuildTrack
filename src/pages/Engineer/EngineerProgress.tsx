@@ -39,12 +39,24 @@ const tasksOf = (pins: Pin[]) => pins.flatMap((pin) => pin.tasks ?? [])
 const signed = (value: number) => `${value > 0 ? "+" : ""}${value} pts`
 const day = (value: string) => rangeText({ from: value, to: value })
 const LIST_LIMIT = 25
+const progressTabs = [
+  { key: "overview", label: "Overview" },
+  { key: "zones", label: "Sheets & zones" },
+  { key: "disciplines", label: "Progress %" },
+  { key: "curve", label: "Chart" },
+  { key: "deadlines", label: "Deadlines" },
+  { key: "approvals", label: "Approved tasks" },
+] as const
+type ProgressTab = typeof progressTabs[number]["key"]
 
 // Where the project stands: share verified overall, per sheet (floor / zone) and per discipline, against the schedule.
 // With a period chosen it shows the progress made in it: tasks approved on those dates (every work pin counts, with or without a
 // due date), progress at the end of the period and the change; cards, zones, disciplines and CSV follow.
 export default function EngineerProgress({ onNavigate }: EngineerPageProps) {
   const projectId = getSelectedProjectId()
+  const [view, setView] = useState<{ projectId: string | null; tab: ProgressTab }>({ projectId, tab: "overview" })
+  const activeTab = view.projectId === projectId ? view.tab : "overview"
+  const setTab = (tab: ProgressTab) => setView({ projectId, tab })
   const work = useProjectWork(projectId)
   const [range, setRange] = useState<DateRange>(() => readRange(window.location.search))
   useEffect(() => {
@@ -144,6 +156,21 @@ export default function EngineerProgress({ onNavigate }: EngineerPageProps) {
         <EmptyState title="No work pins yet">Add pins on the plan to track work here. Notes do not count as work.</EmptyState>
       ) : (
         <>
+          <div role="tablist" aria-label="Progress sections" className="mb-5 flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
+            {progressTabs.map((tab, index) => <button
+              key={tab.key} type="button" role="tab" id={`zone-progress-tab-${tab.key}`} aria-selected={activeTab === tab.key} aria-controls="zone-progress-panel" tabIndex={activeTab === tab.key ? 0 : -1}
+              className={`min-h-11 shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${activeTab === tab.key ? "bg-brand text-white shadow-sm" : "text-fg-muted hover:bg-surface-muted hover:text-fg"}`}
+              onClick={() => setTab(tab.key)}
+              onKeyDown={event => {
+                const next = event.key === "ArrowRight" ? (index + 1) % progressTabs.length : event.key === "ArrowLeft" ? (index + progressTabs.length - 1) % progressTabs.length : event.key === "Home" ? 0 : event.key === "End" ? progressTabs.length - 1 : null
+                if (next === null) return
+                event.preventDefault(); setTab(progressTabs[next].key)
+                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
+              }}
+            >{tab.label}</button>)}
+          </div>
+          <div id="zone-progress-panel" role="tabpanel" aria-labelledby={`zone-progress-tab-${activeTab}`} tabIndex={0}>
+          {activeTab === "overview" ? <>
           {period ? (
             <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard label="Approved in period" value={period.approvedInPeriod} tone="green" note={`task${period.approvedInPeriod === 1 ? "" : "s"} approved ${rangeText(range)}`} />
@@ -165,22 +192,7 @@ export default function EngineerProgress({ onNavigate }: EngineerPageProps) {
               <h2 className="text-base font-extrabold">Progress made {rangeText(range)}</h2>
               <p className="mt-1 text-sm text-fg-muted">From {period.percentAtStart}% before the period to {period.percentAtEnd}% by {day(period.end)} ({signed(period.change)}): {period.approvedInPeriod} task{period.approvedInPeriod === 1 ? "" : "s"} approved.</p>
               <div className="mt-3"><Meter value={period.percentAtEnd} tone="green" label="Approved task progress at the end of the period" /></div>
-              <h3 className="mb-2 mt-5 text-sm font-extrabold">Tasks approved {rangeText(range)}</h3>
-              {approvedRows.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-line p-4 text-center text-sm text-fg-muted">No task was approved on these dates.</p>
-              ) : (
-                <>
-                  <ul className="divide-y divide-line rounded-xl border border-line">
-                    {approvedRows.slice(0, LIST_LIMIT).map(({ task, day: approvedDay }) => (
-                      <li key={task.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                        <span className="min-w-0"><span className="block truncate font-semibold">{task.pinTitle} · {task.text}</span><span className="text-xs text-fg-muted">{work.sheetOf(task.sheetId)}</span></span>
-                        <span className="flex-none rounded bg-green-100 px-2 py-0.5 text-xs font-bold text-green-800 dark:bg-green-900/40 dark:text-green-200">{day(approvedDay)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  {approvedRows.length > LIST_LIMIT ? <p className="mt-2 text-xs text-fg-muted">Showing the newest {LIST_LIMIT} of {approvedRows.length} approved tasks.</p> : null}
-                </>
-              )}
+              <button type="button" className="mt-4 min-h-6 text-sm font-bold text-brand-text hover:underline" onClick={() => setTab("approvals")}>View approved tasks →</button>
             </section>
           ) : (
             <section className="mb-6 rounded-2xl border border-line bg-surface p-5 shadow-sm">
@@ -204,14 +216,15 @@ export default function EngineerProgress({ onNavigate }: EngineerPageProps) {
               ) : null}
             </section>
           )}
+          </> : null}
 
-          <section className="mb-6 rounded-2xl border border-line bg-surface p-5 shadow-sm" aria-labelledby="s-curve-title">
+          {activeTab === "curve" ? <section className="mb-6 rounded-2xl border border-line bg-surface p-5 shadow-sm" aria-labelledby="s-curve-title">
             <h2 id="s-curve-title" className="text-base font-extrabold">Planned vs verified (S-curve)</h2>
             <p className="mb-3 text-xs text-fg-muted">Each task inherits its pin's due date; verified follows the task's Engineer approval date.{period ? " The curve always shows the whole project." : ""}</p>
             <SCurveChart pins={pins} start={work.project?.start_date ?? null} end={work.project?.end_date ?? null} today={work.today} />
-          </section>
+          </section> : null}
 
-          <section className="mb-6">
+          {activeTab === "zones" ? <section className="mb-6">
             <h2 className="mb-2 border-l-4 border-accent pl-3 text-base font-extrabold text-brand-strong">Sheets and zones</h2>
             <div className="grid gap-3 md:grid-cols-2">
               {zones.map((zone) => {
@@ -244,10 +257,9 @@ export default function EngineerProgress({ onNavigate }: EngineerPageProps) {
                 )
               })}
             </div>
-          </section>
+          </section> : null}
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <section>
+            {activeTab === "disciplines" ? <section>
               <h2 className="mb-2 border-l-4 border-accent pl-3 text-base font-extrabold text-brand-strong">By discipline</h2>
               <ul className="divide-y divide-line rounded-xl border border-line bg-surface">
                 {disciplines.map((row) => (
@@ -257,8 +269,8 @@ export default function EngineerProgress({ onNavigate }: EngineerPageProps) {
                   </li>
                 ))}
               </ul>
-            </section>
-            <section>
+            </section> : null}
+            {activeTab === "deadlines" ? <section>
               <h2 className="mb-2 border-l-4 border-accent pl-3 text-base font-extrabold text-brand-strong">Deadlines</h2>
               {deadlines.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-line bg-surface p-5 text-center text-sm text-fg-muted">Nothing is late or due in the next 7 days.</p>
@@ -276,7 +288,23 @@ export default function EngineerProgress({ onNavigate }: EngineerPageProps) {
                   })}
                 </ul>
               )}
-            </section>
+            </section> : null}
+            {activeTab === "approvals" ? <section className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
+              <h2 className="mb-3 text-base font-extrabold">{period ? `Tasks approved ${rangeText(range)}` : "Tasks approved in a period"}</h2>
+              {!period ? <p className="text-sm text-fg-muted">Choose a period above to see the tasks the Engineer approved on those dates.</p> : approvedRows.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-line p-4 text-center text-sm text-fg-muted">No task was approved on these dates.</p>
+              ) : <>
+                <ul className="divide-y divide-line rounded-xl border border-line">
+                  {approvedRows.slice(0, LIST_LIMIT).map(({ task, day: approvedDay }) => (
+                    <li key={task.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                      <span className="min-w-0"><span className="block truncate font-semibold">{task.pinTitle} · {task.text}</span><span className="text-xs text-fg-muted">{work.sheetOf(task.sheetId)}</span></span>
+                      <span className="flex-none rounded bg-green-100 px-2 py-0.5 text-xs font-bold text-green-800 dark:bg-green-900/40 dark:text-green-200">{day(approvedDay)}</span>
+                    </li>
+                  ))}
+                </ul>
+                {approvedRows.length > LIST_LIMIT ? <p className="mt-2 text-xs text-fg-muted">Showing the newest {LIST_LIMIT} of {approvedRows.length} approved tasks.</p> : null}
+              </>}
+            </section> : null}
           </div>
         </>
       )}

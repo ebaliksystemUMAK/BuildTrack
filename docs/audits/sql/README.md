@@ -4,6 +4,11 @@ One document per SQL file in `supabase/`. Same sections every time so changes ar
 
 | Doc | SQL file | Status |
 |---|---|---|
+| [20261104172610_schedule_email_notifications](20261104172610_schedule_email_notifications.md) | `supabase/migrations/20261104172610_schedule_email_notifications.sql` | APPLIED 2026-11-05 Manila (live `20261104174312`) |
+| [20261104155523_create_pin_with_foreman](20261104155523_create_pin_with_foreman.md) | `supabase/migrations/20261104155523_create_pin_with_foreman.sql` | APPLIED 2026-11-05 Manila (live `20261104160447`) |
+| [20261104153838_optional_schedule_approval_publication_reason](20261104153838_optional_schedule_approval_publication_reason.md) | `supabase/migrations/20261104153838_optional_schedule_approval_publication_reason.sql` | APPLIED 2026-11-04 (live `20261104154404`) |
+| [20261104121503_automatic_pin_schedule_requests](20261104121503_automatic_pin_schedule_requests.md) | `supabase/migrations/20261104121503_automatic_pin_schedule_requests.sql` | APPLIED 2026-11-04 (live `20261104122333`) |
+| [20261104114559_optional_pin_proposal_reason](20261104114559_optional_pin_proposal_reason.md) | `supabase/migrations/20261104114559_optional_pin_proposal_reason.sql` | APPLIED 2026-11-04 (live `20261104115049`) |
 | [20261104101457_qa_schedule_snapshot_compatibility](20261104101457_qa_schedule_snapshot_compatibility.md) | `supabase/migrations/20261104101457_qa_schedule_snapshot_compatibility.sql` | APPLIED 2026-11-04 (live `20261104102037`) |
 | [20261104062715_schedule_proposals_and_date_sync](20261104062715_schedule_proposals_and_date_sync.md) | `supabase/migrations/20261104062715_schedule_proposals_and_date_sync.sql` | APPLIED 2026-11-04 (live `20261104064512`) |
 | [20261104130000_daily_report_entry_work_done](20261104130000_daily_report_entry_work_done.md) | `supabase/migrations/20261104130000_daily_report_entry_work_done.sql` | APPLIED 2026-11-04 (live `20261104064730`) |

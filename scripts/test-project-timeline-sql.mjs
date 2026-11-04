@@ -3,6 +3,7 @@ import { createDatabase } from "../supabase/tests/harness.mjs"
 import cases from "../supabase/tests/zzzzzzzzzzzzzz-project-timeline.cases.mjs"
 import proposalCases from "../supabase/tests/zzzzzzzzzzzzzzz-schedule-proposals.cases.mjs"
 import qaSnapshotCases from "../supabase/tests/zzzzzzzzzzzzzzzz-qa-schedule-snapshots.cases.mjs"
+import scheduleEmailCases from "../supabase/tests/zzzzzzzzzzzzzzzzz-schedule-email-notifications.cases.mjs"
 
 const db = await createDatabase({ quiet: true })
 const ids = {}
@@ -51,6 +52,7 @@ const expectFail = async (sql, params, pattern) => {
 await cases({ db, ids, as, asOwner, addUser, test, expectFail })
 await proposalCases({ db, ids, as, asOwner, addUser, test, expectFail })
 await qaSnapshotCases({ db, ids, as, asOwner, addUser, test, expectFail })
+await scheduleEmailCases({ db, ids, as, asOwner, addUser, test, expectFail })
 await db.close()
 console.log(`${passed} passed, ${failed} failed`)
 process.exitCode = failed ? 1 : 0

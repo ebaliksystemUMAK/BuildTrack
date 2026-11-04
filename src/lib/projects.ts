@@ -93,6 +93,7 @@ export function useProjects() {
 const SELECTED_KEY = "buildtrack.project"
 
 export function getSelectedProjectId(): string | null {
+  if (window.location.pathname.replace(/\/$/, "") === "/client/projects") return null
   const route = readProjectRoute(window.location.pathname)
   if (route) return route.projectId
   const fromUrl = new URLSearchParams(window.location.search).get("project")
@@ -113,7 +114,7 @@ const workspacePath: Record<ProjectRole, string> = {
   project_manager: "/pm/dashboard",
   engineer: "/engineer/dashboard",
   foreman: "/foreman/dashboard",
-  client: "/client/blueprint",
+  client: "/client/overview",
 }
 
 // Mirror of the selected project in sessionStorage (null forgets it, e.g. back on the project list or after sign-out).
@@ -133,7 +134,7 @@ export function openProject(role: ProjectRole, projectId: string) {
   window.dispatchEvent(new PopStateEvent("popstate")) // makes App re-read the path
 }
 
-// Engineer / Foreman shells: on the project list there is no project; elsewhere the page belongs to the selected project.
+// Assigned-project shells: on the project list there is no project; elsewhere the page belongs to the selected project.
 // A project that is missing or not assigned (Row Level Security hides it) sends the person back to the list.
 export function useFieldProject(page: string) {
   const selected = page === "projects" ? null : getSelectedProjectId()

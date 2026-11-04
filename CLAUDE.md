@@ -46,7 +46,7 @@ Construction progress and QA web app: React 19, TypeScript, Vite 8, Tailwind v4;
 ## Current cautions (recorded 2026-11-01; verify only if relevant)
 - Admin phases have substantial uncommitted local changes. Do not restart/reimplement them from an old feature list. Some hosted migrations/functions are already applied while frontend changes are not yet merged/deployed; inspect the relevant audit.
 - Latest account/email-code audit supersedes the earlier reset-template description. Password recovery must not become general sign-in. Preserve verified-email gates, one-use/rate-limited codes and step-up account controls.
-- Latest email audit records Brevo HTTP delivery failing with 401 / invalid API key; owner configuration is needed. Auth SMTP credentials are not the Edge Function API key. Do not expose or request secrets in chat. Digest scheduling remains owner setup unless later verified.
+- Read-only email verification on 2026-11-05 found provider-accepted sends after the historical invalid-key failures; inbox delivery is unverified. See the schedule-email SQL audit. Auth SMTP credentials are separate from the Edge Function API key; never expose or request secrets in chat. Digest scheduling remains owner setup unless later verified.
 - Maintenance is non-admin read-only; privileged/service-role device/jobs are exempt. Forced logout does not instantly invalidate existing access tokens. Preserve documented limitations instead of promising immediate revocation.
 
 ## UI conventions

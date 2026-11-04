@@ -22,6 +22,7 @@ const settle = () => new Promise((resolve) => setImmediate(resolve))
     // the bell only
     inapp: ["pin.milestone", "pin.resumed", "report.submitted", "report.reviewed", "qa.defect_closed", "project.archived", "project.restored", "project.manager_removed", "attendance.concern_resolved"],
   }
+  kinds.activity.push('timeline.requested','timeline.approved','timeline.rejected','timeline.published')
   for (const [category, list] of Object.entries(kinds)) for (const kind of list) {
     assert.equal(notificationCategory(kind), category, kind)
     assert.equal(emailCategory(kind), category, "email builder: " + kind)

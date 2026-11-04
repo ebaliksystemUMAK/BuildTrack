@@ -11,10 +11,12 @@ import {
   timelinePlan,
   timelinePlanProblem,
   timelineStatus,
+  timelineViewFromSearch,
   type TimelineItem,
   type TimelinePlan,
   type TimelineRequest,
   type TimelineZoom,
+  type TimelineView,
 } from "../../lib/projectTimelineModel"
 import {
   calendarAddDays,
@@ -38,6 +40,9 @@ const dateLabel = (date: string | null | undefined) =>
     : "Not recorded"
 const inputClass =
   "w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg"
+const submittedDateLabel = (at: string | undefined) => at
+  ? new Date(at).toLocaleDateString("en-PH", { timeZone: "Asia/Manila", day: "numeric", month: "short", year: "numeric" })
+  : "Not recorded"
 
 type GanttRow =
   | {
@@ -82,6 +87,10 @@ function ScheduleForm({
     const problem = timelinePlanProblem(plan, item.key, items)
     if (problem) {
       setError(problem)
+      return
+    }
+    if (reason.trim().length > 500 || (!approval && reason.trim().length < 5)) {
+      setError(approval ? "Keep the optional approval reason within 500 characters." : "Enter a reason of 5 to 500 characters.")
       return
     }
     setBusy(true)
@@ -223,10 +232,10 @@ function ScheduleForm({
           </div>
         </fieldset>
         <label className="block text-sm font-semibold">
-          {requesting ? "Reason for this request" : "Reason for this schedule"}
+          {approval ? "Approval reason (optional)" : requesting ? "Reason for this request" : "Reason for this schedule"}
           <textarea
-            required
-            minLength={5}
+            required={!approval}
+            minLength={approval ? undefined : 5}
             maxLength={500}
             rows={3}
             className={`${inputClass} mt-1`}
@@ -252,7 +261,7 @@ function ScheduleForm({
             Cancel
           </button>
           <button
-            disabled={busy || reason.trim().length < 5}
+            disabled={busy || (!approval && reason.trim().length < 5)}
             type="submit"
             className={buttonPrimary}
           >
@@ -290,6 +299,13 @@ export default function ProjectTimeline({
   const [mine, setMine] = useState(false)
   const [zoom, setZoom] = useState<TimelineZoom>("week")
   const [baseline, setBaseline] = useState(true)
+  const [view, setView] = useState<TimelineView>(() => timelineViewFromSearch(typeof window === "undefined" ? "" : window.location.search))
+  useEffect(() => {
+    const sync = () => setView(timelineViewFromSearch(window.location.search))
+    window.addEventListener("popstate", sync)
+    return () => window.removeEventListener("popstate", sync)
+  }, [projectId])
+  const activeView = role === "client" ? "timeline" : view
   const [collapsed, setCollapsed] = useState<string[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [editing, setEditing] = useState<TimelineItem | null>(null)
@@ -349,7 +365,7 @@ export default function ProjectTimeline({
     observer?.observe(element)
     window.addEventListener("resize", sync)
     return () => { observer?.disconnect(); window.removeEventListener("resize", sync) }
-  }, [projectId, loading, error, hasScheduled])
+  }, [projectId, loading, error, hasScheduled, activeView])
   const rowLayout: GanttRow[] = phases.flatMap((name) => {
     const group = scheduled.filter((item) => item.phase === name)
     if (!group.length) return []
@@ -426,6 +442,14 @@ export default function ProjectTimeline({
   const pending = visibleRequests.filter(
     (request) => request.status === "pending",
   )
+  const historyRequests = visibleRequests.filter(request => request.status !== "pending")
+  const requestsForView = activeView === "history" ? historyRequests : pending
+  const tabs = [
+    { key: "timeline", label: "Timeline", count: null },
+    { key: "requests", label: "Pending requests", count: pending.length },
+    { key: "unscheduled", label: "Unscheduled tasks", count: unscheduled.length },
+    { key: "history", label: "Request history", count: historyRequests.length },
+  ] as const
 
   return (
     <section className="bt-timeline" aria-label="Project Gantt timeline">
@@ -530,7 +554,27 @@ export default function ProjectTimeline({
           </div>
         ))}
       </div>
-      <div className="bt-timeline-filters">
+      {role !== "client" ? <div className="bt-timeline-tabs" role="tablist" aria-label="Gantt sections">
+        {tabs.map((tab, index) => <button
+          key={tab.key}
+          type="button"
+          role="tab"
+          aria-label={tab.count === null ? tab.label : `${tab.label} (${tab.count})`}
+          id={`gantt-tab-${projectId}-${tab.key}`}
+          aria-controls={`gantt-panel-${projectId}-${tab.key}`}
+          aria-selected={activeView === tab.key}
+          tabIndex={activeView === tab.key ? 0 : -1}
+          onClick={() => setView(tab.key)}
+          onKeyDown={event => {
+            const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null
+            if (next === null) return
+            event.preventDefault()
+            setView(tabs[next].key)
+            event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
+          }}
+        >{tab.label}{tab.count !== null ? <span>{tab.count}</span> : null}</button>)}
+      </div> : null}
+      {activeView === "timeline" || activeView === "unscheduled" ? <div className="bt-timeline-filters">
         <input
           type="search"
           aria-label="Search timeline tasks"
@@ -568,7 +612,7 @@ export default function ProjectTimeline({
             </option>
           ))}
         </select>
-        <select
+        {activeView === "timeline" ? <select
           aria-label="Timeline zoom"
           value={zoom}
           onChange={(event) => setZoom(event.target.value as TimelineZoom)}
@@ -576,7 +620,7 @@ export default function ProjectTimeline({
           <option value="day">Day zoom</option>
           <option value="week">Week zoom</option>
           <option value="month">Month zoom</option>
-        </select>
+        </select> : null}
         {role !== "client" ? (
           <>
             <label>
@@ -587,17 +631,17 @@ export default function ProjectTimeline({
               />
               My tasks
             </label>
-            <label>
+            {activeView === "timeline" ? <label>
               <input
                 type="checkbox"
                 checked={baseline}
                 onChange={(event) => setBaseline(event.target.checked)}
               />
               Baseline
-            </label>
+            </label> : null}
           </>
         ) : null}
-        <button
+        {activeView === "timeline" ? <button
           type="button"
           className={buttonSecondary}
           onClick={() =>
@@ -612,8 +656,9 @@ export default function ProjectTimeline({
           disabled={!todayInRange}
         >
           Today
-        </button>
-      </div>
+        </button> : null}
+      </div> : null}
+      {activeView === "timeline" ? <div role={role !== "client" ? "tabpanel" : undefined} id={`gantt-panel-${projectId}-timeline`} aria-labelledby={role !== "client" ? `gantt-tab-${projectId}-timeline` : undefined}>
       <div className="bt-timeline-legend">
         <span>
           <i className="planned" />
@@ -896,68 +941,60 @@ export default function ProjectTimeline({
           </h2>
           <p>
             {items.length
-              ? "Schedule the undated tasks below, or adjust your filters."
+              ? role === "client" ? "Adjust your filters to view the published schedule." : "Open Unscheduled tasks to schedule undated work, or adjust your filters."
               : role === "client"
                 ? "The project timeline will appear here after your Project Manager publishes it."
                 : "Add work pins and tasks on the blueprint, then return here to schedule them."}
           </p>
         </div>
       )}
-      {role !== "client" && unscheduled.length ? (
-        <section className="bt-timeline-unscheduled">
+      </div> : null}
+      {role !== "client" && activeView === "unscheduled" ? (
+        <section className="bt-timeline-unscheduled" role="tabpanel" id={`gantt-panel-${projectId}-unscheduled`} aria-labelledby={`gantt-tab-${projectId}-unscheduled`}>
           <h2>
             Unscheduled tasks <span>{unscheduled.length}</span>
           </h2>
           <p>
-            These tasks need a planned start and finish before they can appear
-            as timeline bars.
+            {unscheduled.length ? "These tasks need a planned start and finish before they can appear as timeline bars." : "No unscheduled tasks match your filters."}
           </p>
-          <div>
-            {unscheduled.map((item) => (
-              <button
-                type="button"
-                key={item.key}
-                onClick={() => setSelected(item.key)}
-              >
-                <strong>{item.title}</strong>
-                <span>
-                  {item.pin_title} · {item.owner}
-                </span>
-                {item.planned_end ? (
-                  <small>
-                    Existing work deadline: {dateLabel(item.planned_end)}
-                  </small>
-                ) : null}
-              </button>
-            ))}
-          </div>
+          {unscheduled.length ? <div className="bt-timeline-detail-scroll" role="region" aria-label="Unscheduled task details" tabIndex={0}>
+            <table className="bt-timeline-detail-table">
+              <caption className="sr-only">Unscheduled work tasks and their current assignment and dates</caption>
+              <thead><tr><th scope="col">Task / pin / plan</th><th scope="col">Phase</th><th scope="col">Assigned Foreman</th><th scope="col">Current dates</th><th scope="col">Action</th></tr></thead>
+              <tbody>{unscheduled.map(item => <tr key={item.key}>
+                <td className="bt-timeline-detail-identity"><strong>{item.title}</strong><span>{item.pin_title ?? "Work pin"}</span><span>{item.location ?? "Plan not recorded"}</span></td>
+                <td>{item.phase}</td>
+                <td>{item.owner ?? "Unassigned"}</td>
+                <td><span className="block">Start: {item.planned_start ? dateLabel(item.planned_start) : "Not approved"}</span><span className="block">Deadline: {item.planned_end ? dateLabel(item.planned_end) : "Not set"}</span></td>
+                <td><button type="button" className={buttonSecondary} aria-label={`View ${item.title} details`} onClick={() => setSelected(item.key)}>View details</button></td>
+              </tr>)}</tbody>
+            </table>
+          </div> : null}
         </section>
       ) : null}
-      {role !== "client" && data.requests.length ? (
-        <section className="bt-timeline-requests">
+      {role !== "client" && (activeView === "requests" || activeView === "history") ? (
+        <section className="bt-timeline-requests" role="tabpanel" id={`gantt-panel-${projectId}-${activeView}`} aria-labelledby={`gantt-tab-${projectId}-${activeView}`}>
           <h2>
-            Schedule change requests <span>{pending.length} pending</span>
+            {activeView === "history" ? "Request history" : "Pending schedule requests"} <span>{requestsForView.length}</span>
           </h2>
-          {visibleRequests.map((request) => (
-            <article key={request.id}>
-              <div>
-                <strong>
-                  {items.find((item) => item.key === request.work_key)?.title ??
-                    "Work task"}
-                </strong>
-                <span className="bt-timeline-badge">{request.status}</span>
-                <p>{request.reason}</p>
-                <small>
-                  Proposed: {dateLabel(request.proposal.planned_start)} →{" "}
-                  {dateLabel(request.proposal.planned_end)}
-                </small>
-                {request.review_note ? (
-                  <p>Review: {request.review_note}</p>
-                ) : null}
-              </div>
-              {data.can_edit && request.status === "pending" ? (
-                <div className="flex gap-2">
+          {!requestsForView.length ? <p role="status">{activeView === "history" ? "No schedule request history yet." : "No schedule requests are awaiting review."}</p> : null}
+          {requestsForView.length ? <div className="bt-timeline-detail-scroll" role="region" aria-label="Schedule request details" tabIndex={0}>
+            <table className="bt-timeline-detail-table">
+              <caption className="sr-only">{activeView === "history" ? "Schedule request history" : "Pending schedule requests"}</caption>
+              <thead><tr><th scope="col">Task / pin / plan</th><th scope="col">Assigned Foreman</th><th scope="col">Proposed phase / dates</th><th scope="col">Technical reason / review</th><th scope="col">Status / submitted</th><th scope="col">Actions</th></tr></thead>
+              <tbody>{requestsForView.map(request => {
+                const work = items.find(item => item.key === request.work_key)
+                return <tr key={request.id}>
+                  <td className="bt-timeline-detail-identity"><strong>{work?.title ?? request.proposal.title}</strong><span>{work?.pin_title ?? "Work pin"}</span><span>{work?.location ?? "Plan not recorded"}</span></td>
+                  <td>{work?.owner ?? "Not recorded"}</td>
+                  <td><strong className="block">{request.proposal.phase}</strong><span className="block">Start: {dateLabel(request.proposal.planned_start)}</span><span className="block">Deadline: {dateLabel(request.proposal.planned_end)}</span>{request.approved_plan ? <span className="mt-2 block text-fg-muted">Approved: {request.approved_plan.phase} · {dateLabel(request.approved_plan.planned_start)} → {dateLabel(request.approved_plan.planned_end)}</span> : null}</td>
+                  <td className="bt-timeline-detail-note"><span>{request.reason || "No technical reason provided."}</span>{request.review_note ? <p><strong>Review:</strong> {request.review_note}</p> : null}</td>
+                  <td><span className="bt-timeline-badge">{request.status}</span><span className="mt-2 block">{submittedDateLabel(request.created_at)}</span></td>
+                  <td><div className="flex flex-wrap gap-2">
+                    {work ? <button type="button" className={buttonSecondary} aria-label={`View ${work.title} details`} onClick={() => setSelected(work.key)}>View details</button> : null}
+              {data.can_edit && request.status === "pending" ? <>
                   <button
+                    type="button"
                     className={buttonSecondary}
                     onClick={() => {
                       setReview({ request, approve: false })
@@ -968,7 +1005,9 @@ export default function ProjectTimeline({
                     Reject
                   </button>
                   <button
+                    type="button"
                     className={buttonPrimary}
+                    disabled={!work}
                     onClick={() => {
                       setReview({ request, approve: true })
                       setNote("")
@@ -977,10 +1016,12 @@ export default function ProjectTimeline({
                   >
                     Review & approve
                   </button>
-                </div>
-              ) : null}
-            </article>
-          ))}
+              </> : null}
+                  </div></td>
+                </tr>
+              })}</tbody>
+            </table>
+          </div> : null}
         </section>
       ) : null}
       <footer className="bt-timeline-footer">
@@ -1184,6 +1225,10 @@ export default function ProjectTimeline({
             className="space-y-4"
             onSubmit={(event) => {
               event.preventDefault()
+              if (note.trim().length > 500 || (!publish && note.trim().length < 5)) {
+                setActionError(publish ? "Keep the optional publication reason within 500 characters." : "Enter a review note of 5 to 500 characters.")
+                return
+              }
               void (async () => {
                 const success = publish
                   ? await runAction("publish_project_timeline", {
@@ -1260,10 +1305,10 @@ export default function ProjectTimeline({
               </>
             )}
             <label className="block text-sm font-semibold">
-              {publish ? "Publication reason" : "Review note"}
+              {publish ? "Publication reason (optional)" : "Review note"}
               <textarea
-                required
-                minLength={5}
+                required={!publish}
+                minLength={publish ? undefined : 5}
                 maxLength={500}
                 rows={3}
                 value={note}
@@ -1294,7 +1339,7 @@ export default function ProjectTimeline({
               <button
                 type="submit"
                 className={buttonPrimary}
-                disabled={busy || note.trim().length < 5}
+                disabled={busy || (!publish && note.trim().length < 5)}
               >
                 {busy
                   ? "Saving..."
