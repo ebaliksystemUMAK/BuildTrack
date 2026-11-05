@@ -36,6 +36,7 @@ type View = { scale: number; tx: number; ty: number }
 type Gesture =
   | { type: "pan"; x: number; y: number; tx: number; ty: number; moved: boolean }
   | { type: "dragPin"; id: string; moved: boolean; offsetX: number; offsetY: number }
+  | { type: "placePin"; id: string; x: number; y: number; moved: boolean }
   | { type: "dragAnn"; ids: string[]; start: Point; moved: boolean; target: string; reduce: boolean }
   | { type: "resize"; id: string; corner: Corner; x0: number; y0: number; orig: { x: number; y: number; w: number; h: number }; rotation: number; kind: Annotation["kind"]; moved: boolean }
   | { type: "rotate"; id: string; cx: number; cy: number; moved: boolean }
@@ -86,11 +87,13 @@ type Props = {
   onCreateLine: (kind: "arrow" | "dimension", points: Pt[]) => void
   onCreatePath: (kind: "polyline" | "area" | "cloud", points: Pt[]) => void
   onMovePin: (id: string, x: number, y: number) => void
+  movingPinId?: string | null
+  onCancelPinMove?: () => void
   onMoveMany: (ids: string[], dx: number, dy: number) => void
   onResizeAnnotation: (id: string, box: { x: number; y: number; w: number; h: number }) => void
   onToggleLock: (id: string) => void
   // Quick actions for the selection, shown as a floating capsule above its box (hidden while it is being moved or resized).
-  quick?: { locked: boolean; canDelete: boolean; onComment: () => void; onToggleLock: () => void; onDuplicate?: () => void; onDelete: () => void; onMore: (x: number, y: number) => void }
+  quick?: { locked: boolean; canDelete: boolean; onComment: () => void; onToggleLock: () => void; onDuplicate?: () => void; onMovePin?: () => void; onDelete: () => void; onMore: (x: number, y: number) => void }
   onViewScale?: (scale: number) => void
   onRotate: (id: string, degrees: number) => void
   onDropFiles: (files: File[], at: Point | null) => void
@@ -285,6 +288,13 @@ export default function StageCanvas(props: Props) {
       return
     }
 
+    const relocating = props.movingPinId ? pins.find(pin => pin.id === props.movingPinId) : null
+    if (canEdit && tool === "select" && relocating && !relocating.locked && props.showPins && !props.hiddenPinIds.has(relocating.id) && point) {
+      event.preventDefault()
+      gesture.current = { type: "placePin", id: relocating.id, x: event.clientX, y: event.clientY, moved: false }
+      return
+    }
+
     if (hit.current.kind === "handle" && canEdit && point) {
       const ann = selection.ann.length === 1 ? annById(selection.ann[0]) : undefined
       if (ann && ann.locked && hit.current.id === "unlock") gesture.current = { type: "unlockTap", id: ann.id, x: event.clientX, y: event.clientY }
@@ -371,7 +381,9 @@ export default function StageCanvas(props: Props) {
     const g = gesture.current
     if (!g) return
     const point = toPercent(event.clientX, event.clientY)
-    if (g.type === "pan") {
+    if (g.type === "placePin") {
+      if (Math.hypot(event.clientX - g.x, event.clientY - g.y) > 6) g.moved = true
+    } else if (g.type === "pan") {
       const dx = event.clientX - g.x
       const dy = event.clientY - g.y
       if (Math.abs(dx) + Math.abs(dy) > 4) g.moved = true
@@ -457,6 +469,12 @@ export default function StageCanvas(props: Props) {
     const point = toPercent(event.clientX, event.clientY)
     const pressed = hit.current
 
+    if (g.type === "placePin") {
+      const pin = p.pins.find(row => row.id === g.id)
+      if (!g.moved && point && p.movingPinId === g.id && p.canEdit && !p.readOnly && p.tool === "select" && pin && !pin.locked && p.showPins && !p.hiddenPinIds.has(pin.id)) p.onMovePin(g.id, point.x, point.y)
+      return
+    }
+
     if (g.type === "unlockTap") {
       if (Math.hypot(event.clientX - g.x, event.clientY - g.y) < 6) p.onToggleLock(g.id)
       return
@@ -482,7 +500,8 @@ export default function StageCanvas(props: Props) {
       return
     }
     if (g.type === "dragPin") {
-      if (g.moved && dragging?.type === "pin") p.onMovePin(g.id, dragging.x, dragging.y)
+      const pin = p.pins.find(row => row.id === g.id)
+      if (g.moved && dragging?.type === "pin" && p.canEdit && !p.readOnly && p.tool === "select" && pin && !pin.locked) p.onMovePin(g.id, dragging.x, dragging.y)
       setDragging(null)
       return
     }
@@ -581,7 +600,8 @@ export default function StageCanvas(props: Props) {
   }
   const inverse = 1 / view.scale
   const px = (point: Point) => ({ x: (point.x / 100) * width, y: (point.y / 100) * height })
-  const cursor = readOnly ? (props.laser ? "cursor-none" : "cursor-grab") : tool === "select" ? "cursor-grab" : tool === "stamp" ? "cursor-pointer" : "cursor-crosshair"
+  const relocatingPin = canEdit && !readOnly && tool === "select" && props.showPins ? pins.find(pin => pin.id === props.movingPinId && !pin.locked && !props.hiddenPinIds.has(pin.id)) : null
+  const cursor = readOnly ? (props.laser ? "cursor-none" : "cursor-grab") : relocatingPin ? "cursor-crosshair" : tool === "select" ? "cursor-grab" : tool === "stamp" ? "cursor-pointer" : "cursor-crosshair"
 
   const measureLabel = (a: Point, b: Point) => {
     const { px: distance, meters } = measureDistance(a, b, width, height, scaleWidthM)
@@ -661,7 +681,7 @@ export default function StageCanvas(props: Props) {
       onPointerMove={onPointerMove}
       onPointerUp={finish}
       onPointerCancel={event => {
-        if (gesture.current?.type === "resize") {
+        if (gesture.current?.type === "resize" || gesture.current?.type === "dragPin" || gesture.current?.type === "placePin") {
           pointers.current.delete(event.pointerId)
           gesture.current = null
           setDragging(null)
@@ -960,6 +980,11 @@ export default function StageCanvas(props: Props) {
         <div className="flex h-full items-center justify-center text-sm text-white/70">Loading the sheet...</div>
       )}
 
+      {relocatingPin ? <div role="status" className="absolute left-3 right-3 top-3 z-40 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand bg-surface px-4 py-3 text-sm text-fg shadow-lg" onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}>
+        <div className="space-y-1"><p>Click or tap the new location for <strong>{relocatingPin.title}</strong>. Press Esc to cancel.</p><p className="text-xs text-fg-muted">Moving a pin after QA submission can require resubmission.</p></div>
+        <button type="button" className="min-h-9 rounded-lg border border-line px-3 py-1 font-bold hover:bg-surface-muted" onClick={props.onCancelPinMove}>Cancel move</button>
+      </div> : null}
+
       {props.laser && laserAt ? (
         <span className="pointer-events-none absolute z-50 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 shadow-[0_0_18px_8px_rgba(239,68,68,0.55)]" style={{ left: laserAt.x, top: laserAt.y }} aria-hidden="true" />
       ) : null}
@@ -982,6 +1007,7 @@ export default function StageCanvas(props: Props) {
           }}
         >
           <button type="button" title="Add a note or label" aria-label="Add a note or label" className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-surface-muted" onClick={props.quick.onComment}><Icon name="note" size={18} /></button>
+          {props.quick.onMovePin ? <button type="button" className="min-h-9 rounded-full px-3 text-xs font-bold hover:bg-surface-muted" onClick={props.quick.onMovePin}>Move pin</button> : null}
           <button type="button" title={props.quick.locked ? "Unlock (Alt+Shift+L)" : "Lock (Alt+Shift+L)"} aria-label={props.quick.locked ? "Unlock" : "Lock"} aria-pressed={props.quick.locked} className={`flex h-9 w-9 items-center justify-center rounded-full transition ${props.quick.locked ? "bg-brand text-white" : "hover:bg-surface-muted"}`} onClick={props.quick.onToggleLock}><Icon name={props.quick.locked ? "lock" : "unlock"} size={18} /></button>
           {props.quick.onDuplicate ? <button type="button" title="Duplicate (Ctrl+D)" aria-label="Duplicate" className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-surface-muted" onClick={props.quick.onDuplicate}><Icon name="copy" size={18} /></button> : null}
           <button type="button" title={props.quick.canDelete ? "Delete (Del)" : "Unlock before deleting"} aria-label="Delete" disabled={!props.quick.canDelete} className="flex h-9 w-9 items-center justify-center rounded-full text-danger-fg transition hover:bg-danger-soft disabled:opacity-40" onClick={props.quick.onDelete}><Icon name="trash" size={18} /></button>

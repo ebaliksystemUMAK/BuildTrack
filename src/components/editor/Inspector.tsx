@@ -107,6 +107,7 @@ export type InspectorProps = {
   selectedAnnotations: Annotation[]
   actions: SelectionActions
   onSelectPin: (id: string) => void
+  onMovePin?: (pin: Pin) => void
   onSelectAnnotation: (id: string, additive: boolean) => void
   sheetTab: SheetTab
   onSheetTab: (tab: SheetTab) => void
@@ -204,6 +205,10 @@ function PinPanel(props: InspectorProps & { pin: Pin }) {
         </div>
         <button type="button" onClick={() => props.onOpenDetails(active)} className="flex-none rounded-lg border border-line px-2 py-1 text-[11px] font-bold hover:bg-surface-muted" title="Open this section in the full pin view with detailed columns">Full view</button>
       </div>
+      {props.canEdit && props.role === "engineer" && props.onMovePin ? <div className="px-4 pb-3">
+        <button type="button" disabled={pin.locked} onClick={() => props.onMovePin?.(pin)} className="min-h-9 rounded-lg border border-line px-3 py-1.5 text-xs font-bold hover:bg-surface-muted disabled:opacity-50" title={pin.locked ? "Unlock the pin before moving it" : "Choose a new location on this plan"}>Move pin</button>
+        <p className="mt-1 text-xs text-fg-muted">{pin.locked ? "Unlock this pin before moving it." : "You can also drag this pin with the Select tool."}</p>
+      </div> : null}
       <Tabs tabs={tabs} value={active} onChange={setPinTab} label="Pin sections" />
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-4 [overflow-wrap:anywhere] [scrollbar-gutter:stable]" aria-label="Pin section content" tabIndex={0}>
         <PinSectionBody {...props} pin={pin} section={active} data={data} />

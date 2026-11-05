@@ -49,3 +49,66 @@ for (const kind of ["arrow","dimension","polyline","area","cloud","highlight"]) 
   props={...props,annotations:[{...annotation,kind}]}; render(); assert.equal(handles().length,4,`${kind} can be resized`)
 }
 console.log("Blueprint corner handles, real geometry preview/release, cancellation and permission guards passed")
+
+const pin={id:"work-pin",title:"Bedroom",x:30,y:40,status:"open",locked:false}
+const pinWrites=[]
+props={...props,annotations:[],pins:[pin],selection:{pin:pin.id,ann:[]},canEdit:true,readOnly:false,numberOf:()=>1,onPick(){},onMovePin:(...args)=>pinWrites.push(args),movingPinId:pin.id,onCancelPinMove(){props={...props,movingPinId:null}}}
+render()
+assert.ok(all(tree).some(node=>node.props.role==="status"),"Move mode displays placement instructions")
+tree.props.onPointerDown({...event(600,300),preventDefault(){}});render()
+assert.equal(pinWrites.length,0,"Choosing a location waits for release")
+tree.props.onPointerUp(event(600,300));render()
+assert.deepEqual(pinWrites,[[pin.id,60,60]],"A tap places the same pin at the chosen plan coordinates")
+tree.props.onPointerDown({...event(600,300),preventDefault(){}});render()
+tree.props.onPointerMove(event(700,350));render();tree.props.onPointerUp(event(700,350));render()
+assert.equal(pinWrites.length,1,"A drag/pan gesture is not mistaken for a placement tap")
+tree.props.onPointerDown({...event(500,250),preventDefault(){}});render();tree.props.onPointerCancel(event(500,250));render()
+assert.equal(pinWrites.length,1,"Cancelled touch does not relocate the pin")
+all(tree).find(node=>node.type==="button"&&node.props.children==="Cancel move").props.onClick();render()
+assert.ok(!all(tree).some(node=>node.props.role==="status"));assert.equal(pinWrites.length,1)
+const pinEvent=(x,y)=>({...event(x,y),target:{closest:selector=>selector==="[data-pin-id]"?{dataset:{pinId:pin.id}}:null}})
+tree.props.onPointerDown(pinEvent(300,200));render();tree.props.onPointerMove(pinEvent(400,250));render()
+assert.equal(pinWrites.length,1);tree.props.onPointerUp(pinEvent(400,250));render()
+assert.deepEqual(pinWrites.at(-1),[pin.id,40,50],"Select-drag still moves the pin")
+tree.props.onPointerDown(pinEvent(300,200));render();tree.props.onPointerMove(pinEvent(500,300));render();tree.props.onPointerCancel(pinEvent(500,300));render()
+assert.equal(pinWrites.length,2,"Cancelled dragging preserves the saved position")
+for(const override of [{canEdit:false},{readOnly:true},{pins:[{...pin,locked:true}]}]){
+  const previous=props;props={...props,...override,movingPinId:pin.id};render()
+  assert.ok(!all(tree).some(node=>node.props.role==="status"),"Move mode is unavailable to read-only/locked work")
+  tree.props.onPointerDown(pinEvent(300,200));render();tree.props.onPointerMove(pinEvent(400,250));render();tree.props.onPointerUp(pinEvent(400,250));render()
+  assert.equal(pinWrites.length,2,"Read-only, unauthorized and locked pins do not move")
+  props=previous
+}
+props={...props,movingPinId:pin.id};render();tree.props.onPointerDown({...event(600,300),preventDefault(){}});render()
+props={...props,canEdit:false};render();tree.props.onPointerUp(event(600,300));render()
+assert.equal(pinWrites.length,2,"Losing editing access before release cancels placement")
+console.log("Engineer pin placement/dragging, tap discrimination, cancellation, current lock/access and read-only guards passed")
+
+// Exercise the actual save handler, retaining its optimistic rollback and undo logic.
+const editorSource=readFileSync(new URL("../src/components/editor/BlueprintEditor.tsx",import.meta.url),"utf8")
+const editorAst=ts.createSourceFile("editor.tsx",editorSource,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX)
+let moveArrow
+const visit=node=>{if(ts.isVariableDeclaration(node)&&node.name.getText(editorAst)==="movePin")moveArrow=node.initializer.getText(editorAst);ts.forEachChild(node,visit)}
+visit(editorAst);assert.ok(moveArrow)
+const handlerSource=`export default async function(...args){const {pins,editable,blueprint,pinMovePending,setMovingPinId,setPins,writePin,toast,undoStack,reloadPins,touched}=globalThis.__pinSave;return (${moveArrow})(...args)}`
+const {default:saveMove}=await import(url(ts.transpileModule(handlerSource,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText))
+let saveOk=true,throws=false,undoSteps=[],pinUpdates=[],errors=[],reloads=0,touches=0
+const pinBefore={...pin,blueprint_id:"sheet",status:"in_progress",assigned_to:"foreman"}
+const fixture=globalThis.__pinSave={pins:[pinBefore],editable:true,blueprint:{id:"sheet"},pinMovePending:{current:new Set()},setMovingPinId(){},setPins:fn=>{fixture.pins=fn(fixture.pins)},writePin:async(id,patch)=>{pinUpdates.push({id,patch});if(throws)throw Error("Network request failed");return saveOk},toast:{info:(...args)=>errors.push(args),error:(...args)=>errors.push(args)},undoStack:{push:step=>undoSteps.push(step)},reloadPins:async()=>{reloads++},touched:()=>{touches++}}
+await saveMove(pin.id,45,65)
+assert.deepEqual(pinUpdates,[{id:pin.id,patch:{x:45,y:65}}],"Moving writes only coordinates, keeping assignments, dates and QA decisions")
+assert.equal(fixture.pins[0].status,pinBefore.status);assert.equal(fixture.pins[0].assigned_to,"foreman");assert.equal(undoSteps.length,1)
+assert.equal(await undoSteps[0].undo(),true);assert.deepEqual(pinUpdates.at(-1).patch,{x:30,y:40})
+assert.equal(await undoSteps[0].redo(),true);assert.deepEqual(pinUpdates.at(-1).patch,{x:45,y:65});assert.equal(reloads,2)
+saveOk=false;await saveMove(pin.id,50,70);assert.equal(fixture.pins[0].x,45);assert.equal(fixture.pins[0].y,65);assert.equal(undoSteps.length,1);assert.equal(errors.length,1)
+saveOk=true;throws=true;await saveMove(pin.id,55,75);assert.equal(fixture.pins[0].x,45);assert.equal(errors.length,2);assert.equal(fixture.pinMovePending.current.size,0)
+throws=false
+const savedCount=pinUpdates.length
+await saveMove(pin.id,45,65);await saveMove(pin.id,NaN,50)
+fixture.editable=false;await saveMove(pin.id,50,70);fixture.editable=true
+fixture.pins=[{...fixture.pins[0],locked:true}];await saveMove(pin.id,50,70)
+fixture.pins=[{...fixture.pins[0],locked:false,blueprint_id:"other-sheet"}];await saveMove(pin.id,50,70)
+assert.equal(pinUpdates.length,savedCount,"No-op, invalid, read-only, locked and other-sheet moves never write")
+assert.equal(touches,1)
+delete globalThis.__pinSave
+console.log("Pin save handler: coordinate-only writes, undo/redo, denied/network rollback, no-op and current edit/sheet/lock guards passed")

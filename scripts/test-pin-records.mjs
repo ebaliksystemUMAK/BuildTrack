@@ -402,4 +402,18 @@ assert.deepEqual(linked(), [], "A pin of another project is not linked")
 reset(); pins[1].assigned_to = "someone"; openReport("?project=A&linkpin=p2"); render(ForemanReport, {}); render(ForemanReport, {})
 assert.deepEqual(linked(), [], "Work assigned to someone else is not added"); pins[1].assigned_to = "fore"
 console.log("Foreman daily report: a pin from the panel is added once to today's draft, existing drafts keep their links, submitted reports and foreign pins are refused passed")
+reset()
+Object.assign(deps,{usePinPanelData:()=>({counts:{}}),pinSectionsFor:()=>["details"],readPinSection:()=>"details",sectionLabel:()=>"Details"})
+const Inspector=(await compile("../src/components/editor/Inspector.tsx")).default
+const movedPins=[]
+const moveProps={role:"engineer",canEdit:true,selectedAnnotations:[],selectedPin:{id:"movable",title:"Bedroom",status:"open",locked:false},numberOf:()=>1,onMovePin:pin=>movedPins.push(pin.id)}
+const showPinHeader=props=>{reset();render(Inspector,props);const Panel=tree.type,child=tree.props;render(Panel,child)}
+showPinHeader(moveProps)
+find(buttonText("Move pin")).props.onClick();assert.deepEqual(movedPins,["movable"],"The Engineer can start moving the selected pin from its visible panel")
+showPinHeader({...moveProps,selectedPin:{...moveProps.selectedPin,locked:true}})
+assert.equal(find(buttonText("Move pin")).props.disabled,true,"A locked pin must be unlocked first")
+for(const override of [{canEdit:false},{role:"foreman"},{role:"client"},{role:"admin"}]){
+  showPinHeader({...moveProps,...override});assert.ok(!all(tree).some(buttonText("Move pin")),"Only editing Engineers have the placement action")
+}
+console.log("Engineer Move pin action: visible panel control, exact pin callback, lock and read-only/role guards passed")
 reset(); delete globalThis.__pinHooks; delete globalThis.__pinDeps; delete globalThis.window

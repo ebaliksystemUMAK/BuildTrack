@@ -125,6 +125,8 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
   const [symbolSize, setSymbolSize] = useState(4)
   const [stampStatus, setStampStatus] = useState<PinStatus>("in_progress")
   const [selection, setSelection] = useState<Selection>(NO_SELECTION)
+  const [movingPinId, setMovingPinId] = useState<string | null>(null)
+  const pinMovePending = useRef(new Set<string>())
   const [hidden, setHidden] = useState<Set<PinStatus>>(new Set())
   const [layers, setLayers] = useState<LayerVisibility>({ pins: true, notes: true, shapes: true, drawings: true })
   const [measurements, setMeasurements] = useState<Measurement[]>([])
@@ -183,6 +185,10 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
   const canAddSheet = canUpload && newSheetTypes.length > 0
   const canReviseSheet = canUpload && Boolean(blueprint) && (role === "admin" || canEditType(role, sheetLevel))
   const editable = sheetCanEdit && isLatest && !present
+  useEffect(() => { setMovingPinId(null) }, [blueprint?.id, revisionId])
+  useEffect(() => {
+    if (!editable || tool !== "select" || (movingPinId && selection.pin !== movingPinId)) setMovingPinId(null)
+  }, [editable, tool, selection.pin, movingPinId])
   // Admins read and upload sheets only; field reporting is for the project's Engineers and Foremen (0040) holding the type.
   const canReport = canWorkType(role, sheetLevel)
   const canStamp = (editable || (role === "foreman" && canReport && !present)) && !present
@@ -393,19 +399,37 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
 
   const movePin = async (id: string, x: number, y: number) => {
     const before = pins.find((pin) => pin.id === id)
-    if (!before) return
+    if (!before || !editable || before.blueprint_id !== blueprint?.id || pinMovePending.current.has(id) || !Number.isFinite(x) || !Number.isFinite(y)) return
+    if (before.locked) return toast.info("Pin is locked", "Unlock it before moving it.")
+    x = Math.max(0, Math.min(100, x)); y = Math.max(0, Math.min(100, y))
+    setMovingPinId(null)
+    if (before.x === x && before.y === y) return
+    pinMovePending.current.add(id)
     setPins((current) => current.map((pin) => (pin.id === id ? { ...pin, x, y } : pin)))
-    if (!(await writePin(id, { x, y }))) {
-      setPins((current) => current.map((pin) => (pin.id === id ? before : pin)))
-      return toast.error("The pin could not be moved", before.locked ? "It is locked. Unlock it first." : "You may not be allowed to edit it.")
+    try {
+      if (!(await writePin(id, { x, y }))) throw new Error("You may not be allowed to edit it, or it was locked by someone else.")
+      const from = { x: before.x, y: before.y }
+      undoStack.push({
+        label: "Move pin",
+        undo: async () => (await writePin(id, from)) && (await reloadPins(), true),
+        redo: async () => (await writePin(id, { x, y })) && (await reloadPins(), true),
+      })
+      touched()
+    } catch (error) {
+      setPins((current) => current.map((pin) => pin.id === id ? { ...pin, x: before.x, y: before.y } : pin))
+      toast.error("The pin could not be moved", error instanceof Error ? error.message : "Check your connection and try again.")
+    } finally {
+      pinMovePending.current.delete(id)
     }
-    const from = { x: before.x, y: before.y }
-    undoStack.push({
-      label: "Move pin",
-      undo: async () => (await writePin(id, from)) && (await reloadPins(), true),
-      redo: async () => (await writePin(id, { x, y })) && (await reloadPins(), true),
-    })
-    touched()
+  }
+
+  const beginMovePin = (pin: Pin) => {
+    if (!editable || role !== "engineer" || pin.blueprint_id !== blueprint?.id) return
+    if (pin.locked) return toast.info("Pin is locked", "Unlock it before moving it.")
+    select({ pin: pin.id, ann: [] })
+    setTool("select")
+    setDraftPin(null)
+    setMovingPinId(pin.id)
   }
 
   const deletePin = async (pin: Pin) => {
@@ -799,6 +823,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
       select({ pin: pin.id, ann: [] })
       items = [
         { label: "Open details", icon: <Icon name="panel" size={14} />, onClick: () => setDetailsOpen(true) },
+        ...(editable && role === "engineer" ? [{ label: "Move pin", disabled: pin.locked, onClick: () => beginMovePin(pin) } as MenuItem] : []),
         ...(role !== "client" ? [{ label: "QR label", icon: <Icon name="qr" size={14} />, onClick: () => setQrOpen(true) } as MenuItem] : []),
         ...(editable ? [{ separator: true } as MenuItem, { label: pin.locked ? "Unlock pin" : "Lock pin", hint: "Alt Shift L", icon: <Icon name={pin.locked ? "unlock" : "lock"} size={14} />, onClick: () => void togglePinLock(pin) }, { separator: true } as MenuItem, { label: "Delete pin", hint: "Del", icon: <Icon name="trash" size={14} />, danger: true, disabled: pin.locked, onClick: () => void deletePin(pin) }] : []),
       ]
@@ -970,6 +995,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
         return
       }
       if (event.key === "Escape") {
+        if (movingPinId) { event.preventDefault(); setMovingPinId(null); return }
         if (focus) return toggleFocus()
         setTool("select")
         setSelection(NO_SELECTION)
@@ -1033,6 +1059,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
     ? {
         role,
         canEdit: editable,
+        onMovePin: editable && role === "engineer" ? beginMovePin : undefined,
         canReport,
         meId: profile.id,
         team,
@@ -1112,6 +1139,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
         },
         onToggleLock: () => (selectedPin ? void togglePinLock(selectedPin) : lockSelection(!selectedAnnotations.every((a) => a.locked))),
         onDuplicate: selectedPin ? undefined : () => void duplicateSelection(),
+        onMovePin: selectedPin && role === "engineer" && !selectedPin.locked ? () => beginMovePin(selectedPin) : undefined,
         onDelete: () => void deleteSelection(),
         onMore: (x: number, y: number) => openMenu({ x, y, type: selectedPin ? "pin" : "annotation", id: selectedPin ? selectedPin.id : selectedAnnotations[0].id, at: null }),
       }
@@ -1341,6 +1369,8 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
               onCreateLine={(kind, points) => void createLine(kind, points)}
               onCreatePath={(kind, points) => void createPath(kind, points)}
               onMovePin={(id, x, y) => void movePin(id, x, y)}
+              movingPinId={movingPinId}
+              onCancelPinMove={() => setMovingPinId(null)}
               onMoveMany={(moving, dx, dy) => void ops.moveBy(moving, dx, dy)}
               onResizeAnnotation={resizeAnnotation}
               onToggleLock={(id) => void ops.setLocked([id], false)}

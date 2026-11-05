@@ -203,7 +203,7 @@ const admin: Record<AdminPageKey, PageGuide> = {
       "Super Admin: create or edit company checklists. Built-in checklists are read-only.",
       "Engineers copy a checklist into their project and adapt it to that project's specification.",
     ],
-    tips: ["The pass mark, item weights and the standards catalog are in System settings."],
+    tips: ["The pass mark, item weights and the standards catalog are in System settings.", "New and edited QC checklists save drafts automatically in this browser, separately for your account and company/project. Reopen the same form to continue; Close keeps the draft and Discard draft clears it. Add item stays below the latest item."],
   },
   settings: {
     title: "Company Configuration",
@@ -359,14 +359,14 @@ const engineer: Record<EngineerPageKey, PageGuide> = {
   verification: {
     title: "QA register",
     purpose: "Manage inspections, verify NCR corrections, complete passed tasks and view completed work.",
-    steps: ["Use the tabs: Overview, Inspections, NCR register and Client reports.", "Open an item to inspect, verify or send it back."],
+    steps: ["Use the tabs: Overview, Inspections, NCR register and Client reports.", "Open an item to inspect, verify or send it back. Criteria saved from the Engineer task editor make Engineer inspection photos optional."],
   },
   qa: {
     title: "QA register",
     purpose: "Manage inspections, verify NCR corrections, complete passed tasks and view completed work.",
     steps: [
       "Overview: what waits for you and the defect trends.",
-      "Inspections: open a requested inspection. Submitted evidence compares original and resubmitted photos while the request is pending, before any QA decision. Record each item (pass / fail with reason, measurements, photos) and complete the inspection. Each failed item raises an NCR for the Foreman.",
+      "Inspections: open a requested inspection. Submitted evidence compares original and resubmitted photos while the request is pending, before any QA decision. Engineer inspection photos are optional for criteria saved through the task editor. Record each item (pass / fail with reason, measurements, photos) and complete the inspection. Each failed item raises an NCR for the Foreman.",
       "NCR register: verify submitted corrections and close the NCR, or send it back with a reason.",
       "Client reports: accept a client's report (it becomes an NCR) or decline it with a reason.",
       "When a task's inspection passed and its NCRs are closed, accept the task; the pin completes when every task is accepted.",
@@ -381,7 +381,7 @@ const engineer: Record<EngineerPageKey, PageGuide> = {
       "Or create your own checklist with its items, hold points and cited standards.",
       "Open View to read a checklist's documentation and official sources.",
     ],
-    tips: ["Only these checklists are offered when you set a task's criteria on the plan or request an inspection."],
+    tips: ["Only these checklists are offered when you set a task's criteria on the plan or request an inspection.", "Checklist drafts save automatically in this browser for your account and project. Reopen the same new/edit form to continue. Close keeps your draft; Save QC checklist or Discard draft clears it. Add item is below the latest item."],
   },
   "report-issue": {
     title: "Issue register",
@@ -580,11 +580,11 @@ export function editorGuide(role: "engineer" | "foreman" | "client" | "admin", c
         "Choose a tool in the second row: Select, Add pin, Add note, Draw shape, Tape (sheet scale), Upload image or More.",
         "Click the selected plan to place a pin. Enter its title, proposed start, deadline and phase, and optionally choose an eligible Foreman before saving. Adding the pin saves its assignment and sends a PM approval request. The technical reason is optional. Missing or invalid fields receive focus.",
         "Details has Overview, Edit details and Schedule tabs. New tasks you add to a dated pin automatically receive their own PM requests using the sent pin schedule; PM approval makes dates official. Tasks & QC retains Engineer completion checks.",
-        "Select a pin to change its status, lock it, open its details or delete it. Select a drawing and drag a square corner to resize shapes, images, arrows, clouds or other strokes; Shift keeps drawing proportions. Text and symbols have their own size controls. In a photo's annotation editor, corner handles also resize shapes, drawings and text.",
+        "Select a pin to change its status, lock it, open its details or delete it. Engineers can drag an unlocked pin with Select, or choose Move pin and click/tap its new location on this plan. Cancel or Esc leaves it in place; Undo restores its previous position. Moving needs Assigned work access on the latest plan revision. Select a drawing and drag a square corner to resize shapes, images, arrows, clouds or other strokes; Shift keeps drawing proportions. Text and symbols have their own size controls. In a photo's annotation editor, corner handles also resize shapes, drawings and text.",
         "Switch sheets with the sheet switcher or the pages bar; use Layers to order, hide or lock items.",
         "Undo with Ctrl+Z and redo with Ctrl+Shift+Z; export PNG / PDF from the top bar and compare revisions from View.",
       ],
-      tips: ["Press ? for all keyboard shortcuts and Ctrl K for every command.", "Locked items can be selected but never move.", "Each blueprint task shows its latest submitted Foreman percentage and report date. Engineer QA approval stays separate, including when 100% is reported."],
+      tips: ["The task and QC criteria form saves unfinished changes automatically in this browser, separately for your account and each project/pin/task. Close it, change pages or reopen the browser, then reopen the same form to continue. Save task creates the task; Discard draft removes the unfinished changes.", "Press ? for all keyboard shortcuts and Ctrl K for every command.", "Locked items can be selected but never move. Moving a pin after QA submission can require resubmission because its location is part of the inspection evidence.", "Each blueprint task shows its latest submitted Foreman percentage and report date. Engineer QA approval stays separate, including when 100% is reported."],
     }
   }
   if (role === "foreman") {
