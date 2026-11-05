@@ -26,6 +26,7 @@ import { usePinQa } from "../../lib/pinQa"
 import { useChecklist } from "../../lib/blueprints"
 import { useReinspectionContext } from "../../lib/qaReinspection"
 import ReinspectionScope from "./ReinspectionScope"
+import InspectionEvidenceComparisons from "./InspectionEvidenceComparisons"
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-PH", { timeZone: "Asia/Manila", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "-")
 
@@ -449,6 +450,7 @@ export default function InspectionDetail({
         </section>
 
         <section hidden={tab !== "evidence"} role="tabpanel" id={`${tabId}-panel-evidence`} aria-labelledby={`${tabId}-tab-evidence`} tabIndex={0} className="space-y-4">
+          {tab === "evidence" && inspection.pin_id ? <InspectionEvidenceComparisons key={inspection.id} inspection={inspection} /> : null}
           <WorkSubmissionEvidence key={inspection.id} record={workSubmission} />
           {!workSubmission.loading && !workSubmission.error && !workSubmission.submission ? <p className="text-sm text-fg-muted">No Foreman submission snapshot is attached to this request. Each check's inspection photos are available in QC Checklist.</p> : null}
         </section>

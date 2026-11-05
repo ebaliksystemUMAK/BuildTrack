@@ -14,7 +14,7 @@
     "db:apply": "node scripts/db-migrate.mjs apply",
     "test:lib": "node scripts/test-lib.mjs",
     "test:comparison": "node scripts/test-comparison.mjs",
-    "test:issue-editor": "node scripts/test-issue-editor.mjs",
+    "test:issue-editor": "node scripts/test-issue-editor.mjs && node scripts/test-blueprint-resize.mjs",
     "test:attendance": "node scripts/test-attendance.mjs",
     "test:biometric-access": "node scripts/test-biometric-access.mjs",
     "test:worker-camera": "node scripts/test-worker-camera.mjs",

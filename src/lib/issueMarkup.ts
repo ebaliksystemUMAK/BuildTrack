@@ -1,4 +1,5 @@
 import { normalizeAngle } from "./shapes.ts"
+import { resizeFromCorner, type Corner } from "./arrange.ts"
 
 export const ISSUE_PHOTO_LIMIT = 40
 export const MARKUP_LIMIT = 150
@@ -57,6 +58,26 @@ export function markupBox(item: IssueMarkup, height: number): { x: number; y: nu
 export function markupCenter(item: IssueMarkup, height: number) {
   const box = markupBox(item, height)
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+}
+
+// Local SVG delta, anchored at the opposite corner; retain rotation and valid saved coordinates.
+export function resizeMarkup(item: IssueMarkup, corner: Corner, dx: number, dy: number, height: number, lockAspect = false): IssueMarkup {
+  if (!Number.isFinite(dx + dy + height) || height <= 0 || (!dx && !dy)) return item
+  const bounds = markupBox(item, height)
+  const box = { x: bounds.x / 10, y: bounds.y / height * 100, w: bounds.width / 10, h: bounds.height / height * 100 }
+  let target = resizeFromCorner(box, corner, dx, dy, item.rotation ?? 0, { width: 1000, height }, lockAspect || item.kind === "text")
+  if (item.kind === "text") {
+    const scale = Math.max(12 / item.fontSize, Math.min(72 / item.fontSize, target.w / box.w))
+    target = resizeFromCorner(box, corner, (corner.includes("e") ? 1 : -1) * bounds.width * (scale - 1), (corner.includes("s") ? 1 : -1) * bounds.height * (scale - 1), item.rotation ?? 0, { width: 1000, height }, true)
+    const fontSize = Math.max(12, Math.min(72, item.fontSize * target.w / box.w))
+    return { ...item, x: target.x, y: target.y, x2: target.x, y2: target.y, fontSize }
+  }
+  const map = (p: MarkupPoint) => ({
+    x: clampCoordinate(target.x + (box.w ? (p.x - box.x) / box.w : 0.5) * target.w),
+    y: clampCoordinate(target.y + (box.h ? (p.y - box.y) / box.h : 0.5) * target.h),
+  })
+  const first = map(item), last = map({ x: item.x2, y: item.y2 })
+  return { ...item, ...first, x2: last.x, y2: last.y, points: item.points.map(map) }
 }
 // Sets the turn in -180..180 degrees; a mark turned back to 0 drops the key so it matches an unturned mark exactly.
 export function withRotation(item: IssueMarkup, degrees: number): IssueMarkup {

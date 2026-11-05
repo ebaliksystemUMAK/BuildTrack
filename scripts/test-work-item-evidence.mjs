@@ -29,7 +29,7 @@ async function compile(path) {
   for (const declaration of ast.statements.filter(ts.isImportDeclaration)) {
     if (!declaration.importClause || declaration.importClause.isTypeOnly) continue
     const name = declaration.moduleSpecifier.text, exports = []
-    if (declaration.importClause.name) exports.push(name === "./SubmittedEvidence" ? "export default globalThis.__submittedEvidenceUI" : "export default function Stub(){return null}")
+    if (declaration.importClause.name) exports.push(name === "./SubmittedEvidence" ? "export default globalThis.__submittedEvidenceUI" : name === "./EvidenceCompare" ? "export default globalThis.__evidenceCompareUI" : name === "./InspectionEvidenceComparisons" ? "export default globalThis.__inspectionCompareUI" : "export default function Stub(){return null}")
     for (const binding of declaration.importClause.namedBindings?.elements ?? []) {
       if (binding.isTypeOnly) continue
       const key = binding.propertyName?.text ?? binding.name.text
@@ -53,6 +53,30 @@ const inspections = [{ id: "ir-1", number: 1, status: "failed" }, { id: "ir-2", 
 const props = { pinId: "pin", itemId: "floor", submissions: [original], inspections, loading: false, error: "", nameOf: () => "Test Foreman" }
 const Evidence = await compile("../src/components/qa/SubmittedEvidence.tsx")
 globalThis.__submittedEvidenceUI = Evidence
+globalThis.__evidenceCompareUI = await compile("../src/components/qa/EvidenceCompare.tsx")
+let comparisonHistory = { submissions: [original, corrected], inspections, loading: false, error: "" }
+globalThis.__evidenceDeps.useWorkQaHistory = () => comparisonHistory
+const RequestComparisons = await compile("../src/components/qa/InspectionEvidenceComparisons.tsx")
+globalThis.__inspectionCompareUI = RequestComparisons
+const selectedRequest = { id: "ir-2", pin_id: "pin", status: "requested" }
+const later = submission("later", "ir-3", "Later request", [photo("later-photo")])
+comparisonHistory = { ...comparisonHistory, submissions: [later, corrected, original, { ...original, id: "foreign", pin_id: "foreign" }], inspections: [...inspections, { id: "ir-3", number: 3, status: "requested" }] }
+reset(); render(RequestComparisons, { inspection: selectedRequest })
+let requestComparison = find(node => node.type === globalThis.__evidenceCompareUI)
+assert.deepEqual(requestComparison.props.attempts.map(row => row.id), ["original", "corrected"], "Pending QA compares the selected request, never newer submissions or another pin")
+tree = requestComparison.type(requestComparison.props)
+assert.equal(find(node => node.props?.after).props.after.path, "two.jpg")
+assert.equal(find(node => node.props?.after).props.labels[1], "This request")
+render(RequestComparisons, { inspection: { ...selectedRequest, status: "in_progress" } })
+assert.ok(all(tree).some(node => node.type === globalThis.__evidenceCompareUI), "Starting inspection must not hide comparison")
+render(RequestComparisons, { inspection: { ...selectedRequest, id: "ir-1" } })
+assert.ok(!all(tree).some(node => node.type === globalThis.__evidenceCompareUI), "An original request must not borrow correction photos from the future")
+comparisonHistory = { ...comparisonHistory, error: "History unavailable" }
+render(RequestComparisons, { inspection: selectedRequest }); assert.match(text(tree), /History unavailable/)
+assert.ok(!all(tree).some(node => node.type === globalThis.__evidenceCompareUI), "History errors must not display stale comparisons")
+comparisonHistory = { ...comparisonHistory, error: "", loading: true }
+render(RequestComparisons, { inspection: selectedRequest }); assert.match(text(tree), /Loading original/)
+comparisonHistory = { ...comparisonHistory, loading: false }
 const grid = () => find(node => node.props?.bucket === "pin-photos" && Array.isArray(node.props.photos))
 render(Evidence, props)
 assert.match(text(tree), /Original floor remark/)
@@ -227,6 +251,10 @@ const inspectionProps = { inspection: { id: "ir-2", project_id: "project", pin_i
 const inspectionTabs=()=>all(tree).filter(node=>node.props?.role==="tab")
 const tabPanel=key=>find(node=>node.props?.role==="tabpanel"&&node.props.id.endsWith(`-panel-${key}`))
 const chooseTab=(label,props)=>{find(node=>node.props?.role==="tab"&&text(node)===label).props.onClick();render(InspectionDetail,props)}
+reset(); render(InspectionDetail, inspectionProps)
+assert.ok(!all(tree).some(node => node.type === RequestComparisons), "Comparison history loads only when evidence is opened")
+chooseTab("Submitted evidence", inspectionProps)
+assert.equal(find(node => node.type === RequestComparisons).props.inspection.status, "requested", "The actual pending inspection screen embeds the comparison")
 reset(); render(InspectionDetail, inspectionProps)
 assert.deepEqual(inspectionTabs().map(text),["QC Checklist","Submitted evidence","Previous results","Details & schedule","NCRs","History"])
 assert.equal(historyRequests.at(-1),"ir-2","Even older/stage reinspections read their exact prior checks")

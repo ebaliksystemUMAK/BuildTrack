@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react"
 import Modal from "../Modal"
-import BeforeAfter from "../BeforeAfter"
+import EvidenceCompare from "./EvidenceCompare"
 import LimitedTimeline from "../ui/LimitedTimeline"
 import { SkeletonList } from "../ui/Skeleton"
 import { buttonDanger, buttonPrimary, buttonSecondary, inputClass } from "../ui/PageParts"
@@ -19,7 +19,7 @@ import { useAuth } from "../../lib/auth"
 import { useConfirm } from "../../lib/confirm"
 import { useToast } from "../../lib/toast"
 import { formatStamp, type PinPhoto } from "../../lib/blueprints"
-import { photoEligible, photoPreviewBlocked } from "../../lib/photoStamp"
+import { photoEligible } from "../../lib/photoStamp"
 import { manilaToday } from "../../lib/progress"
 import { useProject, useProjectTeam } from "../../lib/projects"
 import { usePinTypeAccess } from "../../lib/blueprintAccess"
@@ -309,18 +309,6 @@ function NcrRow({ defect, today, onOpen }: { defect: Defect; today: string; onOp
 }
 
 // First request photo against the latest correction photo of the same item.
-function EvidenceCompare({ itemId, label, attempts, draftPhotos, role }: { itemId: string; label: string; attempts: Array<{ photos_snapshot: PinPhoto[] }>; draftPhotos: PinPhoto[]; role?: string | null }) {
-  const corrections = draftPhotos.filter(photo => photo.checklist_item_id === itemId)
-  if (attempts.length < 2 && !corrections.length) return null
-  const first = attempts[0]?.photos_snapshot.find((photo) => photo.checklist_item_id === itemId) ?? null
-  const latest = corrections[corrections.length - 1] ?? [...attempts].reverse().map((row) => row.photos_snapshot.filter((photo) => photo.checklist_item_id === itemId).pop()).find(Boolean) ?? null
-  if (!first || !latest || first.id === latest.id || photoPreviewBlocked(role, first) || photoPreviewBlocked(role, latest)) return null
-  return <div className="max-w-xl">
-    <h3 className={heading}>Before and after</h3>
-    <BeforeAfter bucket="pin-photos" labels={["Original request", corrections.length ? "Correction" : "Latest request"]} before={{ path: first.path, at: first.created_at, caption: first.caption, photo: { ...first, label: `${label} · Original request` } }} after={{ path: latest.path, at: latest.created_at, caption: latest.caption, photo: { ...latest, label: `${label} · Latest` } }} />
-  </div>
-}
-
 // Photos and remarks live inside the opened item. Submission saves the remark and declares the work finished.
 function InitialEvidence({ item, pin, canWork, meId, onRemarkChange, onChanged }: { item: NonNullable<ReturnType<typeof useWorkItem>["item"]>; pin: NonNullable<ReturnType<typeof useWorkItem>["pin"]>; canWork: boolean; meId: string; onRemarkChange: (value: string) => void; onChanged: () => Promise<void> }) {
   const toast = useToast()

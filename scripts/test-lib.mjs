@@ -12,7 +12,7 @@ import { fieldPagePath, fieldShellMode, projectPath, projectSections, readProjec
 import { WHOLE_PIN_ITEM, checklistText, defectChecklist, emptyRecordFilter, inspectionChecklist, inspectionOpen, issueOpen, panelRole, pinNextActions, pinPlanPath, pinSectionCounts, pinSectionsFor, readPinSection, recordFilterActive, recordKindCounts, recordKindsFor, recordMatches, sectionLabel } from "../src/lib/pinRecordsModel.ts"
 import { changePinLink, emptyPinLink, itemChoices, pinChoices, pinLinkProblem, startPinLink } from "../src/lib/pinPickerModel.ts"
 import { areaSquareMeters, asPoints, bbox, formatArea, lengthMeters, limitPoints, polygonAreaPx, polylineLengthPx, pointsToPath, simplify, translatePoints } from "../src/lib/geometry.ts"
-import { alignMoves, distributeMoves, fitImageBox, resizeFromCorner, resizedBox, inRectangle, isNoop, itemBox, shifted, shiftedTogether, withGroupMembers } from "../src/lib/arrange.ts"
+import { alignMoves, distributeMoves, fitImageBox, resizeFromCorner, resizedBox, resizedPoints, inRectangle, isNoop, itemBox, shifted, shiftedTogether, withGroupMembers } from "../src/lib/arrange.ts"
 import { angleFromCenter, arrowHeadPx, cloudPath, constrainAngle, dimensionTickPx, normalizeAngle, rectCorners, snapAngle, toLocalAxes } from "../src/lib/shapes.ts"
 import { buildPdf } from "../src/lib/pdf.ts"
 import { symbolByKey, symbolGroups, symbolLibrary } from "../src/lib/symbols.ts"
@@ -31,7 +31,7 @@ import { cameraOnlyFor, fieldUploads, photoRuleLabels } from "../src/lib/photoPo
 import { editorGuide, guideFor, pageGuides } from "../src/lib/pageGuides.ts"
 import { approvedInPeriod, periodEnd, periodProgress } from "../src/lib/periodProgress.ts"
 import { inspectionReportHtml } from "../src/lib/qaPrint.ts"
-import { issuePhotoProblem, issueTab, markupBox, markupCenter, markupProblem, moveMarkup, withRotation, zonePlanPath } from "../src/lib/issueMarkup.ts"
+import { issuePhotoProblem, issueTab, markupBox, markupCenter, markupProblem, moveMarkup, resizeMarkup, withRotation, zonePlanPath } from "../src/lib/issueMarkup.ts"
 import { issueChecklistIndex, issueChecklistKey, issueChecklistLabel, issueChecklistOptions, issueChecklistSelectionProblem, WHOLE_PIN_CHECKLIST } from "../src/lib/issueChecklist.ts"
 import { MAX_ATTEMPTS, backoffSeconds, isNetworkProblem, sendOrder, summarizeQueue, verdictFor } from "../src/lib/offlineModel.ts"
 import { pinLink, qrMatrix, qrSvg } from "../src/lib/qr.ts"
@@ -1486,6 +1486,35 @@ test("Photo editor slideshow is manual and bounded; keys match the toolbar", () 
   assert.equal(photoCounter(0,3),"Image 1 of 3")
   assert.equal(toolByKey.v,"select");assert.equal(toolByKey.h,"pan");assert.equal(toolByKey.d,"draw");assert.equal(toolByKey.e,"ellipse")
 })
+test("Annotation resizing preserves vertices, rotation, fixed corners and valid photo sizes", () => {
+  const box={id:"b",kind:"rectangle",x:20,y:20,x2:40,y2:50,color:"#d93a3a",stroke:4,fontSize:30,text:"",points:[]}
+  for (const kind of ["rectangle","ellipse","line","arrow","draw","text"]) {
+    const item={...box,kind,text:kind==="text" ? "Work\ncorrected" : "",points:kind==="draw" ? [{x:20,y:20},{x:30,y:40},{x:40,y:50}] : []}
+    for (const height of [500,1500]) for (const corner of ["nw","ne","sw","se"]) for (const rotation of [0,45,90]) {
+      const original={...item,rotation}, resized=resizeMarkup(original,corner,30,15,height,true)
+      assert.equal(markupProblem([resized]),"",`${kind} ${corner} ${rotation} stays valid`)
+      assert.equal(resized.rotation,rotation)
+      assert.equal(resized.stroke,item.stroke,"Resizing geometry does not change stroke width")
+      const anchor = value => {
+        const b=markupBox(value,height), c=markupCenter(value,height), t=rotation*Math.PI/180
+        const x=(corner.includes("e") ? b.x : b.x+b.width)-c.x, y=(corner.includes("s") ? b.y : b.y+b.height)-c.y
+        return {x:c.x+x*Math.cos(t)-y*Math.sin(t),y:c.y+x*Math.sin(t)+y*Math.cos(t)}
+      }
+      const a=anchor(original),b=anchor(resized)
+      assert.ok(Math.hypot(a.x-b.x,a.y-b.y)<0.12,"The opposite rotated corner stays fixed")
+    }
+  }
+  for (const delta of [-1e5,1e5]) {
+    const text=resizeMarkup({...box,kind:"text",text:"Task"},"se",delta,delta,500)
+    assert.equal(markupProblem([text]),"");assert.ok(text.fontSize>=12 && text.fontSize<=72)
+    const flat=resizeMarkup({...box,y2:box.y},"se",delta,delta,500,true)
+    assert.equal(markupProblem([flat]),"","A horizontal line has no invalid aspect-ratio division")
+    assert.equal(flat.y,box.y);assert.equal(flat.y2,box.y,"Resizing a flat line does not shift its height")
+  }
+  assert.deepEqual(resizedPoints([[10,10],[20,30],[30,20]],{x:20,y:20,w:40,h:40}),[[20,20],[40,60],[60,40]])
+  assert.deepEqual(resizedPoints([[10,10],[30,10]],{x:20,y:20,w:40,h:0}),[[20,20],[60,20]])
+})
+
 test("Photo markup rotation: optional, bounded, around the mark's own centre; kept by moves and runs", () => {
   const box={id:"b",kind:"rectangle",x:10,y:10,x2:30,y2:40,color:"#d93a3a",stroke:4,fontSize:30,text:"",points:[]}
   assert.equal(markupProblem([box]),"");assert.equal(markupProblem([{...box,rotation:-137.5}]),"");assert.equal(markupProblem([{...box,rotation:360}]),"")

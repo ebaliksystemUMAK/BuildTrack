@@ -1,0 +1,11 @@
+# Pending QA comparisons and annotation resizing
+
+Implemented locally on 2026-11-06 (Asia/Manila).
+
+The inspection dialog's Submitted evidence tab now compares original task evidence against the photos saved with that selected request while requested or in progress. Comparisons share the task workspace's existing slider/enlargement component. They use permanent task IDs and immutable submissions, exclude other pins, unsent corrections and later requests, retain Engineer photo eligibility restrictions, and never pass QA or complete work. History loads only when the evidence tab is opened; unavailable history displays an error instead of stale comparisons.
+
+Photo annotation selection now has four corner handles for shapes, lines, arrows, drawings and text. Resizing retains rotation and stroke width, uses local coordinates on portrait/landscape images, clamps saved coordinates and text sizes, and keeps one undo step per drag. Shift retains proportions; text always scales proportionally. Cancellation restores the original annotation. Photo bytes remain untouched and existing explicit Save controls apply.
+
+Blueprint freehand, highlighter, arrow, dimension, polyline, area and cloud annotations now have corner handles alongside the existing shape/image/text/symbol controls. Preview and persistence use the same vertex scaling; release uses the existing checked optimistic mutation/undo path. Pointer cancellation discards the resize. Locked, hidden, unauthorized and read-only work has no resize handles. Flat lines retain a zero dimension without invalid aspect-ratio calculations; their existing rotation controls remain unchanged. Measurement labels recalculate from the resized vertices and existing sheet scale.
+
+Verification: `pnpm check` passed (TypeScript, application checks, all 757 SQL cases, production build). Final focused geometry, real photo-editor pointer/undo/cancel and blueprint-stage preview/release/cancel/permission tests passed. QA tests cover requested/in-progress visibility, request selection, pin/task isolation, later-request exclusion, missing/error states and photo restrictions. The browser access host was unavailable, so browser visual verification is unconfirmed. No database migration or hosted mutation is needed for these UI changes.

@@ -60,7 +60,7 @@ import { supabase } from "../../lib/supabase"
 import type { SymbolKey } from "../../lib/symbols"
 import { useToast } from "../../lib/toast"
 import { useUndoStack } from "../../lib/undoStack"
-import { fitImageBox, itemBox, withGroupMembers, type AlignMode } from "../../lib/arrange"
+import { fitImageBox, itemBox, resizedPoints, withGroupMembers, type AlignMode } from "../../lib/arrange"
 import { IMAGE_ACCEPT, imageFilesFrom, prepareImage, uploadSheetImage } from "../../lib/sheetImages"
 import { clientPinStatus } from "../../lib/clientPortalModel"
 import { editorGuide } from "../../lib/pageGuides"
@@ -500,7 +500,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
 
   const resizeAnnotation = (id: string, box: { x: number; y: number; w: number; h: number }) => {
     const a = annotations.find((item) => item.id === id)
-    if (a) void ops.patchEach([{ id, patch: a.kind === "text" || a.kind === "symbol" ? { w: box.w } : { x: box.x, y: box.y, w: box.w, h: box.h } }], "It could not be resized", "Resize")
+    if (a) void ops.patchEach([{ id, patch: a.points?.length ? { points: resizedPoints(a.points, box), x: box.x, y: box.y } : a.kind === "text" || a.kind === "symbol" ? { w: box.w } : { x: box.x, y: box.y, w: box.w, h: box.h } }], "It could not be resized", "Resize")
   }
 
   const rotateAnnotation = (id: string, degrees: number) => {

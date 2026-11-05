@@ -5,8 +5,9 @@ import { MarkupLayer, SelectionFrame } from "./MarkupLayer"
 import PhotoEditorToolbar, { MarkupProperties } from "./PhotoEditorToolbar"
 import PhotoSlides from "./PhotoSlides"
 import { useConfirm } from "../../lib/confirm"
-import { clampCoordinate, MARKUP_LIMIT, MARKUP_POINT_LIMIT, markupCenter, markupProblem, moveMarkup, withRotation, type IssueMarkup, type MarkupPoint, type MarkupTool } from "../../lib/issueMarkup"
-import { angleFromCenter, snapAngle } from "../../lib/shapes"
+import { clampCoordinate, MARKUP_LIMIT, MARKUP_POINT_LIMIT, markupCenter, markupProblem, moveMarkup, resizeMarkup, withRotation, type IssueMarkup, type MarkupPoint, type MarkupTool } from "../../lib/issueMarkup"
+import { angleFromCenter, snapAngle, toLocalAxes } from "../../lib/shapes"
+import type { Corner } from "../../lib/arrange"
 import { CANVAS_ZOOM_STEP, MIN_CANVAS_SCALE, MAX_CANVAS_SCALE, canvasWheelFactor, fitCanvasView, zoomCanvasView, pinchCanvasView, type CanvasPoint, type CanvasView } from "../../lib/canvasView"
 import { NUDGE_STEP, ROTATE_STEP, changeMark, docChanged, markupChanges, newDoc, openDocs, recordEdit, redoEdit, removeMark, restyleMark, stepPhoto, toolByKey, undoEdit, type MarkupChange, type MarkupPhoto, type MarkupStyle, type PhotoDoc, type PhotoTool } from "../../lib/photoEditorModel"
 
@@ -15,7 +16,7 @@ export type { MarkupChange, MarkupPhoto } from "../../lib/photoEditorModel"
 
 type Sizing = "fill" | "fit" | "manual"
 // draw = a new mark being drawn, move = dragging a selected mark, rotate = dragging its rotate handle (centre in SVG units).
-type Gesture = { photoId: string; id: string; start: MarkupPoint; last: MarkupPoint; before: IssueMarkup[]; mode: "draw" | "move" | "rotate"; pointerId: number; centre?: { x: number; y: number } }
+type Gesture = { photoId: string; id: string; start: MarkupPoint; last: MarkupPoint; before: IssueMarkup[]; mode: "draw" | "move" | "rotate" | "resize"; pointerId: number; centre?: { x: number; y: number }; corner?: Corner }
 
 // The one photo markup editor (site issues, client problem reports, QA / NCR evidence). Markup is a separate overlay; the
 // photo bytes are never changed. Several photos open as a manual slideshow: each keeps its own markup, caption and undo
@@ -144,7 +145,7 @@ export default function IssuePhotoEditor({ photos, start: startAt = 0, readOnly 
     }
     if(pointers.current.size!==1) {event.stopPropagation();return}
     const target=event.target as Element
-    const annotation=target.closest?.("[data-markup-id],[data-rotate-handle]")
+    const annotation=target.closest?.("[data-markup-id],[data-rotate-handle],[data-resize-handle]")
     const onPhoto=target.closest?.('[aria-label="Photo annotation canvas"]')
     if(event.button===1 || space || panMode || readOnly || original || (tool==="select" && !annotation) || !onPhoto) {
       if(tool==="select" && !annotation && !panMode && !space) setSelected("")
@@ -234,8 +235,26 @@ export default function IssuePhotoEditor({ photos, start: startAt = 0, readOnly 
     gesture.current={photoId,id:selectedMark.id,start:p,last:p,before:items,mode:"rotate",pointerId:event.pointerId,centre:markupCenter(selectedMark,height)}
     svg.current?.setPointerCapture(event.pointerId)
   }
+  const resizeStart = (corner: Corner, event: PointerEvent<SVGRectElement>) => {
+    if (readOnly || original || saving || !selectedMark || event.button !== 0 || gesture.current) return
+    event.preventDefault(); event.stopPropagation()
+    const p = point(event, false)
+    styleRun.current = ""
+    gesture.current = { photoId, id: selectedMark.id, start: p, last: p, before: items, mode: "resize", corner, pointerId: event.pointerId }
+    svg.current?.setPointerCapture(event.pointerId)
+  }
   const move = (event: PointerEvent<SVGSVGElement>) => {
     const g=gesture.current; if(!g || g.pointerId!==event.pointerId) return
+    if (g.mode === "resize" && g.corner) {
+      const p = point(event, false), originalMark = g.before.find(item => item.id === g.id)
+      if (!originalMark) return
+      const delta = toLocalAxes((p.x - g.start.x) * 10, (p.y - g.start.y) * height / 100, originalMark.rotation ?? 0)
+      const resized = resizeMarkup(originalMark, g.corner, delta.x, delta.y, height, event.shiftKey)
+      g.last = p
+      updateDoc(g.photoId, current => ({ ...current, items: g.before.map(item => item.id === g.id ? resized : item) }))
+      if (resized.kind === "text") setFontSize(resized.fontSize)
+      return
+    }
     if(g.mode==="rotate" && g.centre) {
       const p=point(event,false),raw=angleFromCenter(g.centre.x,g.centre.y,p.x*10,p.y*height/100)
       const degrees=event.shiftKey ? snapAngle(raw,ROTATE_STEP) : Math.round(raw*10)/10
@@ -364,7 +383,7 @@ export default function IssuePhotoEditor({ photos, start: startAt = 0, readOnly 
             <img key={photoId} src={photo.src} alt={doc.note || (many ? `Image ${at+1} of ${photos.length}` : "Issue evidence")} className="pointer-events-none block h-full w-full select-none" draggable={false} onLoad={e=>{const size={width:e.currentTarget.naturalWidth,height:e.currentTarget.naturalHeight};sizeRef.current=size;setImageSize(size);sizePhoto(sizingRef.current==="fill" ? "fill" : "fit",size);setLoaded(true)}} onError={()=>{setLoaded(false);setError("Photo could not be loaded.")}} />
             <svg ref={svg} viewBox={`0 0 1000 ${height}`} className="absolute inset-0 h-full w-full" style={{touchAction:readOnly || original ? "auto" : "none",overflow:"visible"}} onPointerDown={start} onPointerMove={move} onPointerUp={e=>end(e)} onPointerCancel={e=>end(e,true)} aria-label="Photo annotation canvas">
               {!original && loaded ? <MarkupLayer items={items} height={height} selected={selected} onSelect={readOnly ? undefined : select} /> : null}
-              {!original && loaded && !readOnly && selectedMark && tool==="select" && !panMode ? <SelectionFrame item={selectedMark} height={height} unit={1000/(imageSize.width*view.scale)} onRotateStart={rotateStart} /> : null}
+              {!original && loaded && !readOnly && selectedMark && tool==="select" && !panMode ? <SelectionFrame item={selectedMark} height={height} unit={1000/(imageSize.width*view.scale)} onRotateStart={rotateStart} onResizeStart={resizeStart} /> : null}
             </svg>
           </div>
         </div>
@@ -372,7 +391,7 @@ export default function IssuePhotoEditor({ photos, start: startAt = 0, readOnly 
       {readOnly ? <p className="shrink-0 text-sm">{doc.note || "No caption."}</p>
         : fullscreen ? <details className="shrink-0 rounded-lg border border-line px-3 py-2"><summary className="cursor-pointer text-sm font-bold">{captionLabel} <span className="ml-2 font-normal text-fg-muted">Edit details</span></summary><label className="mt-2 block text-sm font-bold">{captionLabel}{caption}</label></details>
         : <label className="block shrink-0 text-sm font-bold">{captionLabel}{caption}</label>}
-      <p className="shrink-0 text-xs text-fg-muted">Ctrl/⌘ + scroll zooms toward the cursor; plain scrolling moves down the editor. Pan, Space-drag or the middle button moves the photo; pinch with two fingers.{readOnly ? "" : " Keys: V select, H pan, T text, L A R E D shapes; with a mark selected: drag to move, arrow keys nudge, the round handle or [ ] rotates, Del deletes; Ctrl+Z / Ctrl+Shift+Z."}{many ? " Page Up / Page Down change the photo." : ""}</p>
+      <p className="shrink-0 text-xs text-fg-muted">Ctrl/⌘ + scroll zooms toward the cursor; plain scrolling moves down the editor. Pan, Space-drag or the middle button moves the photo; pinch with two fingers.{readOnly ? "" : " Keys: V select, H pan, T text, L A R E D shapes; select a mark and drag a square corner to resize (Shift keeps proportions; text always scales). Drag to move, arrow keys nudge, the round handle or [ ] rotates, Del deletes; Ctrl+Z / Ctrl+Shift+Z."}{many ? " Page Up / Page Down change the photo." : ""}</p>
     </div>
   </Modal>
 }

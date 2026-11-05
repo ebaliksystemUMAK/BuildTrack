@@ -1,5 +1,6 @@
 import { useId, type PointerEvent, type ReactElement } from "react"
 import { markupBox, markupCenter, type IssueMarkup } from "../../lib/issueMarkup"
+import type { Corner } from "../../lib/arrange"
 
 const turn = (item: IssueMarkup, height: number) => {
   if (!item.rotation) return undefined
@@ -33,7 +34,7 @@ export function MarkupLayer({ items, height, selected, onSelect }: { items: Issu
 
 // The selected mark's frame, turned with it, and the rotate handle above it (like the blueprint editor's). `unit` is the SVG
 // length of one screen pixel, so the frame and handle keep the same on-screen size at every zoom.
-export function SelectionFrame({ item, height, unit, onRotateStart }: { item: IssueMarkup; height: number; unit: number; onRotateStart?: (event: PointerEvent<SVGCircleElement>) => void }) {
+export function SelectionFrame({ item, height, unit, onRotateStart, onResizeStart }: { item: IssueMarkup; height: number; unit: number; onRotateStart?: (event: PointerEvent<SVGCircleElement>) => void; onResizeStart?: (corner: Corner, event: PointerEvent<SVGRectElement>) => void }) {
   const box = markupBox(item, height)
   const pad = 6 * unit + (item.kind === "text" ? 0 : item.stroke / 2)
   const centre = markupCenter(item, height)
@@ -41,6 +42,10 @@ export function SelectionFrame({ item, height, unit, onRotateStart }: { item: Is
   return (
     <g data-selection-frame transform={turn(item, height)} pointerEvents="none">
       <rect x={box.x - pad} y={top} width={box.width + 2 * pad} height={box.height + 2 * pad} fill="none" stroke="#9e1f93" strokeWidth={1.5 * unit} strokeDasharray={`${5 * unit} ${4 * unit}`} />
+      {onResizeStart ? (["nw", "ne", "sw", "se"] as Corner[]).map(corner => <g key={corner} transform={`translate(${corner.includes("w") ? box.x - pad : box.x + box.width + pad} ${corner.includes("n") ? top : box.y + box.height + pad})`}>
+        <rect data-resize-handle={corner} x={-12 * unit} y={-12 * unit} width={24 * unit} height={24 * unit} fill="transparent" pointerEvents="all" style={{ cursor: corner === "nw" || corner === "se" ? "nwse-resize" : "nesw-resize" }} onPointerDown={event => onResizeStart(corner, event)}><title>Drag to resize (Shift keeps proportions; text always scales)</title></rect>
+        <rect x={-5 * unit} y={-5 * unit} width={10 * unit} height={10 * unit} fill="#9e1f93" stroke="white" strokeWidth={1.5 * unit} />
+      </g>) : null}
       {onRotateStart ? <>
         <line x1={centre.x} y1={top} x2={centre.x} y2={top - stem} stroke="#9e1f93" strokeWidth={1.5 * unit} />
         <circle data-rotate-handle cx={centre.x} cy={top - stem} r={8 * unit} fill="#9e1f93" stroke="#ffffff" strokeWidth={2 * unit} pointerEvents="all" style={{ cursor: "grab" }} onPointerDown={onRotateStart}><title>Drag to rotate (Shift = 15 degree steps)</title></circle>

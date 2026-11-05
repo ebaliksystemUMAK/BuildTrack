@@ -163,6 +163,15 @@ export function resizedBox(orig: { x: number; y: number; w: number; h: number },
 
 export type Corner = "nw" | "ne" | "sw" | "se"
 
+// Scale every vertex together. Flat strokes remain flat without divisions by zero.
+export function resizedPoints(points: Pt[], target: Box): Pt[] {
+  const orig = bbox(points)
+  return points.map(([x, y]) => [
+    round(clamp(target.x + (orig.w ? (x - orig.x) / orig.w : 0.5) * target.w, 0, 100)),
+    round(clamp(target.y + (orig.h ? (y - orig.y) / orig.h : 0.5) * target.h, 0, 100)),
+  ])
+}
+
 // Resizing from any corner of a (possibly rotated) box. The opposite corner stays where it is on the sheet, whatever the rotation.
 // `dx` / `dy` are the pointer movement in the item's own axes, in pixels of the sheet. Returns the new box in percent of the
 // sheet; it never goes below 1 % and never leaves the sheet (the size is reduced until the unrotated box fits).
@@ -182,9 +191,9 @@ export function resizeFromCorner(
   const bh = (orig.h / 100) * H
   const minW = 0.01 * W
   const minH = 0.01 * H
-  let tw = Math.max(minW, bw + sx * dx)
-  let th = Math.max(minH, bh + sy * dy)
-  if (lockAspect) {
+  let tw = bw ? Math.max(minW, bw + sx * dx) : 0
+  let th = bh ? Math.max(minH, bh + sy * dy) : 0
+  if (lockAspect && bw > 0 && bh > 0) {
     const ratio = bh / bw
     tw = Math.max(minW, minH / ratio, tw)
     th = tw * ratio

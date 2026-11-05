@@ -15,7 +15,7 @@ import {
   type Pin,
   type ShapeKind,
 } from "../../lib/blueprints"
-import { inRectangle, itemBox, resizeFromCorner, resizedBox, shifted, unionBox, withGroupMembers, type ArrangeItem, type Corner } from "../../lib/arrange"
+import { inRectangle, itemBox, resizeFromCorner, resizedPoints, shifted, unionBox, withGroupMembers, type ArrangeItem, type Corner } from "../../lib/arrange"
 import { areaSquareMeters, bbox, centroid, formatArea, lengthMeters, limitPoints, pointsToPath, polygonAreaPx, polylineLengthPx, roundPct, simplify, type Pt } from "../../lib/geometry"
 import { capsulePlacement, rotatedBounds, type Rect } from "../../lib/capsule"
 import { sortByLayer } from "../../lib/layers"
@@ -293,7 +293,7 @@ export default function StageCanvas(props: Props) {
         const element = stage.current?.querySelector<HTMLElement>(`[data-ann-id="${ann.id}"]`)
         const rect = element?.getBoundingClientRect()
         gesture.current = rect ? { type: "rotate", id: ann.id, cx: rect.left + rect.width / 2, cy: rect.top + rect.height / 2, moved: false } : panGesture
-      } else if (ann.w !== null) gesture.current = { type: "resize", id: ann.id, corner: (["nw", "ne", "sw", "se"].includes(hit.current.id) ? hit.current.id : "se") as Corner, x0: event.clientX, y0: event.clientY, orig: { x: ann.x, y: ann.y, w: ann.w, h: ann.h ?? 0 }, rotation: ann.rotation, kind: ann.kind, moved: false }
+      } else if (ann.w !== null || isPointKind(ann.kind)) gesture.current = { type: "resize", id: ann.id, corner: (["nw", "ne", "sw", "se"].includes(hit.current.id) ? hit.current.id : "se") as Corner, x0: event.clientX, y0: event.clientY, orig: itemBox(toArrange(ann), ctxSize), rotation: isPointKind(ann.kind) ? 0 : ann.rotation, kind: ann.kind, moved: false }
       else gesture.current = panGesture
       return
     }
@@ -575,7 +575,7 @@ export default function StageCanvas(props: Props) {
       }
       return { ...ann, x: move.x ?? ann.x, y: move.y ?? ann.y }
     }
-    if (dragging?.type === "resize" && dragging.id === ann.id) return { ...ann, x: dragging.x, y: dragging.y, w: dragging.w, h: ann.h === null ? null : dragging.h }
+    if (dragging?.type === "resize" && dragging.id === ann.id) return isPointKind(ann.kind) && ann.points ? { ...ann, points: resizedPoints(ann.points, dragging) } : { ...ann, x: dragging.x, y: dragging.y, w: dragging.w, h: ann.h === null ? null : dragging.h }
     if (dragging?.type === "rotate" && dragging.id === ann.id) return { ...ann, rotation: dragging.deg }
     return ann
   }
@@ -660,7 +660,13 @@ export default function StageCanvas(props: Props) {
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={finish}
-      onPointerCancel={finish}
+      onPointerCancel={event => {
+        if (gesture.current?.type === "resize") {
+          pointers.current.delete(event.pointerId)
+          gesture.current = null
+          setDragging(null)
+        } else finish(event)
+      }}
       onPointerLeave={() => props.laser && setLaserAt(null)}
       onContextMenu={onContextMenu}
       onDragOver={(event) => {
@@ -697,7 +703,7 @@ export default function StageCanvas(props: Props) {
             const cornerHandles = (color: string) =>
               handles
                 ? (["nw", "ne", "sw", "se"] as Corner[]).map((corner) => (
-                    <span key={corner} data-handle={corner} title="Drag to resize (Shift: shape / free)" className="absolute rounded-sm border-2 border-white shadow" style={{ width: 12 * inverse, height: 12 * inverse, [corner.includes("n") ? "top" : "bottom"]: -6 * inverse, [corner.includes("w") ? "left" : "right"]: -6 * inverse, background: color, cursor: corner === "nw" || corner === "se" ? "nwse-resize" : "nesw-resize" }} />
+                    <span key={corner} data-handle={corner} title="Drag to resize (Shift: shape / free)" className="absolute rounded-sm border-2 border-white shadow" style={{ width: 24 * inverse, height: 24 * inverse, [corner.includes("n") ? "top" : "bottom"]: -12 * inverse, [corner.includes("w") ? "left" : "right"]: -12 * inverse, background: color, cursor: corner === "nw" || corner === "se" ? "nwse-resize" : "nesw-resize" }} />
                   ))
                 : null
             const rotateHandle = handles ? (
@@ -829,6 +835,10 @@ export default function StageCanvas(props: Props) {
                     </text>
                   ) : null}
                   {isSelected ? <rect x={(box2.x / 100) * width - 6 * inverse} y={(box2.y / 100) * height - 6 * inverse} width={(box2.w / 100) * width + 12 * inverse} height={(box2.h / 100) * height + 12 * inverse} fill="none" stroke={hex} strokeWidth={2 * inverse} strokeDasharray={`${6 * inverse} ${4 * inverse}`} /> : null}
+                  {handles && tool === "select" ? (["nw", "ne", "sw", "se"] as Corner[]).map(corner => <g key={corner} transform={`translate(${(box2.x + (corner.includes("e") ? box2.w : 0)) / 100 * width} ${(box2.y + (corner.includes("s") ? box2.h : 0)) / 100 * height})`}>
+                    <rect data-handle={corner} data-ann-id={a.id} x={-12 * inverse} y={-12 * inverse} width={24 * inverse} height={24 * inverse} fill="transparent" style={{ pointerEvents: "all", cursor: corner === "nw" || corner === "se" ? "nwse-resize" : "nesw-resize" }}><title>Drag to resize drawing (Shift keeps proportions)</title></rect>
+                    <rect x={-5 * inverse} y={-5 * inverse} width={10 * inverse} height={10 * inverse} fill={hex} stroke="white" strokeWidth={1.5 * inverse} />
+                  </g>) : null}
                 </svg>
               )
             }

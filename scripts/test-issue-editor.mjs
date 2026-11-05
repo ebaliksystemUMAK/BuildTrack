@@ -80,7 +80,7 @@ const render=()=>{
 const reset=next=>{for(const value of values)value?.cleanup?.();values=[];queued=[];props=next;viewportSize.width=1000;viewportSize.height=500}
 const canvas=()=>get(node=>node.props?.["aria-label"] === "Photo annotation canvas")
 const items=()=>get(node=>node.type === MarkupLayer).props.items
-const event=(x,y)=>({button:0,pointerId:1,clientX:x,clientY:y,stopPropagation(){}})
+const event=(x,y)=>({button:0,pointerId:1,clientX:x,clientY:y,stopPropagation(){},preventDefault(){}})
 const draw=(x1,y1,x2,y2)=>{canvas().props.onPointerDown(event(x1,y1));render();canvas().props.onPointerMove(event(x2,y2));render();canvas().props.onPointerUp(event(x2,y2));render()}
 const load=(width,height)=>{get(node=>node.type === "img").props.onLoad({currentTarget:{naturalWidth:width,naturalHeight:height}});render()}
 const keys=(key,extra={})=>{tree.props.children.props.onKeyDown({key,target:{tagName:"DIV"},preventDefault(){},...extra});render()}
@@ -127,6 +127,18 @@ assert.equal(items().length,1);assert.equal(items()[0].kind,"line");assert.equal
 assert.equal(button("Select").props["aria-pressed"],true,"A finished shape returns to Select, like the blueprint editor")
 const frame=()=>get(node=>node.type?.name === "SelectionFrame")
 assert.equal(frame().props.item.id,items()[0].id,"The new shape stays selected with its frame and rotate handle")
+const resizeBefore = structuredClone(items()[0])
+frame().props.onResizeStart("se",event(700,400));render()
+canvas().props.onPointerMove(event(800,450));render()
+assert.ok(items()[0].x2 > resizeBefore.x2 && items()[0].y2 > resizeBefore.y2, "Dragging a corner resizes the selected photo annotation")
+canvas().props.onPointerUp(event(800,450));render()
+button("Undo").props.onClick();render();assert.deepEqual(items()[0],resizeBefore,"A resize is one undo step")
+button("Redo").props.onClick();render();assert.ok(items()[0].x2 > resizeBefore.x2)
+button("Undo").props.onClick();render()
+get(node=>node.type === MarkupLayer).props.onSelect(items()[0].id,event(100,100));render();canvas().props.onPointerUp(event(100,100));render()
+frame().props.onResizeStart("nw",event(100,100));render()
+canvas().props.onPointerMove(event(50,50));render()
+canvas().props.onPointerCancel(event(50,50));render();assert.deepEqual(items()[0],resizeBefore,"Cancelled resize restores the annotation")
 button("Select").props.onClick();render()
 assert.equal(button("Select").props["aria-pressed"],true)
 get(node=>node.type === MarkupLayer).props.onSelect(items()[0].id,event(100,100));render();canvas().props.onPointerMove(event(200,150));render();canvas().props.onPointerUp(event(200,150));render()

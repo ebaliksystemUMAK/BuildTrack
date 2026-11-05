@@ -366,7 +366,7 @@ const engineer: Record<EngineerPageKey, PageGuide> = {
     purpose: "Manage inspections, verify NCR corrections, complete passed tasks and view completed work.",
     steps: [
       "Overview: what waits for you and the defect trends.",
-      "Inspections: open a requested inspection, record each item (pass / fail with reason, measurements, photos) and complete it. Each failed item raises an NCR for the Foreman.",
+      "Inspections: open a requested inspection. Submitted evidence compares original and resubmitted photos while the request is pending, before any QA decision. Record each item (pass / fail with reason, measurements, photos) and complete the inspection. Each failed item raises an NCR for the Foreman.",
       "NCR register: verify submitted corrections and close the NCR, or send it back with a reason.",
       "Client reports: accept a client's report (it becomes an NCR) or decline it with a reason.",
       "When a task's inspection passed and its NCRs are closed, accept the task; the pin completes when every task is accepted.",
@@ -580,7 +580,7 @@ export function editorGuide(role: "engineer" | "foreman" | "client" | "admin", c
         "Choose a tool in the second row: Select, Add pin, Add note, Draw shape, Tape (sheet scale), Upload image or More.",
         "Click the selected plan to place a pin. Enter its title, proposed start, deadline and phase, and optionally choose an eligible Foreman before saving. Adding the pin saves its assignment and sends a PM approval request. The technical reason is optional. Missing or invalid fields receive focus.",
         "Details has Overview, Edit details and Schedule tabs. New tasks you add to a dated pin automatically receive their own PM requests using the sent pin schedule; PM approval makes dates official. Tasks & QC retains Engineer completion checks.",
-        "Select a pin to change its status, lock it, open its details or delete it; select a drawing to move, resize, rotate or restyle it.",
+        "Select a pin to change its status, lock it, open its details or delete it. Select a drawing and drag a square corner to resize shapes, images, arrows, clouds or other strokes; Shift keeps drawing proportions. Text and symbols have their own size controls. In a photo's annotation editor, corner handles also resize shapes, drawings and text.",
         "Switch sheets with the sheet switcher or the pages bar; use Layers to order, hide or lock items.",
         "Undo with Ctrl+Z and redo with Ctrl+Shift+Z; export PNG / PDF from the top bar and compare revisions from View.",
       ],
