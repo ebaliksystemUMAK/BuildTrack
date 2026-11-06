@@ -198,7 +198,7 @@ function ItemRow({ item, index, editable, prepBy, photos, projectId, onSave, onP
       {editable || prepBy || myPhotos.length ? (
         <div className="mt-2 pl-9">
           {prepBy && !myPhotos.length ? <p className="mb-1 text-xs font-semibold text-fg-muted">Upload a photo showing this item is ready for inspection.</p> : null}
-          <EvidenceStrip projectId={projectId} photos={myPhotos} target={{ itemId: item.id }} canAdd={editable || Boolean(prepBy)} canRemove={(photo) => editable || (Boolean(prepBy) && photo.uploaded_by === prepBy)} onChanged={onPhotosChanged} label={`Item ${index + 1}`} compact />
+          <EvidenceStrip projectId={projectId} photos={myPhotos} target={{ itemId: item.id }} canAdd={editable || Boolean(prepBy)} canRemove={(photo) => editable || (Boolean(prepBy) && photo.uploaded_by === prepBy)} onChanged={onPhotosChanged} label={`Criterion ${index + 1}`} compact />
         </div>
       ) : null}
     </li>

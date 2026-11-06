@@ -230,8 +230,9 @@ let cancellationCalls = [], cancellationError = "", cancellationWait = null
 let resumeCalls = [], resumeError = "", resumeWait = null
 let historyRequests = []
 let inspectionPreview = { result: "passed", score: 100, passed: 1, failed: 0, na: 0, pending: 0 }
+let inspectionCriteria = []
 Object.assign(globalThis.__evidenceDeps, {
-  useInspectionItems: () => ({ items: [], loading: false, error: "", setItems() {}, reload: async () => {} }),
+  useInspectionItems: () => ({ items: inspectionCriteria, loading: false, error: "", setItems() {}, reload: async () => {} }),
   useReinspectionContext: id => { historyRequests.push(id); return { rows: [], loading: false, error: "", reload: async () => {} } },
   useWorkSubmission: () => ({ submission: null, loading: false, error: "" }),
   useChecklist: () => ({ items: [], loading: false, error: "", reload: async () => {} }),
@@ -413,7 +414,21 @@ for (const role of ["foreman", "admin", "client"]) {
   assert.doesNotMatch(text(tree.props.footer), /Return FLOOR|Reopen FLOOR|Complete task|Review NCR corrections/)
 }
 
+inspectionCriteria=[{id:"criterion-camera",text:"Tile alignment",kind:"check",severity:"major",result:"pending",requires_photo:false,hold_point:false,measured_value:null,remarks:null}]
+testRole="engineer";reset();render(InspectionDetail,activeProps)
+let criterionRow=find(node=>node.props?.item?.id==="criterion-camera")
+assert.equal(criterionRow.props.editable,true)
+reset();tree=criterionRow.type(criterionRow.props)
+const criterionEvidence=find(node=>node.props?.target?.itemId==="criterion-camera")
+assert.equal(criterionEvidence.props.canAdd,true);assert.equal(criterionEvidence.props.label,"Criterion 1")
+assert.equal(criterionEvidence.props.target.inspectionId,undefined,"Photos are linked to the specific criterion, not a generic request")
+for(const alternate of [{...activeProps,inspection:{...activeProps.inspection,status:"requested"}},{...activeProps,inspection:{...activeProps.inspection,status:"passed"}},{...activeProps,canInspect:false}]){
+  reset();render(InspectionDetail,alternate);criterionRow=find(node=>node.props?.item?.id==="criterion-camera")
+  reset();tree=criterionRow.type(criterionRow.props)
+  assert.ok(!all(tree).some(node=>node.props?.canAdd),"Camera evidence is available only to the active inspector during inspection")
+}
 delete globalThis.__evidenceHooks; delete globalThis.__evidenceDeps; delete globalThis.__submittedEvidenceUI
+console.log("Criterion camera evidence: exact criterion target, optional-photo criterion support, active inspector permission, requested/completed/read-only guards passed")
 console.log("Saved single-photo evidence/remarks, request selection, item/pin isolation, snapshots, empty/error states, NCR closure visibility and retained comparison/access guards passed")
 console.log("Correction NCRs open the exact inspection; no pre-start NCR form; one reinspection remarks box saves on confirmed sign-off with server-error/role guards, no separate closure writes; standalone NCR/manual checklist flow retained")
 console.log("NCR footer starts the exact correction once, resumes/reviews existing inspections and guards stale/denied/closed navigation; focused cancellation requires a reason, Keep is safe, failures retain input, duplicate cancellation is blocked")

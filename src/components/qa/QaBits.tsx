@@ -110,15 +110,17 @@ export function EvidenceStrip({
   const cameraOnly = policy.qaCameraOnly
   const [cameraOpen, setCameraOpen] = useState(false)
   const [draftSource, setDraftSource] = useState<CaptureSource>("upload")
+  useEffect(() => { if (!canAdd) setCameraOpen(false) }, [canAdd])
 
   const choose = (files: FileList | null) => {
     const list = Array.from(files ?? [])
     if (input.current) input.current.value = ""
-    if (!list.length || cameraOnly) return
+    if (!canAdd || busy || preparing || drafts || !list.length || cameraOnly) return
     void prepareDrafts(list, "upload", captureStamp()) // the phone's time and (if allowed) position when chosen, checked against the site by the database
   }
   const captured = (file: File, where: PhotoStamp) => {
     setCameraOpen(false)
+    if (!canAdd || busy || preparing || drafts) return
     const problem = policy.problem(where)
     if (problem) return toast.error("Photo not accepted", problem)
     void prepareDrafts([file], "camera", Promise.resolve(where))
@@ -165,7 +167,7 @@ export function EvidenceStrip({
 
   // Photos that fail stay in the dialog to retry; the ones that were added leave it.
   const add = async () => {
-    if (!drafts?.length || busy || preparing) return
+    if (!canAdd || !drafts?.length || busy || preparing) return
     setBusy(true)
     setDraftError("")
     const where = await (stamp.current ?? captureStamp())
@@ -208,14 +210,17 @@ export function EvidenceStrip({
       {stampSummary(photos) ? <p role="status" className="w-full rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs font-semibold text-amber-950 dark:bg-amber-900/40 dark:text-amber-100">Check these photos: {stampSummary(photos)}.</p> : null}
       {canAdd ? (
         <>
-          <button type="button" disabled={busy || preparing || cameraOpen || Boolean(drafts)} onClick={() => (cameraOnly ? setCameraOpen(true) : input.current?.click())} aria-label={cameraOnly ? `Take a photo: ${label}` : `Add a photo: ${label}`} className={`flex ${size} flex-col items-center justify-center rounded-lg border border-dashed border-line text-fg-muted transition hover:border-brand hover:bg-brand-soft hover:text-brand-text disabled:opacity-60`}>
+          <button type="button" disabled={busy || preparing || cameraOpen || Boolean(drafts)} onClick={() => setCameraOpen(true)} aria-label={`Take a photo: ${label}`} className="flex min-h-11 min-w-[76px] flex-col items-center justify-center rounded-lg border border-dashed border-line px-2 py-1 text-fg-muted transition hover:border-brand hover:bg-brand-soft hover:text-brand-text disabled:opacity-60">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 8h3l2-2h6l2 2h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
-            <span className="text-[11px] font-bold">{busy || preparing ? "..." : cameraOnly ? "Camera" : "Photo"}</span>
+            <span className="text-[11px] font-bold">Take photo</span>
           </button>
-          {!cameraOnly ? <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" capture="environment" multiple hidden onChange={(event) => choose(event.target.files)} /> : null}
+          {!cameraOnly ? <>
+            <button type="button" disabled={busy || preparing || cameraOpen || Boolean(drafts)} onClick={() => input.current?.click()} aria-label={`Add a photo: ${label}`} className="flex min-h-11 min-w-[76px] items-center justify-center rounded-lg border border-dashed border-line px-2 py-1 text-[11px] font-bold text-fg-muted transition hover:border-brand hover:bg-brand-soft hover:text-brand-text disabled:opacity-60">Upload photo</button>
+            <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(event) => choose(event.target.files)} />
+          </> : null}
         </>
       ) : null}
-      {cameraOpen ? <CameraCapture title={`Take a photo: ${label}`} description="Photo uploads are turned off: take the photo here at the project site with location turned on. You can mark it up before adding it." fileName="qa-evidence" onClose={() => setCameraOpen(false)} onCapture={captured} /> : null}
+      {cameraOpen && canAdd ? <CameraCapture title={`Take a photo: ${label}`} description={cameraOnly ? "Photo uploads are turned off: take the photo here at the project site with location turned on. You can mark it up before adding it." : "Capture the work with this device’s camera. You can mark it up and add a caption before saving it as evidence."} fileName="qa-evidence" onClose={() => setCameraOpen(false)} onCapture={captured} /> : null}
       {drafts ? (
         <Modal
           title={`Add photos: ${label}`}
@@ -225,7 +230,7 @@ export function EvidenceStrip({
           footer={
             <>
               <button type="button" className={buttonSecondary} disabled={busy || preparing} onClick={() => void cancel()}>Cancel</button>
-              <button type="button" className={buttonPrimary} disabled={busy || preparing || !drafts.length} onClick={() => void add()}>{busy ? "Adding..." : drafts.length > 1 ? `Add ${drafts.length} photos` : "Add photo"}</button>
+              <button type="button" className={buttonPrimary} disabled={!canAdd || busy || preparing || !drafts.length} onClick={() => void add()}>{busy ? "Adding..." : drafts.length > 1 ? `Add ${drafts.length} photos` : "Add photo"}</button>
             </>
           }
         >

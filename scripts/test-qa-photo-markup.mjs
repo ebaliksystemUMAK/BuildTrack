@@ -150,6 +150,33 @@ button("Cancel").props.onClick(); await settle(); render(EvidenceStrip, stripPro
 assert.ok(!has(node => node.type?.name === "Modal"))
 assert.equal(calls.upload.length, 3, "cancelled photos are never uploaded")
 
+// Engineers get an explicit camera option even when the gallery is allowed.
+reset();photoPolicy=uploadsAllowed;authRole="engineer";render(EvidenceStrip,stripProps)
+const cameraButton=()=>find(node=>node.props?.["aria-label"]==="Take a photo: Item 1")
+assert.equal(text(cameraButton()),"Take photo");assert.ok(has(node=>node.type==="button"&&text(node)==="Upload photo"))
+const beforeCameraUploads=calls.upload.length
+cameraButton().props.onClick();render(EvidenceStrip,stripProps)
+let engineerCamera=find(node=>node.type?.name==="CameraCapture")
+assert.doesNotMatch(engineerCamera.props.description,/uploads are turned off/)
+engineerCamera.props.onClose();render(EvidenceStrip,stripProps)
+assert.equal(calls.upload.length,beforeCameraUploads,"Closing the camera does not add evidence")
+cameraButton().props.onClick();render(EvidenceStrip,stripProps)
+find(node=>node.type?.name==="CameraCapture").props.onCapture(photoFile("engineer-shot.jpg"),stamp)
+await settle();render(EvidenceStrip,stripProps)
+assert.equal(calls.upload.length,beforeCameraUploads,"A captured photo is reviewed before upload")
+let cameraPicker=find(node=>node.type?.name==="IssuePhotoPicker")
+assert.equal(cameraPicker.props.allowFiles,false,"A real camera photo retains its camera source")
+cameraPicker.props.onChange([{...cameraPicker.props.photos[0],caption:"Tile edge inspection",annotations:markup}]);render(EvidenceStrip,stripProps)
+button("Add photo").props.onClick();await settle();render(EvidenceStrip,stripProps)
+assert.deepEqual(calls.upload.at(-1).slice(0,2),["P",{itemId:"I"}],"The camera evidence belongs to this exact criterion")
+assert.equal(calls.upload.at(-1)[4],"camera");assert.equal(calls.upload.at(-1)[3],stamp)
+assert.equal(calls.upload.at(-1)[2].caption,"Tile edge inspection");assert.deepEqual(calls.upload.at(-1)[2].annotations,markup)
+cameraButton().props.onClick();render(EvidenceStrip,stripProps)
+render(EvidenceStrip,{...stripProps,canAdd:false})
+assert.ok(!has(node=>node.type?.name==="CameraCapture"),"The camera closes when inspection editing is no longer allowed")
+assert.ok(!has(node=>node.type==="input"&&node.props.type==="file"));assert.ok(!has(node=>node.props?.["aria-label"]==="Take a photo: Item 1"))
+reset();render(EvidenceStrip,stripProps)
+
 // Uploads turned off: a Foreman gets only the in-app camera; a photo away from the site never reaches the dialog. Engineers keep files.
 photoPolicy = cameraOnlyPolicy("", false)
 render(EvidenceStrip, stripProps)
