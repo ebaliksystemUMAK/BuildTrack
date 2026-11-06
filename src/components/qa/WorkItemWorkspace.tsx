@@ -161,7 +161,6 @@ export default function WorkItemWorkspace({ itemId, onClose, onChanged, fromPlan
 
   const primary = (() => {
     if (foreman) {
-      if (view.action === "add_evidence") return <button type="button" className={buttonPrimary} onClick={() => setTab("evidence")}>Add photos</button>
       if (view.action === "submit") return <button type="button" className={buttonPrimary} disabled={busy} onClick={() => void submitFirst()}>Submit {name} for QA Review</button>
       if (view.action === "start_correction") return <button type="button" className={buttonPrimary} disabled={busy} onClick={() => void startCorrection()}>Start correction</button>
       if (view.action === "submit_correction") return tab === "corrections"
@@ -170,7 +169,7 @@ export default function WorkItemWorkspace({ itemId, onClose, onChanged, fromPlan
       if (view.action === "open_ncr" && firstToFix) return <button type="button" className={buttonPrimary} onClick={() => setDefectOpen(firstToFix.id)}>Correct {ncrRef(firstToFix.number)}</button>
     }
     if (engineer) {
-      if (view.action === "inspect" && current) return <button type="button" className={buttonPrimary} onClick={() => setInspectionOpen(current.id)}>{current.status === "requested" ? "Start inspection" : "Record results"}</button>
+      if (view.action === "inspect" && current) return <button type="button" className={buttonPrimary} onClick={() => { setTab("inspection"); setInspectionOpen(current.id) }}>{current.status === "requested" ? "Start inspection" : "Record results"}</button>
     }
     return null
   })()

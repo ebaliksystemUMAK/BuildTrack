@@ -314,6 +314,7 @@ export default function InspectionDetail({
       setBusy(true)
       const outcome = await qaActions.start(inspection.id)
       if (!outcome.ok) return toast.error(continuing ? "Could not continue" : "Could not start", outcome.message)
+      selectTab("checklist")
       toast.success(continuing ? "Inspection continued" : "Inspection started", ref)
       try { await onChanged() } catch { toast.error("Inspection updated", "Reopen the inspection to see its current status.") }
     } catch (error) {

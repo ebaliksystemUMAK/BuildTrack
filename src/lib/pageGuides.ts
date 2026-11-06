@@ -366,7 +366,7 @@ const engineer: Record<EngineerPageKey, PageGuide> = {
     purpose: "Manage inspections, verify NCR corrections, complete passed tasks and view completed work.",
     steps: [
       "Overview: what waits for you and the defect trends.",
-      "Inspections: start the inspection, then use Take photo on each criterion to capture, annotate and add inspection evidence. Upload photo is also available when allowed by the photo policy. Submitted evidence compares original and resubmitted photos before any QA decision. Engineer inspection photos are optional for criteria saved through the task editor. Record each result and complete the inspection. Each failed item raises an NCR for the Foreman.",
+      "Inspections: Start inspection opens QC Checklist even from another tab. Use Take photo on each criterion to capture, annotate and add inspection evidence. Upload photo is also available when allowed by the photo policy. Submitted evidence compares original and resubmitted photos before any QA decision. Engineer inspection photos are optional for criteria saved through the task editor. Record each result and complete the inspection. Each failed item raises an NCR for the Foreman.",
       "NCR register: verify submitted corrections and close the NCR, or send it back with a reason.",
       "Client reports: accept a client's report (it becomes an NCR) or decline it with a reason.",
       "When a task's inspection passed and its NCRs are closed, accept the task; the pin completes when every task is accepted.",

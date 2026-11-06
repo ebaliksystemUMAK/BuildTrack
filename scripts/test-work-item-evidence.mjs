@@ -414,6 +414,44 @@ for (const role of ["foreman", "admin", "client"]) {
   assert.doesNotMatch(text(tree.props.footer), /Return FLOOR|Reopen FLOOR|Complete task|Review NCR corrections/)
 }
 
+// Starting from any other section opens the checklist only after the server accepts the action.
+testRole="engineer"
+const startingProps={...inspectionProps,onChanged:async()=>{}}
+for(const label of ["Submitted evidence","Previous results","Details & schedule","NCRs","History"]) {
+  reset();render(InspectionDetail,startingProps);chooseTab(label,startingProps)
+  footerAction("Start inspection").props.onClick();await settleAction();render(InspectionDetail,startingProps)
+  assert.equal(tabPanel("checklist").props.hidden,false,`Starting from ${label} opens QC Checklist`)
+}
+reset();render(InspectionDetail,startingProps);chooseTab("Submitted evidence",startingProps)
+resumeError="Another engineer already started this inspection"
+footerAction("Start inspection").props.onClick();await settleAction();render(InspectionDetail,startingProps)
+assert.equal(tabPanel("evidence").props.hidden,false,"A rejected start keeps the current section")
+resumeError=""
+const continuingProps={...resumeProps,onChanged:async()=>{}}
+reset();render(InspectionDetail,continuingProps);chooseTab("History",continuingProps)
+footerAction("Continue inspection").props.onClick();await settleAction();render(InspectionDetail,continuingProps)
+assert.equal(tabPanel("checklist").props.hidden,false,"Continuing a cancelled inspection also opens QC Checklist")
+
+// Task-level Start opens the exact inspection and leaves the parent on Inspection.
+data.item={...data.item,review_status:"for_review"}
+data.stage={...data.stage,view:{stage:"requested",action:"inspect"},current:inspectionProps.inspection,open:inspectionProps.inspection}
+data.history={...data.history,inspections:[inspectionProps.inspection]}
+for(const label of ["Evidence","Corrections & NCRs","Attempts & history"]) {
+  reset();render(Workspace,{itemId:"floor",onClose(){}})
+  find(node=>node.props?.role==="tab"&&text(node).startsWith(label)).props.onClick();render(Workspace,{itemId:"floor",onClose(){}})
+  footerAction("Start inspection").props.onClick();render(Workspace,{itemId:"floor",onClose(){}})
+  assert.equal(find(node=>node.props?.role==="tabpanel"&&node.props.id.endsWith("-panel-inspection")).props.hidden,false)
+  assert.equal(find(node=>node.props?.inspection?.id==="ir-2"&&node.props.project).props.inspection.id,"ir-2")
+}
+testRole="foreman"
+data.item={...data.item,review_status:"pending"}
+data.stage={...data.stage,view:{stage:"preparing",action:"add_evidence"},open:null,attempts:[]}
+reset();render(Workspace,{itemId:"floor",onClose(){}})
+assert.ok(!all(tree.props.footer).some(node=>text(node)==="Add photos"),"Request details omit the redundant Add photos footer button")
+const initialEvidence=find(node=>node.props?.item===data.item&&node.props.canWork===true)
+reset();tree=initialEvidence.type(initialEvidence.props)
+assert.ok(find(node=>node.props?.itemId==="floor"&&node.props.onAdded),"Foreman photo upload remains available inside Evidence")
+
 inspectionCriteria=[{id:"criterion-camera",text:"Tile alignment",kind:"check",severity:"major",result:"pending",requires_photo:false,hold_point:false,measured_value:null,remarks:null}]
 testRole="engineer";reset();render(InspectionDetail,activeProps)
 let criterionRow=find(node=>node.props?.item?.id==="criterion-camera")
@@ -429,6 +467,7 @@ for(const alternate of [{...activeProps,inspection:{...activeProps.inspection,st
 }
 delete globalThis.__evidenceHooks; delete globalThis.__evidenceDeps; delete globalThis.__submittedEvidenceUI
 console.log("Criterion camera evidence: exact criterion target, optional-photo criterion support, active inspector permission, requested/completed/read-only guards passed")
+console.log("Start/Continue inspection selects QC Checklist from other sections after success; rejected starts retain the section; task launch opens the exact inspection; redundant Add photos footer removed while Evidence upload remains")
 console.log("Saved single-photo evidence/remarks, request selection, item/pin isolation, snapshots, empty/error states, NCR closure visibility and retained comparison/access guards passed")
 console.log("Correction NCRs open the exact inspection; no pre-start NCR form; one reinspection remarks box saves on confirmed sign-off with server-error/role guards, no separate closure writes; standalone NCR/manual checklist flow retained")
 console.log("NCR footer starts the exact correction once, resumes/reviews existing inspections and guards stale/denied/closed navigation; focused cancellation requires a reason, Keep is safe, failures retain input, duplicate cancellation is blocked")
