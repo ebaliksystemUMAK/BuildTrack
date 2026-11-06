@@ -416,4 +416,30 @@ for(const override of [{canEdit:false},{role:"foreman"},{role:"client"},{role:"a
   showPinHeader({...moveProps,...override});assert.ok(!all(tree).some(buttonText("Move pin")),"Only editing Engineers have the placement action")
 }
 console.log("Engineer Move pin action: visible panel control, exact pin callback, lock and read-only/role guards passed")
+Object.assign(deps, {
+  usePinPanelData: () => ({ ...dataFor("engineer"), checklist: { items: [] } }),
+  taskProgress: () => ({ approved: 0, percent: 0 }),
+})
+const PinDetailsModal = (await compile("../src/components/editor/PinDetailsModal.tsx")).default
+const modalMoves = []
+let modalCloses = 0
+const fullPin = { ...moveProps.selectedPin, assigned_to: null, planned_start: null, due_date: null }
+const fullInspector = { ...moveProps, team: [], onMovePin: pin => modalMoves.push(pin.id) }
+const showFullPin = (inspector = fullInspector, pin = fullPin) => {
+  reset()
+  render(PinDetailsModal, { pin, inspector, onClose: () => { modalCloses++ }, onDelete() {} })
+  // The footer is a Modal prop, rather than a child in the rendered body.
+  tree = tree.props.footer
+}
+showFullPin()
+find(buttonText("Move pin")).props.onClick()
+assert.deepEqual(modalMoves, [fullPin.id], "Full pin details sends the same pin to the existing placement handler")
+assert.equal(modalCloses, 1, "Full details closes so the Engineer can choose the new position")
+showFullPin(fullInspector, { ...fullPin, locked: true })
+assert.equal(find(buttonText("Move pin")).props.disabled, true)
+for (const override of [{ canEdit: false }, { role: "foreman" }, { role: "client" }, { role: "admin" }, { onMovePin: undefined }]) {
+  showFullPin({ ...fullInspector, ...override })
+  assert.ok(!all(tree).some(buttonText("Move pin")))
+}
+console.log("Full pin details: Engineer move action, modal handoff, lock and role guards passed")
 reset(); delete globalThis.__pinHooks; delete globalThis.__pinDeps; delete globalThis.window

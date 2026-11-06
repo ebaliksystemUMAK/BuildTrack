@@ -19,7 +19,7 @@ export default function ForemanQualityControl({ onNavigate }: ForemanPageProps) 
   const mine = work.rows.filter((row) => row.pin.assigned_to === profile?.id)
   const corrections = mine.filter((row) => row.view.stage === "correction" || row.view.action === "open_ncr").length
   const groups = [
-    { key: "submit", short: "Submit for QA Review", title: "Open an item and submit for QA Review", hint: "Add the item's photos and submit directly. No Ready tick is needed.", rows: mine.filter((row) => row.view.action === "submit") },
+    { key: "submit", short: "To do", title: "Assigned tasks", hint: "Open an assigned task, add its photos and submit it for QA review. No Ready tick is needed.", rows: mine.filter((row) => row.view.action === "submit") },
     { key: "engineer", short: "Waiting", title: "Waiting for the Engineer", hint: "Requested, being inspected, or passed and waiting for the Engineer's decision.", rows: mine.filter((row) => row.view.owner === "Engineer" && row.view.stage !== "correction") },
     { key: "preparing", short: "Add evidence", title: "Photos needed", hint: "Open the item to add its photos, then submit for QA Review.", rows: mine.filter((row) => row.view.action === "add_evidence") },
     { key: "completed", short: "Completed", title: "Completed tasks", rows: mine.filter((row) => row.view.stage === "completed") },
@@ -27,7 +27,7 @@ export default function ForemanQualityControl({ onNavigate }: ForemanPageProps) 
   return (
     <div className="foreman-page">
       <ProjectContextBar listPath="/foreman/projects" listLabel="My projects" />
-      <PageHead eyebrow="Quality assurance" title="QA requests"
+      <PageHead eyebrow="Quality assurance" title="Tasks"
         description="Open each item, add photos and submit for QA Review. The Engineer records the inspection, closes linked NCRs and manually completes the task. Earlier requests and corrections stay on record."
         actions={corrections ? <button type="button" className={buttonSecondary} onClick={() => onNavigate("issues")}>{corrections} correction{corrections === 1 ? "" : "s"} to do</button> : undefined} />
       {projectId ? <>

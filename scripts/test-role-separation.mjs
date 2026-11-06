@@ -25,7 +25,7 @@ const mutations=[]
 globalThis.__roleDB={from(table){let operation="read",payload;const query={select(){return query},in(){return query},eq(){return query},order(){return query},insert(value){operation="insert";payload=value;return query},update(value){operation="update";payload=value;return query},delete(){operation="delete";return query},then(resolve,reject){if(operation!=="read")mutations.push({table,operation,payload});const data=operation!=="read"?[{id:"p1"}]:table==="project_members"?members:table==="profiles"?people:table==="blueprints"?[{blueprint_type:"architectural",discipline:"architectural"}]:[];return Promise.resolve({data,error:null}).then(resolve,reject)}};return query}}
 const supabase=url("export const supabase=globalThis.__roleDB;")
 const projects=url("export const phaseLabels={planning:'Planning'},statusLabels={active:'Active'},disciplineLabels={}; export const useProjects=()=>({projects:[globalThis.__roleData.project],loading:false,error:null,reload:async()=>{}});export const useProject=()=>({project:null});export const getSelectedProjectId=()=>null;export const openProject=()=>{};export const rememberProject=()=>{};")
-const managers=url("export const useProjectManagers=()=>({managers:[],reload:async()=>{}});export const setProjectArchived=async()=>{};")
+const managers=url("export const useProjectManagers=()=>({managers:[],reload:async()=>{}});export const setProjectArchived=async()=>{};export const assignProjectManager=async()=>{};")
 const shell=url("export function AdminButton(){};export function PageIntro(){};")
 async function compile(file,replacements){let source=ts.transpileModule(readFileSync(new URL(file,import.meta.url),"utf8"),{compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;for(const [name,replacement] of Object.entries({react:hooksUrl,"react/jsx-runtime":import.meta.resolve("react/jsx-runtime"),...replacements}))source=source.replaceAll(`from "${name}"`,`from ${JSON.stringify(replacement)}`);return (await import(url(source))).default}
 const shared={"../../lib/auth":auth,"../../lib/supabase":supabase,"../../components/Modal":dummy,"../../components/ui/PageParts":parts,"../../lib/confirm":url("export const useConfirm=()=>async()=>true;"),"../../lib/toast":url("const toast={success(){},error(){}};export const useToast=()=>toast;")}
@@ -54,8 +54,10 @@ for(const role of ["admin","super_admin"]){
   find(tree,n=>text(n)==="New project"&&typeof n.props?.onClick==="function").props.onClick();tree=render(Management,key,props)
   const code=find(tree,n=>n.type==="input"&&n.props.placeholder==="VCB-024");code.props.onChange({target:{value:"ROLE-NEW"}});tree=render(Management,key,props)
   const nameLabel=find(tree,n=>n.type==="label"&&text(n).startsWith("Project name"));find(nameLabel,n=>n.type==="input").props.onChange({target:{value:"New real project"}});tree=render(Management,key,props)
-  const leadLabel=find(tree,n=>n.type==="label"&&text(n).startsWith("Engineer in charge"));assert.equal(find(leadLabel,n=>n.type==="select").props.disabled,role==="admin")
-  find(tree,n=>n.type==="form").props.onSubmit({preventDefault(){}});await settle();const saved=mutations.at(-1);assert.equal(saved.table,"projects");assert.equal(Object.hasOwn(saved.payload,"lead_engineer_id"),role==="super_admin");assert.equal(Object.hasOwn(saved.payload,"lead_foreman_id"),role==="super_admin")
+  assert.ok(!find(tree,n=>n.type==="label"&&text(n).startsWith("Engineer in charge")),"the Project Manager assigns the engineer after creation")
+  assert.ok(!find(tree,n=>n.type==="label"&&text(n).startsWith("Foreman in charge")),"the Project Manager assigns the foreman after creation")
+  assert.ok(find(find(tree,n=>n.type==="label"&&text(n).startsWith("Project Manager")),n=>n.type==="select"),"Admin can select a Project Manager when creating a project")
+  find(tree,n=>n.type==="form").props.onSubmit({preventDefault(){}});await settle();const saved=mutations.at(-1);assert.equal(saved.table,"projects");assert.equal(Object.hasOwn(saved.payload,"lead_engineer_id"),false);assert.equal(Object.hasOwn(saved.payload,"lead_foreman_id"),false)
 }
 for(const owner of hooks.values())owner.effects.forEach(effect=>effect?.cleanup?.())
 for(const key of ["__roleHooks","__roleAuth","__roleData","__roleDB"])delete globalThis[key]

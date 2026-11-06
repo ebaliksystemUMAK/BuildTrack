@@ -7,7 +7,7 @@ import type { ForemanPageKey, ForemanPageProps } from "./types"
 const steps: { key: ForemanPageKey; icon: AdminIconName; title: string; text: string }[] = [
   { key: "daily-report", icon: "file", title: "Daily progress report", text: "Weather, crew head count, work done and problems met today." },
   { key: "photo-documentation", icon: "camera", title: "Photo documentation", text: "Daily report, task and work progress photos for this project." },
-  { key: "quality-control", icon: "clipboard", title: "QA requests", text: "Each task with its next action, inspection and completion status." },
+  { key: "quality-control", icon: "clipboard", title: "Tasks", text: "Each task with its next action, inspection and completion status." },
   { key: "issues", icon: "edit", title: "Corrections", text: "Fix returned tasks and their NCRs with one correction form." },
 ]
 

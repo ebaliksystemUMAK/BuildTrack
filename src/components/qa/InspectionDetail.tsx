@@ -441,8 +441,9 @@ export default function InspectionDetail({
 
         {isInspector ? (
           <div>
-            <label className="mb-1 block text-xs font-extrabold uppercase tracking-wider text-fg-muted" htmlFor="qa-summary">{reinspection ? "Remarks (optional)" : "Inspector's summary (optional)"}</label>
-            <textarea id="qa-summary" rows={3} maxLength={1000} value={summary} onChange={(event) => setSummary(event.target.value)} className={inputClass} placeholder={reinspection ? "What was checked, what passed, or what still needs correction" : "Overall finding, instructions to the contractor, conditions for proceeding"} />
+            <label className="mb-1 block text-xs font-extrabold uppercase tracking-wider text-fg-muted" htmlFor="qa-summary">{reinspection ? "Remarks (optional)" : "What was done or checked (optional)"}</label>
+            <textarea id="qa-summary" rows={3} required={false} maxLength={1000} value={summary} onChange={(event) => setSummary(event.target.value)} className={inputClass} aria-describedby="qa-summary-help" placeholder={reinspection ? "Optional: what was checked, what passed, or what still needs correction" : "Optional: describe what was done or checked"} />
+            <p id="qa-summary-help" className="mt-1 text-xs text-fg-muted">You can leave this blank when completing the inspection.</p>
             {reinspection ? <p className="mt-1 text-xs text-fg-muted">At sign-off, linked correction NCRs close automatically when their own finding passes. Failed or N/A findings stay open. These remarks are saved with the inspection and any automatic NCR closure.</p> : null}
           </div>
         ) : inspection.summary ? (

@@ -89,8 +89,8 @@ function ScheduleForm({
       setError(problem)
       return
     }
-    if (reason.trim().length > 500 || (!approval && reason.trim().length < 5)) {
-      setError(approval ? "Keep the optional approval reason within 500 characters." : "Enter a reason of 5 to 500 characters.")
+    if (reason.trim().length > 500 || (requesting && reason.trim().length < 5)) {
+      setError(requesting ? "Enter a reason of 5 to 500 characters." : "Keep the optional schedule reason within 500 characters.")
       return
     }
     setBusy(true)
@@ -232,10 +232,10 @@ function ScheduleForm({
           </div>
         </fieldset>
         <label className="block text-sm font-semibold">
-          {approval ? "Approval reason (optional)" : requesting ? "Reason for this request" : "Reason for this schedule"}
+          {approval ? "Approval reason (optional)" : requesting ? "Reason for this request" : "Reason for this schedule (optional)"}
           <textarea
-            required={!approval}
-            minLength={approval ? undefined : 5}
+            required={requesting}
+            minLength={requesting ? 5 : undefined}
             maxLength={500}
             rows={3}
             className={`${inputClass} mt-1`}
@@ -261,7 +261,7 @@ function ScheduleForm({
             Cancel
           </button>
           <button
-            disabled={busy || (!approval && reason.trim().length < 5)}
+            disabled={busy || (requesting && reason.trim().length < 5)}
             type="submit"
             className={buttonPrimary}
           >
@@ -309,6 +309,7 @@ export default function ProjectTimeline({
   const [collapsed, setCollapsed] = useState<string[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [editing, setEditing] = useState<TimelineItem | null>(null)
+  const [deleting, setDeleting] = useState<TimelineItem | null>(null)
   const [publish, setPublish] = useState(false)
   const [review, setReview] = useState<{
     request: TimelineRequest
@@ -1032,7 +1033,7 @@ export default function ProjectTimeline({
           : "Publish a schedule to save its first baseline."}
       </footer>
 
-      {opened && !editing ? (
+      {opened && !editing && !deleting ? (
         <Modal
           title={opened.title}
           description={`${opened.phase}${
@@ -1067,6 +1068,11 @@ export default function ProjectTimeline({
                     : "Request date change"}
                 </button>
               ) : null}
+              {data.can_edit && opened.kind === "milestone" ? <button
+                type="button"
+                className="rounded-lg border border-danger-fg/30 px-4 py-2 text-sm font-semibold text-danger-fg hover:bg-danger-soft"
+                onClick={() => { setDeleting(opened); setActionError("") }}
+              >Delete milestone</button> : null}
             </>
           }
         >
@@ -1166,6 +1172,31 @@ export default function ProjectTimeline({
           ) : null}
         </Modal>
       ) : null}
+      {deleting && data.can_edit ? <Modal title="Delete milestone?" description={deleting.title} onClose={() => { if (!busy) setDeleting(null) }}>
+        <form className="space-y-4" onSubmit={event => {
+          event.preventDefault()
+          if (busy || deleting.kind !== "milestone" || items.some(item => item.predecessors.includes(deleting.key))) return
+          void (async () => {
+            const success = await runAction("delete_timeline_milestone", { p_project: projectId, p_key: deleting.key, p_expected: deleting.revision })
+            if (success) {
+              setDeleting(null)
+              setSelected(null)
+              toast.success("Milestone deleted", "Publish the schedule to share this change with Clients.")
+            }
+          })()
+        }}>
+          <p className="text-sm text-fg-muted">This removes the milestone from the working schedule. Previous published versions and the audit history are kept. Publish again to update the Client schedule.</p>
+          {items.some(item => item.predecessors.includes(deleting.key)) ? <div role="alert" className="rounded-lg bg-danger-soft p-3 text-sm text-danger-fg">
+            Remove this milestone from the predecessors of these items before deleting it:
+            <ul className="mt-2 list-disc pl-5">{items.filter(item => item.predecessors.includes(deleting.key)).map(item => <li key={item.key}>{item.title}</li>)}</ul>
+          </div> : null}
+          {actionError ? <p role="alert" className="rounded-lg bg-danger-soft p-3 text-sm text-danger-fg">{actionError}</p> : null}
+          <div className="flex justify-end gap-2">
+            <button type="button" disabled={busy} className={buttonSecondary} onClick={() => setDeleting(null)}>Cancel</button>
+            <button type="submit" disabled={busy || items.some(item => item.predecessors.includes(deleting.key))} className="rounded-lg bg-danger-fg px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{busy ? "Deleting..." : "Delete milestone"}</button>
+          </div>
+        </form>
+      </Modal> : null}
       {editing ? (
         <ScheduleForm
           key={editing.key}

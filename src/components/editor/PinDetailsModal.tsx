@@ -38,6 +38,13 @@ export default function PinDetailsModal({ pin, inspector, section = "details", o
       footer={
         <>
           {inspector.canEdit ? <button type="button" onClick={onDelete} className="mr-auto rounded-lg border border-line px-4 py-2 text-sm font-semibold text-danger-fg hover:bg-danger-soft">Delete pin</button> : null}
+          {inspector.canEdit && inspector.role === "engineer" && inspector.onMovePin ? <button
+            type="button"
+            disabled={pin.locked}
+            title={pin.locked ? "Unlock the pin before moving it" : "Choose a new position on the plan"}
+            onClick={() => { inspector.onMovePin?.(pin); onClose() }}
+            className="rounded-lg border border-line px-4 py-2 text-sm font-semibold hover:bg-surface-muted disabled:opacity-50"
+          >Move pin</button> : null}
           <button type="button" onClick={onClose} className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand-hover">Done</button>
         </>
       }

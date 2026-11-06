@@ -30,6 +30,7 @@ const entities: Record<string, string> = {
   biometric_daily_totals: "attendance total", site_issue_reports: "site issue", site_issue_photos: "site issue photo",
 }
 export const auditActionLabel = (action: string) => {
+  if (action === "project_timeline.milestone_deleted") return "Deleted Gantt milestone"
   if (action === "photos.account_rule") return "Changed account photo rule"
   const [entity, operation] = action.split(".")
   const verb: Record<string, string> = { insert: "Created", update: "Updated", delete: "Deleted" }

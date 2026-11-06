@@ -254,6 +254,19 @@ export default async function ({
         predecessors: [key2],
       }),
     )
+    await db.query(
+      "select public.save_timeline_item($1,$2,$3::jsonb,1,'')",
+      [
+        project,
+        milestone,
+        JSON.stringify(
+          plan("2026-12-06", "2026-12-06", {
+            title: "Foundation handover",
+            predecessors: [key2],
+          }),
+        ),
+      ],
+    )
     assert.equal(
       (
         await db.query(

@@ -67,6 +67,26 @@ export default async function ({ db, ids, as, asOwner, addUser, test, expectFail
     assert.equal((await db.query("select text from public.qa_inspection_items where inspection_id=$1", [first])).rows[0].text, "Synthetic revised floor check")
   })
 
+  await test("Direct QA: Engineer moves an unlocked pin during inspection without changing submitted evidence or review state", async () => {
+    await as("directEng")
+    const before = (await db.query("select to_jsonb(s) snapshot from public.pin_qa_submissions s where inspection_id=$1", [first])).rows[0].snapshot
+    const itemBefore = (await db.query("select to_jsonb(c) item from public.pin_checklist_items c where id=$1", [floor])).rows[0].item
+    const moved = (await db.query("update public.pins set x=32,y=34 where id=$1 returning x,y,status,assigned_to", [pin])).rows[0]
+    assert.equal(Number(moved.x), 32)
+    assert.equal(Number(moved.y), 34)
+    assert.equal(moved.status, "for_review")
+    assert.equal(moved.assigned_to, ids.directFore)
+    assert.deepEqual((await db.query("select to_jsonb(c) item from public.pin_checklist_items c where id=$1", [floor])).rows[0].item, itemBefore)
+    assert.deepEqual((await db.query("select to_jsonb(s) snapshot from public.pin_qa_submissions s where inspection_id=$1", [first])).rows[0].snapshot, before)
+    assert.equal((await db.query("select kind from public.pin_events where pin_id=$1 and kind='moved'", [pin])).rows.length, 1)
+    await expectFail("update public.pins set x=35,title='Changed work' where id=$1", [pin], /Awaiting Engineer inspection/)
+    await db.query("update public.pins set locked=true where id=$1", [pin])
+    await expectFail("update public.pins set x=35 where id=$1", [pin], /locked/)
+    await db.query("update public.pins set locked=false where id=$1", [pin])
+    await as("directFore")
+    assert.equal((await db.query("update public.pins set x=35 where id=$1 returning id", [pin])).rows.length, 0, "A Foreman cannot relocate the pin through row access")
+  })
+
   await test("Direct QA: another item can proceed during review; submitted criteria cannot change", async () => {
     await as("directFore")
     await expectFail("select public.submit_checklist_qa($1,$2::uuid[])", [pin, [wall]], /eligible photo/)
@@ -88,6 +108,10 @@ export default async function ({ db, ids, as, asOwner, addUser, test, expectFail
     await as("directEng")
     await db.query("select public.review_checklist_item($1,true)", [floor])
     assert.notEqual((await db.query("select status from public.pins where id=$1", [pin])).rows[0].status, "verified")
+    const verifiedBefore = (await db.query("select to_jsonb(c) item from public.pin_checklist_items c where id=$1", [floor])).rows[0].item
+    assert.equal(verifiedBefore.review_status, "verified")
+    await db.query("update public.pins set x=36,y=38 where id=$1", [pin])
+    assert.deepEqual((await db.query("select to_jsonb(c) item from public.pin_checklist_items c where id=$1", [floor])).rows[0].item, verifiedBefore, "Relocating the marker preserves the Engineer's verified task approval")
   })
 
   await test("Direct QA: another item's own criteria are inspected; failed work keeps separate correction evidence", async () => {

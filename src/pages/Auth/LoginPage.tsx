@@ -1,11 +1,11 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import type { Page } from "../../App"
 import Brand from "../../components/Brand"
 import FormField from "../../components/FormField"
 import Header from "../../components/Header"
 import { PrivacyNoticeModal } from "../../components/PrivacyNotice"
 import { FORGOT_EMAIL_KEY } from "./ForgotPasswordPage"
-import { setOAuthIntent, takeLoginNotice, takeLoginSuccessNotice } from "../../lib/oauthIntent"
+import { clearOAuthIntent, setOAuthIntent, takeLoginNotice, takeLoginSuccessNotice } from "../../lib/oauthIntent"
 import { supabase } from "../../lib/supabase"
 import { useToast } from "../../lib/toast"
 
@@ -17,6 +17,7 @@ export default function LoginPage({ navigate }: LoginPageProps) {
   const [password, setPassword] = useState("")
   const [error, setError] = useState(() => takeLoginNotice())
   const [busy, setBusy] = useState(false)
+  const pending = useRef(false)
   const [privacy, setPrivacy] = useState(false)
 
   useEffect(() => {
@@ -26,13 +27,16 @@ export default function LoginPage({ navigate }: LoginPageProps) {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (pending.current) return
+    pending.current = true
     setError("")
     setBusy(true)
     const { error: signInError } = await supabase.auth
       .signInWithPassword({ email: email.trim().toLowerCase(), password })
       .catch(() => ({ error: new Error("network fetch failed") }))
-    setBusy(false)
     if (signInError) {
+      pending.current = false
+      setBusy(false)
       const text = signInError.message.toLowerCase()
       setError(
         text.includes("invalid login")
@@ -54,20 +58,30 @@ export default function LoginPage({ navigate }: LoginPageProps) {
   }
 
   const handleGoogle = async () => {
+    if (pending.current) return
+    pending.current = true
+    setBusy(true)
     setError("")
     // Logging in is not registering: a Google account that never registered is turned away after the redirect (see RouteGuard).
     setOAuthIntent("login")
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/login`,
-        // BuildTrack sign-out does not end the browser's Google session.
-        queryParams: { prompt: "select_account" },
-      },
-    })
-    if (oauthError) {
-      setError(oauthError.message)
-      toast.error("Google sign-in failed", oauthError.message)
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/login`,
+          // BuildTrack sign-out does not end the browser's Google session.
+          queryParams: { prompt: "select_account" },
+        },
+      })
+      if (oauthError) throw new Error(oauthError.message)
+      // Keep both sign-in methods locked until Google redirects the page.
+    } catch (error) {
+      clearOAuthIntent()
+      const message = error instanceof Error ? error.message : "Could not open Google sign-in. Please try again."
+      setError(message)
+      toast.error("Google sign-in failed", message)
+      pending.current = false
+      setBusy(false)
     }
   }
 
@@ -99,6 +113,7 @@ export default function LoginPage({ navigate }: LoginPageProps) {
             autoComplete="email"
             placeholder="e.g. santos.eduardo@valencia.com"
             onChange={setEmail}
+            disabled={busy}
           />
           <FormField
             label="Password"
@@ -108,10 +123,11 @@ export default function LoginPage({ navigate }: LoginPageProps) {
             autoComplete="current-password"
             placeholder="Enter your password"
             onChange={setPassword}
+            disabled={busy}
           />
           <div className="form-options">
             <span />
-            <button className="text-button" type="button" onClick={handleForgot}>
+            <button className="text-button" type="button" disabled={busy} onClick={handleForgot}>
               Forgot password?
             </button>
           </div>
@@ -125,7 +141,7 @@ export default function LoginPage({ navigate }: LoginPageProps) {
           ) : null}
           <div className="register-callout">
             <span>New to BuildTrack?</span>
-            <button className="button button--gold button--wide" type="button" onClick={() => navigate("register")}>
+            <button className="button button--gold button--wide" type="button" disabled={busy} onClick={() => navigate("register")}>
               Create an account
             </button>
           </div>
@@ -135,6 +151,7 @@ export default function LoginPage({ navigate }: LoginPageProps) {
           <button
             className="button button--outline-light button--wide"
             type="button"
+            disabled={busy}
             onClick={() => void handleGoogle()}
           >
             Sign in with Google

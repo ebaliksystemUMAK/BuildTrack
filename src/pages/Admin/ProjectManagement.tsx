@@ -8,13 +8,12 @@ import ProjectManagersDialog from "./ProjectManagersDialog"
 import ProjectRecycleBin, { RemoveProjectModal } from "./ProjectRecycleBin"
 import { useRecycleBin } from "../../lib/recycleBin"
 import { inScope, scopeCounts, scopeLabels, type ProjectScope } from "../../lib/recycleBinModel"
-import { setProjectArchived, useProjectManagers } from "../../lib/projectManagers"
+import { assignProjectManager, setProjectArchived, useProjectManagers } from "../../lib/projectManagers"
 import { slotsOf } from "../../lib/projectManagerModel"
 import { buttonPrimary, buttonSecondary } from "../../components/ui/PageParts"
 import { useAuth, type Profile } from "../../lib/auth"
 import {
   disciplineLabels,
-  phaseLabels,
   statusLabels,
   type Discipline,
   openProject,
@@ -43,8 +42,7 @@ type Form = {
   start_date: string
   end_date: string
   manager_name: string
-  lead_engineer_id: string
-  lead_foreman_id: string
+  primary_manager_id: string
   disciplines: Discipline[]
   site_lat: string
   site_lng: string
@@ -63,8 +61,7 @@ const emptyForm: Form = {
   start_date: "",
   end_date: "",
   manager_name: "",
-  lead_engineer_id: "",
-  lead_foreman_id: "",
+  primary_manager_id: "",
   disciplines: [],
   site_lat: "",
   site_lng: "",
@@ -115,7 +112,9 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
   const [members, setMembers] = useState<ProjectMember[]>([])
   const [people, setPeople] = useState<Profile[]>([])
   const [peopleError, setPeopleError] = useState("")
+  const [peopleLoading, setPeopleLoading] = useState(true)
   const [form, setForm] = useState<Form | null>(null)
+  const [createdProjectId, setCreatedProjectId] = useState<string | null>(null)
   const [errors, setErrors] = useState<FieldErrors>({})
   const [formError, setFormError] = useState("")
   const [shareId, setShareId] = useState<string | null>(null)
@@ -137,19 +136,26 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
   const [sort, setSort] = useState<"newest" | "name" | "status">("newest")
 
   const loadPeople = useCallback(async () => {
-    const [memberResult, profileResult, managerResult] = await Promise.all([
-      supabase.from("project_members").select("project_id, user_id, member_role"),
-      supabase.from("profiles").select("*").in("role", ["engineer", "foreman", "client"]).eq("status", "active"),
-      supabase.from("profiles").select("id, full_name, email").eq("role", "project_manager").eq("status", "active").order("full_name"),
-    ])
-    if (memberResult.error || profileResult.error || managerResult.error) {
+    setPeopleLoading(true)
+    try {
+      const [memberResult, profileResult, managerResult] = await Promise.all([
+        supabase.from("project_members").select("project_id, user_id, member_role"),
+        supabase.from("profiles").select("*").in("role", ["engineer", "foreman", "client"]).eq("status", "active"),
+        supabase.from("profiles").select("id, full_name, email").eq("role", "project_manager").eq("status", "active").order("full_name"),
+      ])
+      if (memberResult.error || profileResult.error || managerResult.error) {
+        setPeopleError("Could not load the team list. Check your connection and retry.")
+        return
+      }
+      setPeopleError("")
+      setMembers((memberResult.data as ProjectMember[] | null) ?? [])
+      setPeople((profileResult.data as Profile[] | null) ?? [])
+      setManagerPeople((managerResult.data as Array<{ id: string; full_name: string | null; email: string }> | null) ?? [])
+    } catch {
       setPeopleError("Could not load the team list. Check your connection and retry.")
-      return
+    } finally {
+      setPeopleLoading(false)
     }
-    setPeopleError("")
-    setMembers((memberResult.data as ProjectMember[] | null) ?? [])
-    setPeople((profileResult.data as Profile[] | null) ?? [])
-    setManagerPeople((managerResult.data as Array<{ id: string; full_name: string | null; email: string }> | null) ?? [])
   }, [])
 
   useEffect(() => {
@@ -179,6 +185,7 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
   const openForm = (project?: Project) => {
     setErrors({})
     setFormError("")
+    setCreatedProjectId(null)
     setForm(
       project
         ? {
@@ -193,8 +200,7 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
             start_date: project.start_date ?? "",
             end_date: project.end_date ?? "",
             manager_name: project.manager_name ?? "",
-            lead_engineer_id: project.lead_engineer_id ?? "",
-            lead_foreman_id: project.lead_foreman_id ?? "",
+            primary_manager_id: "",
             disciplines: project.disciplines ?? [],
             site_lat: project.site_lat === null || project.site_lat === undefined ? "" : String(project.site_lat),
             site_lng: project.site_lng === null || project.site_lng === undefined ? "" : String(project.site_lng),
@@ -206,10 +212,14 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
 
   const saveProject = async (event: FormEvent) => {
     event.preventDefault()
-    if (!form) return
+    if (!form || busy) return
     const found = validate(form)
     setErrors(found)
     if (Object.keys(found).length) return
+    if (!form.id && form.primary_manager_id && !managerPeople.some(person => person.id === form.primary_manager_id)) {
+      setErrors({ primary_manager_id: "Choose an active Project Manager or assign one later." })
+      return
+    }
     // Closing, pausing or cancelling a project changes what everyone assigned to it sees: ask first.
     const before = form.id ? projects.find((project) => project.id === form.id)?.status : undefined
     if (before && before !== form.status && (form.status === "completed" || form.status === "cancelled" || form.status === "on_hold")) {
@@ -218,6 +228,7 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
     }
     setBusy(true)
     setFormError("")
+    const selectedManager = managerPeople.find(person => person.id === form.primary_manager_id)
     const row = {
       code: form.code.trim().toUpperCase(),
       name: form.name.trim(),
@@ -228,22 +239,43 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
       status: form.status,
       start_date: form.start_date || null,
       end_date: form.end_date || null,
-      manager_name: form.manager_name.trim() || null,
-      ...(canEditTeam ? { lead_engineer_id: form.lead_engineer_id || null, lead_foreman_id: form.lead_foreman_id || null } : {}),
+      manager_name: !form.id && form.primary_manager_id
+        ? (selectedManager?.full_name || selectedManager?.email || "").slice(0, 120) || null
+        : form.manager_name.trim() || null,
       disciplines: form.disciplines,
       site_lat: form.site_lat.trim() ? Number(form.site_lat) : null,
       site_lng: form.site_lng.trim() ? Number(form.site_lng) : null,
       site_radius_m: Number(form.site_radius_m),
     }
-    const { data, error: saveError } = form.id
-      ? await supabase.from("projects").update(row).eq("id", form.id).select("id")
-      : await supabase.from("projects").insert(row).select("id")
-    setBusy(false)
-    if (saveError) return setFormError(dbMessage(saveError))
-    if (!data?.length) return setFormError("Nothing was saved. You may not have permission to manage projects.")
-    setMessage({ text: form.id ? "Project updated." : "Project created. Assign its primary Project Manager so they can build the project team.", ok: true })
-    setForm(null)
-    await Promise.all([reload(), loadPeople()]) // the engineer / foreman in charge are added to the team automatically
+    try {
+      // Keep a confirmed new project ID when assignment fails, so retry updates it rather than creating a duplicate.
+      const projectId = form.id || createdProjectId
+      const { data, error: saveError } = projectId
+        ? await supabase.from("projects").update(row).eq("id", projectId).select("id")
+        : await supabase.from("projects").insert(row).select("id")
+      if (saveError) return setFormError(dbMessage(saveError))
+      if (!data?.length) return setFormError("Nothing was saved. You may not have permission to manage projects.")
+      if (!form.id) {
+        setCreatedProjectId(data[0].id)
+        if (form.primary_manager_id) {
+          try {
+            await assignProjectManager(data[0].id, form.primary_manager_id, "primary")
+          } catch (error) {
+            setFormError(`Project created, but its Project Manager could not be assigned. ${(error as Error).message} Retry saving to finish the assignment, or assign the manager later from Managers.`)
+            await Promise.all([reload(), reloadManagers()])
+            return
+          }
+        }
+      }
+      setMessage({ text: form.id ? "Project updated." : form.primary_manager_id ? "Project created and primary Project Manager assigned." : "Project created. Assign its primary Project Manager so they can build the project team.", ok: true })
+      setForm(null)
+      setCreatedProjectId(null)
+      await Promise.all([reload(), loadPeople(), reloadManagers()])
+    } catch {
+      setFormError("Could not save. Check your connection and try again.")
+    } finally {
+      setBusy(false)
+    }
   }
 
   // Archiving keeps every record; the project's Project Managers can still read it but not change it. Restoring undoes it.
@@ -372,7 +404,7 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
       {removing ? <RemoveProjectModal project={removing} onClose={() => setRemoving(null)} onDone={() => { setRemoving(null); void bin.reload(); void reload(); void loadPeople() }} /> : null}
 
       {form ? (
-        <Modal title={form.id ? `Edit ${form.code || "project"}` : "New project"} size="lg" onClose={() => setForm(null)}>
+        <Modal title={form.id ? `Edit ${form.code || "project"}` : "New project"} size="lg" onClose={() => { if (!busy) setForm(null) }}>
           <form className="space-y-4" noValidate onSubmit={(event) => void saveProject(event)}>
             {formError ? <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-fg">{formError}</p> : null}
             <fieldset className="space-y-3 rounded-xl border border-line p-3">
@@ -411,22 +443,6 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
               <legend className={legend}>Schedule</legend>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm font-semibold">
-                  Phase
-                  <select className={field} value={form.phase} onChange={(e) => setForm({ ...form, phase: e.target.value as ProjectPhase })}>
-                    {(Object.keys(phaseLabels) as ProjectPhase[]).map((phase) => (
-                      <option key={phase} value={phase}>{phaseLabels[phase]}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-sm font-semibold">
-                  Status
-                  <select className={field} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as ProjectStatus })}>
-                    {(Object.keys(statusLabels) as ProjectStatus[]).map((status) => (
-                      <option key={status} value={status}>{statusLabels[status]}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-sm font-semibold">
                   Start date
                   <input className={field} type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
                 </label>
@@ -440,32 +456,22 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
 
             <fieldset className="space-y-3 rounded-xl border border-line p-3">
               <legend className={legend}>Who takes care of this project</legend>
-              <label className="block text-sm font-semibold">
-                Person in charge (any name)
-                <input className={field} maxLength={120} placeholder="e.g. Mr. Roxan Valencia (no login needed)" value={form.manager_name} onChange={(e) => setForm({ ...form, manager_name: e.target.value })} />
-                {errorText("manager_name")}
-              </label>
-              <div className="grid gap-3 sm:grid-cols-2">
+              {form.id ? <div>
+                <p className="text-sm font-semibold">Project Manager</p>
+                <p className="mt-1 text-sm text-fg-muted">{slotsOf(managers, form.id).primary?.full_name || "Not assigned"}</p>
+                <button type="button" disabled={busy} className="mt-2 text-sm font-bold text-brand-text hover:underline" onClick={() => setManagersId(form.id!)}>Manage Project Managers</button>
+              </div> : <>
                 <label className="block text-sm font-semibold">
-                  Engineer in charge
-                  <select className={field} disabled={!canEditTeam} value={form.lead_engineer_id} onChange={(e) => setForm({ ...form, lead_engineer_id: e.target.value })}>
-                    <option value="">Not assigned</option>
-                    {people.filter((person) => person.role === "engineer").map((person) => (
-                      <option key={person.id} value={person.id}>{displayName(person)}</option>
-                    ))}
+                  Project Manager
+                  <select className={field} disabled={busy || peopleLoading || Boolean(peopleError)} value={form.primary_manager_id} aria-invalid={Boolean(errors.primary_manager_id)} onChange={(e) => setForm({ ...form, primary_manager_id: e.target.value })}>
+                    <option value="">{peopleLoading ? "Loading Project Managers..." : "Assign later"}</option>
+                    {managerPeople.map(person => <option key={person.id} value={person.id}>{person.full_name ? `${person.full_name} (${person.email})` : person.email}</option>)}
                   </select>
+                  {errorText("primary_manager_id")}
                 </label>
-                <label className="block text-sm font-semibold">
-                  Foreman in charge
-                  <select className={field} disabled={!canEditTeam} value={form.lead_foreman_id} onChange={(e) => setForm({ ...form, lead_foreman_id: e.target.value })}>
-                    <option value="">Not assigned</option>
-                    {people.filter((person) => person.role === "foreman").map((person) => (
-                      <option key={person.id} value={person.id}>{displayName(person)}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <p className="text-xs text-fg-muted">{canEditTeam ? "They join the project team automatically. Choose their blueprint types in Team & access." : "The project's Project Manager assigns the Engineer and Foreman in charge."}</p>
+                <p className="text-xs text-fg-muted">The selected account becomes this project's primary Project Manager when you create the project.</p>
+                {peopleError ? <p role="alert" className="text-xs text-danger-fg">Could not load Project Managers. <button type="button" disabled={busy || peopleLoading} className="font-bold underline" onClick={() => void loadPeople()}>Retry</button></p> : !peopleLoading && !managerPeople.length ? <p className="text-xs text-fg-muted">No active Project Managers yet. Give someone the Project Manager role in User Management, or assign one later.</p> : null}
+              </>}
             </fieldset>
 
             <fieldset className="rounded-xl border border-line p-3">
@@ -512,8 +518,8 @@ export default function ProjectManagement({ onNavigate }: AdminPageProps) {
                 </button>
               ) : <span className="hidden sm:block" />}
               <div className="flex flex-col-reverse gap-2 sm:flex-row">
-                <button type="button" className={buttonSecondary} onClick={() => setForm(null)}>Cancel</button>
-                <button type="submit" className={buttonPrimary} disabled={busy}>{busy ? "Saving..." : form.id ? "Save changes" : "Create project"}</button>
+                <button type="button" className={buttonSecondary} disabled={busy} onClick={() => setForm(null)}>Cancel</button>
+                <button type="submit" className={buttonPrimary} disabled={busy}>{busy ? "Saving..." : form.id ? "Save changes" : createdProjectId ? "Retry save" : "Create project"}</button>
               </div>
             </div>
           </form>

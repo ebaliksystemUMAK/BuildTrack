@@ -112,3 +112,20 @@ assert.equal(pinUpdates.length,savedCount,"No-op, invalid, read-only, locked and
 assert.equal(touches,1)
 delete globalThis.__pinSave
 console.log("Pin save handler: coordinate-only writes, undo/redo, denied/network rollback, no-op and current edit/sheet/lock guards passed")
+
+let writeArrow
+const findWrite=node=>{if(ts.isVariableDeclaration(node)&&node.name.getText(editorAst)==="writePin")writeArrow=node.initializer.getText(editorAst);ts.forEachChild(node,findWrite)}
+findWrite(editorAst)
+const writeSource=`export default async function(...args){const {supabase,dbMessage}=globalThis.__pinWrite;return (${writeArrow})(...args)}`
+const {default:writePosition}=await import(url(ts.transpileModule(writeSource,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText))
+let writeResult={data:null,error:{message:"Awaiting Engineer inspection: complete or cancel the inspection before changing this work"}}
+const writeChain={update(){return writeChain},eq(){return writeChain},select:async()=>writeResult}
+globalThis.__pinWrite={supabase:{from:()=>writeChain},dbMessage:error=>error.message}
+assert.equal(await writePosition(pin.id,{x:40,y:45}),false,"Other pin operations retain their boolean failure handling")
+await assert.rejects(writePosition(pin.id,{x:40,y:45},true),/Awaiting Engineer inspection/,"Movement surfaces the database's actual reason")
+writeResult={data:[{id:pin.id}],error:null}
+assert.equal(await writePosition(pin.id,{x:40,y:45},true),true)
+writeResult={data:[],error:null}
+assert.equal(await writePosition(pin.id,{x:40,y:45},true),false)
+delete globalThis.__pinWrite
+console.log("Pin write errors: actual database message for move failures, boolean compatibility, successful/empty writes passed")

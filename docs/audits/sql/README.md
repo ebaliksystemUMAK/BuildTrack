@@ -4,6 +4,9 @@ One document per SQL file in `supabase/`. Same sections every time so changes ar
 
 | Doc | SQL file | Status |
 |---|---|---|
+| [20261106172635_delete_gantt_milestone](20261106172635_delete_gantt_milestone.md) | `supabase/migrations/20261106172635_delete_gantt_milestone.sql` | APPLIED 2026-11-07 Manila; checked RPC verified |
+| [20261106170159_allow_engineer_pin_relocation](20261106170159_allow_engineer_pin_relocation.md) | `supabase/migrations/20261106170159_allow_engineer_pin_relocation.sql` | PENDING explicit approval; remote application blocked, not deployed |
+| [20261106144417_optional_timeline_save_reason](20261106144417_optional_timeline_save_reason.md) | `supabase/migrations/20261106144417_optional_timeline_save_reason.sql` | APPLIED 2026-11-06; live function verified |
 | [20261104172610_schedule_email_notifications](20261104172610_schedule_email_notifications.md) | `supabase/migrations/20261104172610_schedule_email_notifications.sql` | APPLIED 2026-11-05 Manila (live `20261104174312`) |
 | [20261104155523_create_pin_with_foreman](20261104155523_create_pin_with_foreman.md) | `supabase/migrations/20261104155523_create_pin_with_foreman.sql` | APPLIED 2026-11-05 Manila (live `20261104160447`) |
 | [20261104153838_optional_schedule_approval_publication_reason](20261104153838_optional_schedule_approval_publication_reason.md) | `supabase/migrations/20261104153838_optional_schedule_approval_publication_reason.sql` | APPLIED 2026-11-04 (live `20261104154404`) |

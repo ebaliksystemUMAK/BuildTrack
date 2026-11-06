@@ -209,7 +209,7 @@ export default async function ({ db, ids, as, asOwner, addUser, test, expectFail
     await as('spPM')
     await expectFail("select public.decide_timeline_request($1,true,$2)",[req.id,'x'.repeat(501)],/500/)
     await expectFail("select public.decide_timeline_request($1,false,null)",[req.id],/rejection needs/)
-    await expectFail("select public.save_timeline_item($1,$2,$3::jsonb,0,'')",[project,`pin:${pn.id}`,JSON.stringify(plan('2026-12-01','2026-12-10'))],/reason of 5/)
+    await expectFail("select public.save_timeline_item($1,$2,$3::jsonb,0,$4)",[project,`pin:${pn.id}`,JSON.stringify(plan('2026-12-01','2026-12-10')),'x'.repeat(501)],/500/)
     await expectFail("select public.publish_project_timeline($1,$2)",[project,'x'.repeat(501)],/500/)
     assert.equal((await read()).requests.find(row=>row.id===req.id).status,'pending')
     await as('spEng');await expectFail("select public.write_timeline_item($1,$2,$3::jsonb,0,'')",[project,`pin:${pn.id}`,JSON.stringify(plan('2026-12-01','2026-12-10'))],/permission denied/)

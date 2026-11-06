@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import type { Page } from "../../App"
 import Brand from "../../components/Brand"
 import FormField from "../../components/FormField"
@@ -8,7 +8,7 @@ import DataConfirmModal, { PrivacyNoticeModal } from "../../components/PrivacyNo
 import Icon from "../../components/Icons"
 import { useAuth } from "../../lib/auth"
 import { invokeFunction } from "../../lib/functions"
-import { setLoginSuccessNotice, setOAuthIntent } from "../../lib/oauthIntent"
+import { clearOAuthIntent, setLoginSuccessNotice, setOAuthIntent } from "../../lib/oauthIntent"
 import { passwordChecks, passwordIssue } from "../../lib/passwordPolicy"
 import { PHONE_DIGITS, phoneDigits, phoneIssue } from "../../lib/phoneNumber"
 import { PRIVACY_VERSION } from "../../lib/privacy"
@@ -50,10 +50,12 @@ function CompleteGoogleRegistration({ navigate }: RegisterPageProps) {
   const [agree, setAgree] = useState(false)
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
+  const pending = useRef(false)
 
   const [confirming, setConfirming] = useState(false)
   const review = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (pending.current) return
     setError("")
     if (name.trim().length < 2) return setError("Enter your full name.")
     const phoneProblem = phoneIssue(phone)
@@ -65,26 +67,42 @@ function CompleteGoogleRegistration({ navigate }: RegisterPageProps) {
   }
 
   const submit = async () => {
+    if (pending.current) return
+    pending.current = true
     setBusy(true)
-    const { error: rpcError } = await supabase.rpc("complete_registration", { p_full_name: name.trim(), p_phone: phone.trim(), p_company: company.trim() || null, p_position: position.trim() || null, p_requested_role: role, p_discipline: role === "engineer" ? discipline : null })
-    setBusy(false)
-    if (rpcError) {
+    try {
+      const { error: rpcError } = await supabase.rpc("complete_registration", { p_full_name: name.trim(), p_phone: phone.trim(), p_company: company.trim() || null, p_position: position.trim() || null, p_requested_role: role, p_discipline: role === "engineer" ? discipline : null })
+      if (rpcError) throw new Error(rpcError.message)
+      setLoginSuccessNotice(
+        "Registration sent",
+        "Your registration is awaiting administrator approval. You will be able to sign in after your access is approved.",
+      )
+      await signOut()
+      navigate("login")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not send your registration. Please try again."
       setConfirming(false)
-      setError(rpcError.message)
-      return toast.error("Registration not sent", rpcError.message)
+      setError(message)
+      toast.error("Registration not sent", message)
+    } finally {
+      pending.current = false
+      setBusy(false)
     }
-    setLoginSuccessNotice(
-      "Registration sent",
-      "Your registration is awaiting administrator approval. You will be able to sign in after your access is approved.",
-    )
-    await signOut()
-    navigate("login")
   }
 
   const useAnotherAccount = async () => {
+    if (pending.current) return
+    pending.current = true
     setBusy(true)
-    await invokeFunction("oauth-gate", {}) // removes this half-created account; nothing else is touched
-    await signOut()
+    try {
+      await invokeFunction("oauth-gate", {}) // removes this half-created account; nothing else is touched
+      await signOut()
+    } catch {
+      setError("Could not switch accounts. Check your connection and try again.")
+    } finally {
+      pending.current = false
+      setBusy(false)
+    }
   }
 
   // Step 1: the address must be proven with an emailed code before any details can be sent to the administrators (the database refuses them otherwise).
@@ -97,8 +115,9 @@ function CompleteGoogleRegistration({ navigate }: RegisterPageProps) {
           Before your registration can reach the administrators, confirm that <strong>{profile?.email}</strong> is yours. Nothing is sent for approval until you do.
         </p>
         <EmailCodeStep tone="gold" what="send your registration" />
+        {error ? <p className="form-notice form-notice--error" role="alert">{error}</p> : null}
         <div className="register-actions">
-          <button className="text-button text-button--gold" type="button" onClick={() => void useAnotherAccount()}>Use a different account</button>
+          <button className="text-button text-button--gold" type="button" disabled={busy} onClick={() => void useAnotherAccount()}>Use a different account</button>
         </div>
       </div>
     )
@@ -164,7 +183,26 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
   const [code, setCode] = useState("")
   const [error, setError] = useState("")
   const [info, setInfo] = useState("")
-  const [busy, setBusy] = useState(false)
+  const [action, setAction] = useState<"signup" | "google" | "verify" | "resend" | null>(null)
+  const busy = action !== null
+  const pending = useRef(false)
+  const [resendAt, setResendAt] = useState(0)
+  const [clock, setClock] = useState(() => Date.now())
+  const resendSeconds = Math.max(0, Math.ceil((resendAt - clock) / 1000))
+  const startCooldown = () => {
+    const now = Date.now()
+    setClock(now)
+    setResendAt(now + 60_000)
+  }
+  useEffect(() => {
+    if (!resendAt) return
+    const timer = window.setInterval(() => {
+      const now = Date.now()
+      setClock(now)
+      if (now >= resendAt) window.clearInterval(timer)
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [resendAt])
   const set = (key: keyof typeof values) => (value: string) =>
     setValues((previous) => ({ ...previous, [key]: value }))
   const email = values.email.trim().toLowerCase()
@@ -176,6 +214,7 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
   const [reading, setReading] = useState(false)
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (pending.current) return
     setError("")
     setInfo("")
     if (values.name.trim().length < 2) return setError("Enter your full name.")
@@ -189,72 +228,111 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
   }
 
   const sendSignUp = async () => {
-    setBusy(true)
-    const { error: signUpError } = await supabase.auth.signUp({
-      email,
-      password: values.password,
-      options: {
-        data: {
-          full_name: values.name.trim(),
-          phone: values.phone.trim(),
-          company: values.company.trim(),
-          position: values.role.trim(),
-          consent_version: PRIVACY_VERSION, // the database records the privacy notice that was accepted
+    if (pending.current) return
+    pending.current = true
+    setAction("signup")
+    try {
+      const { error: signUpError } = await supabase.auth.signUp({
+        email,
+        password: values.password,
+        options: {
+          data: {
+            full_name: values.name.trim(),
+            phone: values.phone.trim(),
+            company: values.company.trim(),
+            position: values.role.trim(),
+            consent_version: PRIVACY_VERSION, // the database records the privacy notice that was accepted
+          },
         },
-      },
-    })
-    setBusy(false)
-    setConfirming(false)
-    if (signUpError) return setError(signUpError.message)
-    setStep("otp")
-    setInfo(`We sent a verification code to ${email}. Enter it below to finish.`)
-    toast.info("Check your email", "The code arrives within a minute.")
+      })
+      setConfirming(false)
+      if (signUpError) return setError(signUpError.message)
+      setCode("")
+      startCooldown()
+      setStep("otp")
+      setInfo(`We sent a verification code to ${email}. Enter it below to finish.`)
+      toast.info("Check your email", "The code arrives within a minute.")
+    } catch {
+      setConfirming(false)
+      setError("Cannot reach the server. Check your connection and try again.")
+    } finally {
+      pending.current = false
+      setAction(null)
+    }
   }
 
   const handleVerify = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (pending.current) return
     setError("")
-    setBusy(true)
-    const { error: verifyError } = await supabase.auth.verifyOtp({
-      email,
-      token: code.trim(),
-      type: "signup",
-    })
-    setBusy(false)
-    if (verifyError) {
-      setError("That code is incorrect or has expired.")
-      return
+    if (!/^\d{6}$/.test(code)) return setError("Enter the 6-digit verification code.")
+    pending.current = true
+    setAction("verify")
+    try {
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        email,
+        token: code.trim(),
+        type: "signup",
+      })
+      if (verifyError) return setError("That code is incorrect or has expired.")
+      setLoginSuccessNotice("Email verified", "Your basic account is ready. Sign in to request the access you need.")
+      await supabase.auth.signOut()
+      navigate("login")
+    } catch {
+      setError("Cannot reach the server. Check your connection and try again.")
+    } finally {
+      pending.current = false
+      setAction(null)
     }
-    setLoginSuccessNotice("Email verified", "Your basic account is ready. Sign in to request the access you need.")
-    await supabase.auth.signOut()
-    navigate("login")
   }
 
   const handleGoogle = async () => {
+    if (pending.current) return
+    pending.current = true
+    setAction("google")
     setError("")
     setOAuthIntent("register")
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/login`,
-        queryParams: { prompt: "select_account" },
-      },
-    })
-    if (oauthError) {
-      setError(oauthError.message)
-      toast.error("Google sign-up failed", oauthError.message)
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/login`,
+          queryParams: { prompt: "select_account" },
+        },
+      })
+      if (oauthError) throw new Error(oauthError.message)
+      // Keep both registration methods locked until Google redirects the page.
+    } catch (error) {
+      clearOAuthIntent()
+      const message = error instanceof Error ? error.message : "Could not open Google registration. Please try again."
+      setError(message)
+      toast.error("Google sign-up failed", message)
+      pending.current = false
+      setAction(null)
     }
   }
 
   const handleResend = async () => {
+    if (pending.current || Date.now() < resendAt) return
+    pending.current = true
+    setAction("resend")
     setError("")
-    const { error: resendError } = await supabase.auth.resend({ type: "signup", email })
-    if (resendError) {
-      setError(resendError.message)
-      toast.error("Could not resend the code", resendError.message)
-    } else {
-      setInfo("A new code has been sent.")
-      toast.success("New code sent")
+    try {
+      const { error: resendError } = await supabase.auth.resend({ type: "signup", email })
+      if (resendError) {
+        setError(resendError.message)
+        toast.error("Could not resend the code", resendError.message)
+        if (/rate limit|too many|after \d+ seconds/i.test(resendError.message)) startCooldown()
+      } else {
+        startCooldown()
+        setInfo("A new code has been sent.")
+        toast.success("New code sent")
+      }
+    } catch {
+      setError("Cannot reach the server. Check your connection and try again.")
+    } finally {
+      pending.current = false
+      setAction(null)
     }
   }
 
@@ -282,15 +360,19 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
                 name="code"
                 icon="shield"
                 autoComplete="one-time-code"
+                inputMode="numeric"
+                maxLength={6}
+                value={code}
+                disabled={busy}
                 placeholder="123456"
-                onChange={(value) => setCode(value.replace(/\D/g, "").slice(0, 10))}
+                onChange={(value) => setCode(value.replace(/\D/g, "").slice(0, 6))}
               />
               <div className="register-actions">
-                <button className="button button--gold" type="submit" disabled={busy || code.length < 6}>
-                  {busy ? "Verifying..." : "Verify and continue"}
+                <button className="button button--gold" type="submit" disabled={busy || !/^\d{6}$/.test(code)}>
+                  {action === "verify" ? "Verifying..." : "Verify and continue"}
                 </button>
-                <button className="text-button text-button--gold" type="button" onClick={() => void handleResend()}>
-                  Resend code
+                <button className="text-button text-button--gold" type="button" disabled={busy || resendSeconds > 0} onClick={() => void handleResend()}>
+                  {action === "resend" ? "Sending code..." : resendSeconds > 0 ? `Resend code in ${resendSeconds}s` : "Resend code"}
                 </button>
               </div>
               {error ? <div className="form-notice form-notice--error form-notice--spaced" role="alert">{error}</div> : null}
@@ -302,7 +384,7 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
             <p className="register-lead">
               Submit your details to create a basic account. You can then request Engineer, Foreman or Client access.
             </p>
-            <button className="button button--outline-light button--wide" type="button" onClick={() => void handleGoogle()}>
+            <button className="button button--outline-light button--wide" type="button" disabled={busy} onClick={() => void handleGoogle()}>
               Register with Google
             </button>
             <p className="support-note">Google fills in your verified email and name. An administrator reviews Google registrations before access is given, unless your email was pre-approved.</p>
@@ -313,6 +395,7 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
               <FormField
                 label="Full Name"
                 name="name"
+                disabled={busy}
                 icon="user"
                 onChange={set("name")}
                 placeholder="e.g. Eduardo Santos"
@@ -320,6 +403,7 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
               <FormField
                 label="Email Address"
                 name="email"
+                disabled={busy}
                 onChange={set("email")}
                 type="email"
                 icon="mail"
@@ -328,6 +412,7 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
               <FormField
                 label="Phone Number"
                 name="phone"
+                disabled={busy}
                 value={values.phone}
                 onChange={(value) => set("phone")(phoneDigits(value))}
                 type="tel"
@@ -339,6 +424,7 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
               <FormField
                 label="Company / Organization"
                 name="company"
+                disabled={busy}
                 onChange={set("company")}
                 icon="building"
                 placeholder="Valencia Construction Services"
@@ -346,6 +432,7 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
               <FormField
                 label="Job title"
                 name="role"
+                disabled={busy}
                 onChange={set("role")}
                 icon="user"
                 placeholder="Crane Operator Level III"
@@ -353,6 +440,7 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
               <FormField
                 label="Confirm Password"
                 name="confirmPassword"
+                disabled={busy}
                 onChange={set("confirmPassword")}
                 type="password"
                 icon="shield"
@@ -361,6 +449,7 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
               <FormField
                 label="Password"
                 name="password"
+                disabled={busy}
                 onChange={set("password")}
                 type="password"
                 icon="lock"
@@ -392,13 +481,14 @@ export default function RegisterPage({ navigate }: RegisterPageProps) {
             </label>
             <div className="register-actions">
               <button className="button button--gold" type="submit" disabled={busy}>
-                {busy ? "Sending code..." : "Register"}
+                {action === "signup" ? "Sending code..." : "Register"}
               </button>
               <span>
                 Already have an account?{" "}
                 <button
                   className="text-button text-button--gold"
                   type="button"
+                  disabled={busy}
                   onClick={() => navigate("login")}
                 >
                   Sign in

@@ -18,6 +18,7 @@ const calendar = (who: "staff" | "client"): PageGuide => ({
     : "Work deadlines, QA inspections, reinspections, NCR deadlines and project milestones of this project on one calendar.",
   steps: [
     "Open Gantt Timeline for the schedule. Engineers propose work dates; the assigned Project Manager approves dates, phases and dependencies, then publishes the baseline for Clients.",
+    ...(who === "staff" ? ["Project Managers can open a milestone and choose Delete milestone. Remove any dependencies on it first. Deletion changes the working schedule; publish again to update Clients. Earlier published versions remain in history."] : []),
     ...(who === "staff" ? ["Gantt has separate Timeline, Pending requests, Unscheduled tasks and Request history tabs. Detailed rows show the pin/plan, Foreman, phase and dates; use View details to open the work and PM review actions to decide requests. Reasons are optional when approving or publishing a schedule."] : []),
     "Switch between Month, Week, Day and Schedule views, and move with the arrows or the small month picker.",
     "Turn the event types on or off and use \"Search this calendar\" to narrow the list.",
@@ -465,14 +466,14 @@ const foreman: Record<ForemanPageKey, PageGuide> = {
     steps: ["Filter by date, sheet, pin or task.", "Open a photo to see its details, its time and place stamp and the linked work."],
   },
   "quality-control": {
-    title: "QA requests",
-    purpose: "Send tasks and stage / hold-point inspections to the Engineer for QA Review.",
+    title: "Tasks",
+    purpose: "Review your tasks and send them to the Engineer for QA Review.",
     steps: [
       "Open an item and add photos.",
       "Submit it for QA Review. The Engineer records the inspection.",
-      "Follow each request until the Engineer completes the task.",
+      "Follow each task until the Engineer completes it.",
     ],
-    tips: ["QA requests need a connection; they are not queued offline."],
+    tips: ["Task submissions need a connection; they are not queued offline."],
   },
   issues: {
     title: "Corrections",
@@ -488,7 +489,7 @@ const foreman: Record<ForemanPageKey, PageGuide> = {
     title: "QC checklist reference",
     purpose: "The QC checklists (measurements, material checks, workmanship) the Engineer inspects your tasks against.",
     steps: ["Open a checklist and use it to check your work before you submit it."],
-    tips: ["This page is read-only; tasks are submitted from My work or QA requests."],
+    tips: ["This page is read-only; tasks are submitted from My work or Tasks."],
   },
   attendance: {
     title: "Workforce management",

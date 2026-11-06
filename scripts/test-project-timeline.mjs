@@ -512,6 +512,53 @@ assert.equal(sectionTab('Request history').props['aria-selected'],true,'An alrea
 cleanups.forEach(fn=>fn?.())
 captureEffects=false;effectsToRun.length=0
 if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow
+// Milestone deletion uses the checked RPC, with confirmation and dependency protection.
+const milestone = item('milestone:00000000-0000-4000-8000-000000000001', { kind: 'milestone', title: 'Site handover', planned_start: '2026-11-01', planned_end: '2026-11-01', pin_id: undefined, item_id: undefined, blueprint_id: undefined })
+const milestoneData = { ...data, items: [first, milestone] }
+const milestoneProps = { timeline: { data: milestoneData, loading: false, error: '', reload: async () => { reloads++ } } }
+const openMilestone = (changes = milestoneProps) => {
+  reset(); render(changes)
+  find(node => node.type === 'button' && node.props['aria-label']?.startsWith('Site handover,')).props.onClick()
+  render(changes)
+}
+const deleteControl = node => node.type === 'button' && text(node) === 'Delete milestone'
+openMilestone()
+const callsBeforeCancel = rpcCalls.length
+find(deleteControl).props.onClick();render(milestoneProps)
+assert.ok(all(tree).some(node => node.type?.name === 'Modal' && node.props.title === 'Delete milestone?'))
+find(node => node.type === 'button' && text(node) === 'Cancel').props.onClick();render(milestoneProps)
+assert.equal(rpcCalls.length, callsBeforeCancel, 'Cancel does not delete anything')
+find(deleteControl).props.onClick();render(milestoneProps)
+find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
+for (let tick = 0; tick < 8; tick++) await Promise.resolve()
+assert.deepEqual(rpcCalls.at(-1), { name: 'delete_timeline_milestone', args: { p_project: props.projectId, p_key: milestone.key, p_expected: 1 } })
+render(milestoneProps)
+assert.ok(!all(tree).some(node => node.type?.name === 'Modal'), 'Successful deletion closes the dialogs')
+const withDependent = { timeline: { ...milestoneProps.timeline, data: { ...milestoneData, items: [milestone, { ...second, predecessors: [milestone.key] }] } } }
+openMilestone(withDependent)
+find(deleteControl).props.onClick();render(withDependent)
+assert.equal(find(node => deleteControl(node) && node.props.type === 'submit').props.disabled, true)
+assert.match(text(tree), /Remove this milestone from the predecessors/)
+const callsBeforeDependency = rpcCalls.length
+find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
+assert.equal(rpcCalls.length, callsBeforeDependency, 'A dependent milestone cannot be deleted from the form')
+for (const role of ['engineer', 'foreman', 'client']) {
+  const readOnlyMilestones = { role, timeline: { ...milestoneProps.timeline, data: { ...milestoneData, can_edit: false } } }
+  openMilestone(readOnlyMilestones)
+  assert.ok(!all(tree).some(deleteControl), 'Read-only roles do not receive milestone deletion')
+}
+reset();render(milestoneProps)
+find(node => node.type === 'button' && node.props['aria-label']?.startsWith('task:A,')).props.onClick();render(milestoneProps)
+assert.ok(!all(tree).some(deleteControl), 'Work tasks never receive the milestone delete control')
+const originalRpc = globalThis.__ganttDeps.supabase.rpc
+globalThis.__ganttDeps.supabase.rpc = async () => ({ error: { message: 'Milestone changed. Refresh the timeline before deleting it.' } })
+openMilestone();find(deleteControl).props.onClick();render(milestoneProps)
+find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
+for (let tick = 0; tick < 8; tick++) await Promise.resolve()
+render(milestoneProps)
+assert.match(text(tree), /Milestone changed/)
+assert.ok(all(tree).some(node => node.type?.name === 'Modal' && node.props.title === 'Delete milestone?'), 'Server failures retain the confirmation and show their reason')
+globalThis.__ganttDeps.supabase.rpc = originalRpc
 console.log(
   "Gantt model and component: date geometry, dependency guards, unverified reported progress, calendar synchronization, zoom, search, task links, editing, separate timeline/request/unscheduled/history tabs, detail tables, PM review, keyboard controls, client privacy, and loading/error states passed",
 )

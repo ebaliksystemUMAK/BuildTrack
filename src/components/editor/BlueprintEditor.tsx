@@ -392,8 +392,9 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
     return null
   }
 
-  const writePin = async (id: string, patch: Record<string, unknown>) => {
+  const writePin = async (id: string, patch: Record<string, unknown>, throwOnError = false) => {
     const { data, error: patchError } = await supabase.from("pins").update(patch).eq("id", id).select("id")
+    if (patchError && throwOnError) throw new Error(dbMessage(patchError))
     return !patchError && Boolean(data?.length)
   }
 
@@ -407,7 +408,7 @@ export default function BlueprintEditor({ projectId, role, canEdit, canUpload = 
     pinMovePending.current.add(id)
     setPins((current) => current.map((pin) => (pin.id === id ? { ...pin, x, y } : pin)))
     try {
-      if (!(await writePin(id, { x, y }))) throw new Error("You may not be allowed to edit it, or it was locked by someone else.")
+      if (!(await writePin(id, { x, y }, true))) throw new Error("This pin is no longer available for editing. Refresh the plan and check your Assigned work access.")
       const from = { x: before.x, y: before.y }
       undoStack.push({
         label: "Move pin",

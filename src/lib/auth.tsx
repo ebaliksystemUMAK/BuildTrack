@@ -99,50 +99,87 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [permissions, setPermissions] = useState<AdminPermission[]>([])
   const [loading, setLoading] = useState(true)
   const [aal, setAal] = useState<"aal1" | "aal2" | null>(null)
+  const currentUserId = useRef<string | null>(null)
+  const profileRequest = useRef(0)
+  const mounted = useRef(false)
   const [impersonation, setImpersonation] = useState<Impersonation | null>(() => {
     const saved = readSaved()
     return saved ? { adminName: saved.adminName, targetName: saved.targetName } : null
   })
 
   const loadProfile = useCallback(async (userId: string | null) => {
+    if (!mounted.current || userId !== currentUserId.current) return
+    const request = ++profileRequest.current
+    const current = () => mounted.current && request === profileRequest.current && userId === currentUserId.current
     if (!userId) {
       setProfile(null)
       setPermissions([])
       setAal(null)
+      setLoading(false)
       return
     }
-    const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
-    setAal((assurance?.currentLevel as "aal1" | "aal2" | null) ?? null)
-    const { data } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle()
-    const loaded = (data as Profile | null) ?? null
-    setProfile(loaded)
-    if (loaded?.role === "admin") {
-      const { data: rows } = await supabase
-        .from("admin_permissions")
-        .select("permission")
-        .eq("user_id", userId)
-      setPermissions((rows ?? []).map((row) => row.permission as AdminPermission))
-    } else {
+    try {
+      const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      if (!current()) return
+      const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle()
+      if (!current()) return
+      const loaded = !error && data?.id === userId ? data as Profile : null
+      let nextPermissions: AdminPermission[] = []
+      if (loaded?.role === "admin") {
+        const { data: rows } = await supabase.from("admin_permissions").select("permission").eq("user_id", userId)
+        if (!current()) return
+        nextPermissions = (rows ?? []).map((row) => row.permission as AdminPermission)
+      }
+      // Commit one matching account snapshot, after all of its reads have finished.
+      setProfile(loaded)
+      setPermissions(nextPermissions)
+      setAal((assurance?.currentLevel as "aal1" | "aal2" | null) ?? null)
+    } catch {
+      if (!current()) return
+      setProfile(null)
       setPermissions([])
+      setAal(null)
+    } finally {
+      if (current()) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
     let active = true
-    supabase.auth.getSession().then(async ({ data }) => {
+    let authEvents = 0
+    mounted.current = true
+    const receiveSession = (next: Session | null) => {
       if (!active) return
-      setSession(data.session)
-      await loadProfile(data.session?.user.id ?? null)
-      if (active) setLoading(false)
+      const nextId = next?.user.id ?? null
+      if (nextId !== currentUserId.current || !nextId) {
+        currentUserId.current = nextId
+        setProfile(null)
+        setPermissions([])
+        setAal(null)
+        setLoading(Boolean(nextId))
+      }
+      setSession(next)
+      // Invalidate old reads immediately, before the deferred replacement starts.
+      const request = ++profileRequest.current
+      // Defer: calling supabase inside the auth callback can deadlock the auth lock.
+      setTimeout(() => {
+        if (active && request === profileRequest.current) void loadProfile(nextId)
+      }, 0)
+    }
+    void supabase.auth.getSession().then(({ data }) => {
+      if (active && authEvents === 0) receiveSession(data.session)
+    }).catch(() => {
+      if (active && authEvents === 0) receiveSession(null)
     })
     const { data: listener } = supabase.auth.onAuthStateChange((event, next) => {
+      authEvents++
       if (event === "PASSWORD_RECOVERY") beginRecovery() // a reset link was opened: choose a new password before anything else
-      setSession(next)
-      // Defer: calling supabase inside this callback can deadlock the auth lock.
-      setTimeout(() => void loadProfile(next?.user.id ?? null), 0)
+      receiveSession(next)
     })
     return () => {
       active = false
+      mounted.current = false
+      profileRequest.current++
       listener.subscription.unsubscribe()
     }
   }, [loadProfile])
